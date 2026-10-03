@@ -34,6 +34,28 @@ public enum MaterialSymbolsCodepoints {
     /// The name → codepoint table. Keep alphabetized within each
     /// thematic section to minimize merge conflicts when extending.
     public static let table: [String: UInt32] = [
+        // MARK: Media, library and plugin management
+        //
+        // Values taken from the upstream .codepoints metadata file for the
+        // pinned font SHA, as the type doc describes. They cannot be read back
+        // out of the font itself: 218 glyphs there are reachable from more
+        // than one PUA codepoint, so a glyph does not identify its name.
+        "closed_caption":          0xE996,
+        "dangerous":               0xE99A,
+        "extension":               0xE87B,
+        "history":                 0xE8B3,
+        "image":                   0xE3F4,
+        "inbox":                   0xE156,
+        "list":                    0xE896,
+        "person_off":              0xE510,
+        "playlist_add":            0xE03B,
+        "qr_code_scanner":         0xF206,
+        "queue_music":             0xE03D,
+        "quiz":                    0xF04C,
+        "subscriptions":           0xE064,
+        "thumb_up":                0xF577,
+        "tune":                    0xE429,
+
         // Navigation / chevrons
         "chevron_left":        0xE5CB,
         "chevron_right":       0xE5CC,

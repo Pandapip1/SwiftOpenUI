@@ -40,6 +40,26 @@ public enum SFSymbolCompatibility {
     /// The curated SF→Material map. Keep alphabetized within each
     /// thematic section to make merge conflicts easy to resolve.
     public static let map: [String: String] = [
+        // MARK: Media, library and plugin management
+        //
+        // Each name was checked against the bundled font's ligature table.
+        "captions.bubble":                 "closed_caption",
+        "checkmark.seal":                  "verified",
+        "clock.arrow.circlepath":          "history",
+        "hand.thumbsup":                   "thumb_up",
+        "list.bullet":                     "list",
+        "music.note.list":                 "queue_music",
+        "person.crop.circle.badge.xmark":  "person_off",
+        "photo":                           "image",
+        "puzzlepiece.extension":           "extension",
+        "qrcode.viewfinder":               "qr_code_scanner",
+        "questionmark.square.dashed":      "quiz",
+        "rectangle.stack.person.crop":     "subscriptions",
+        "slider.horizontal.3":             "tune",
+        "text.badge.plus":                 "playlist_add",
+        "tray":                            "inbox",
+        "xmark.octagon":                   "dangerous",
+
         // MARK: Navigation / chevrons
         "chevron.backward":       "chevron_left",
         "chevron.down":           "expand_more",
