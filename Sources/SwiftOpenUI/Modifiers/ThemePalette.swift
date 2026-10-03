@@ -25,20 +25,6 @@ public struct ThemePalette: Sendable, Equatable {
         self.accent = accent
     }
 
-    /// Linear blend between two colors, `t` running from `a` to `b`.
-    ///
-    /// Used to build the lower tiers of the hierarchy out of the theme's own
-    /// foreground and background rather than fixed greys, so they stay legible
-    /// whichever way round the theme is.
-    public static func blend(_ a: Color, _ b: Color, _ t: Double) -> Color {
-        let t = max(0, min(1, t))
-        return Color(
-            red: a.red + (b.red - a.red) * t,
-            green: a.green + (b.green - a.green) * t,
-            blue: a.blue + (b.blue - a.blue) * t,
-            opacity: a.alpha + (b.alpha - a.alpha) * t
-        )
-    }
 }
 
 /// Theme palette key. `nil` means "no themed palette available".

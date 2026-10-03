@@ -411,6 +411,12 @@ extension FocusedEqualsView: GTKRenderable {
     }
 }
 
+/// `background-color` declaration for a Color, in the form GTK CSS wants.
+func gtkBackgroundColorCSS(_ color: Color) -> String {
+    String(format: "background-color: rgba(%d, %d, %d, %.3f);",
+           Int(color.red * 255), Int(color.green * 255), Int(color.blue * 255), color.alpha)
+}
+
 extension Color: GTKRenderable, GTKDescribable {
     public func gtkCreateWidget() -> OpaquePointer {
         let box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
@@ -4710,6 +4716,21 @@ extension List: GTKRenderable {
         gtk_scrolled_window_set_child(scrolledOp, listBox)
         gtk_widget_set_vexpand(scrolled, 1)
         gtk_widget_set_hexpand(scrolled, 1)
+
+        // GTK styles a bare list with view_bg_color, which is the surface
+        // themes reserve for sidebars and dedicated views -- on COSMIC it is
+        // pure black, while that desktop's own file list sits on the window
+        // background. SwiftUI's List is opaque over the window background
+        // too, so paint that, and let .scrollContentBackground(.hidden) drop
+        // it for callers who want their own background behind the rows.
+        let hidden = getCurrentEnvironment().scrollContentBackground == .hidden
+        let listBackground = hidden
+            ? "background-color: transparent;"
+            : getCurrentEnvironment().themePalette.map {
+                gtkBackgroundColorCSS($0.windowBackground)
+            } ?? "background-color: transparent;"
+        applyCSSToWidget(scrolled, properties: listBackground)
+        applyCSSToWidget(listBox, properties: listBackground)
 
         return opaqueFromWidget(scrolled)
     }

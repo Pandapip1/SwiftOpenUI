@@ -5,12 +5,6 @@
 /// and `.background(.regularMaterial, in: shape)` call sites to compile and
 /// render acceptably. Backed by flat colors (no blur/vibrancy) — recorded in
 /// the parity matrix as approximations.
-///
-/// The approximations are scheme-dependent. They used to be light-mode
-/// constants unconditionally, which made `.primary` pure black and the
-/// materials near-white on a dark desktop — black text on a dark GTK
-/// background, and glaring white panels. Each style now resolves against the
-/// current `colorScheme`.
 public struct HierarchicalShapeStyle: Sendable, Equatable {
     public enum Level: Sendable, Equatable { case primary, secondary, tertiary, quaternary }
     public let level: Level
@@ -20,22 +14,33 @@ public struct HierarchicalShapeStyle: Sendable, Equatable {
     public static let tertiary = HierarchicalShapeStyle(level: .tertiary)
     public static let quaternary = HierarchicalShapeStyle(level: .quaternary)
 
-    /// Flat-color approximation of the hierarchical style, for an explicit scheme.
-    public func approximatedColor(for scheme: ColorScheme) -> Color {
-        switch (level, scheme) {
-        case (.primary, .light):    return Color(red: 0.00, green: 0.00, blue: 0.00)
-        case (.secondary, .light):  return Color(red: 0.45, green: 0.45, blue: 0.47)
-        case (.tertiary, .light):   return Color(red: 0.60, green: 0.60, blue: 0.62)
-        case (.quaternary, .light): return Color(red: 0.92, green: 0.92, blue: 0.94)
-        case (.primary, .dark):     return Color(red: 1.00, green: 1.00, blue: 1.00)
-        case (.secondary, .dark):   return Color(red: 0.64, green: 0.64, blue: 0.66)
-        case (.tertiary, .dark):    return Color(red: 0.45, green: 0.45, blue: 0.47)
-        case (.quaternary, .dark):  return Color(red: 0.26, green: 0.26, blue: 0.28)
+    /// The opacity this tier applies to the label color, matching UIKit's
+    /// label / secondaryLabel / tertiaryLabel / quaternaryLabel.
+    public var opacity: Double {
+        switch level {
+        case .primary:    return 1.00
+        case .secondary:  return 0.60
+        case .tertiary:   return 0.30
+        case .quaternary: return 0.18
         }
     }
 
+    /// Flat-color approximation for an explicit scheme, used when no backend
+    /// has published a theme palette.
+    ///
+    /// SwiftUI fades the *label* color rather than mixing toward a particular
+    /// background, so the result composites correctly whether it lands on the
+    /// window, a card or a list. Mixing toward one chosen background would be
+    /// wrong everywhere else.
+    public func approximatedColor(for scheme: ColorScheme) -> Color {
+        let label: Color = scheme == .dark
+            ? Color(red: 1, green: 1, blue: 1)
+            : Color(red: 0, green: 0, blue: 0)
+        return label.opacity(opacity)
+    }
+
     /// Resolved against the host theme when a backend publishes one, and
-    /// against the fixed per-scheme constants otherwise.
+    /// against the per-scheme label color otherwise.
     ///
     /// Read at view-body build time, which runs inside a render pass, so the
     /// render-time environment is the one in effect.
@@ -44,14 +49,7 @@ public struct HierarchicalShapeStyle: Sendable, Equatable {
         guard let palette = env.themePalette else {
             return approximatedColor(for: env.colorScheme)
         }
-        // Lower tiers step from the theme's own foreground toward its
-        // background, so they stay legible whichever way round it is.
-        switch level {
-        case .primary:    return palette.foreground
-        case .secondary:  return ThemePalette.blend(palette.foreground, palette.windowBackground, 0.35)
-        case .tertiary:   return ThemePalette.blend(palette.foreground, palette.windowBackground, 0.55)
-        case .quaternary: return ThemePalette.blend(palette.foreground, palette.windowBackground, 0.78)
-        }
+        return palette.foreground.opacity(opacity)
     }
 }
 
@@ -63,32 +61,36 @@ public struct Material: Sendable, Equatable {
     public static let thinMaterial = Material(kind: .thin)
     public static let thickMaterial = Material(kind: .thick)
 
-    /// Flat-color approximation (no translucency/blur), for an explicit scheme.
-    public func approximatedColor(for scheme: ColorScheme) -> Color {
-        switch (kind, scheme) {
-        case (.regular, .light): return Color(red: 0.97, green: 0.97, blue: 0.98)
-        case (.thin, .light):    return Color(red: 0.98, green: 0.98, blue: 0.99)
-        case (.thick, .light):   return Color(red: 0.94, green: 0.94, blue: 0.95)
-        case (.regular, .dark):  return Color(red: 0.16, green: 0.16, blue: 0.17)
-        case (.thin, .dark):     return Color(red: 0.20, green: 0.20, blue: 0.21)
-        case (.thick, .dark):    return Color(red: 0.11, green: 0.11, blue: 0.12)
+    /// How opaque this material is. SwiftUI's materials run from ultraThin to
+    /// ultraThick by how much of the backdrop they let through; without blur,
+    /// opacity over the real backdrop is the closest honest approximation.
+    public var opacity: Double {
+        switch kind {
+        case .thin:    return 0.65
+        case .regular: return 0.85
+        case .thick:   return 1.00
         }
     }
 
-    /// Resolved against the host theme when a backend publishes one, and
-    /// against the fixed per-scheme constants otherwise.
+    /// Flat-color approximation for an explicit scheme, used when no backend
+    /// has published a theme palette.
+    public func approximatedColor(for scheme: ColorScheme) -> Color {
+        let base: Color = scheme == .dark
+            ? Color(red: 0.16, green: 0.16, blue: 0.17)
+            : Color(red: 0.97, green: 0.97, blue: 0.98)
+        return base.opacity(opacity)
+    }
+
+    /// Resolved against the host theme when a backend publishes one.
+    ///
+    /// Materials stand in for raised, translucent surfaces, and the theme's
+    /// card background is the surface it defines for exactly that.
     public var approximatedColor: Color {
         let env = getCurrentEnvironment()
         guard let palette = env.themePalette else {
             return approximatedColor(for: env.colorScheme)
         }
-        // Materials stand in for raised, translucent surfaces; the
-        // theme's card background is the closest thing it defines.
-        switch kind {
-        case .regular: return palette.cardBackground
-        case .thin:    return ThemePalette.blend(palette.cardBackground, palette.windowBackground, 0.45)
-        case .thick:   return palette.windowBackground
-        }
+        return palette.cardBackground.opacity(opacity)
     }
 }
 
