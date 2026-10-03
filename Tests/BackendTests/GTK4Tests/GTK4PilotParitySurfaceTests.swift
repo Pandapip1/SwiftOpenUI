@@ -101,7 +101,7 @@ final class GTK4PilotParitySurfaceTests: XCTestCase {
 
         let quaternary = widgetFromOpaque(gtkRenderView(
             Text("field")
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                .background(HierarchicalShapeStyle.quaternary, in: RoundedRectangle(cornerRadius: 8))
         ))
         XCTAssertTrue(labelTexts(in: quaternary).contains("field"))
     }
