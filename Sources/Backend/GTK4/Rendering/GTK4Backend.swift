@@ -578,7 +578,7 @@ public struct GTK4Backend: RenderBackend {
         gtkRegisterBundledIconFont()
         gtkInstallSystemServices()
 
-        let gtkApp = gtk_application_new(nil, G_APPLICATION_DEFAULT_FLAGS)!
+        let gtkApp = gtk_application_new(nil, GApplicationFlags(rawValue: 0))!
         let appPtr = OpaquePointer(gtkApp)
 
         let factory: (OpaquePointer) -> Void = { appPtr in
