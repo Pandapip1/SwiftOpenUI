@@ -28,6 +28,11 @@ final class GTKVideoDriver: MediaPlayerDriver {
     private var stream: UnsafeMutablePointer<GtkMediaStream>? { gtk_swift_video_stream(widget) }
 
     func open(url: URL, autoplay: Bool, startAt: Double) {
+        if let error = gtk_swift_video_prerequisite_error() {
+            stop()
+            player?.onFailure?(String(cString: error))
+            return
+        }
         pendingSeek = startAt > 0 ? startAt : nil
         gtk_swift_video_open_uri(widget, url.absoluteString, autoplay ? 1 : 0)
         observeCurrentStream()

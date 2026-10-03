@@ -2,6 +2,9 @@
 
 #include <gtk/gtk.h>
 #include <fontconfig/fontconfig.h>
+#ifdef __linux__
+#include <dlfcn.h>
+#endif
 
 // --- FontConfig process-local font shims ---
 
@@ -1199,6 +1202,30 @@ gtk_swift_get_active_window(void) {
 
 
 // --- GtkVideo shims (used by the VideoPlayer renderer) ---
+
+/// GTK's GStreamer backend aborts if playbin3 is unavailable. Probe the already
+/// loaded GStreamer library before creating a media file, without making it a
+/// dependency of GTK builds that use a different media backend.
+static inline const char *
+gtk_swift_video_prerequisite_error(void) {
+#ifdef __linux__
+    const char *backend = g_getenv("GTK_MEDIA");
+    if (backend && strcmp(backend, "gstreamer") != 0) return NULL;
+    typedef gboolean (*InitCheck)(int *, char ***, GError **);
+    typedef gpointer (*FindFactory)(const char *);
+    InitCheck init_check = (InitCheck)dlsym(RTLD_DEFAULT, "gst_init_check");
+    FindFactory find_factory = (FindFactory)dlsym(RTLD_DEFAULT, "gst_element_factory_find");
+    if (!init_check || !find_factory) return NULL;
+    if (!init_check(NULL, NULL, NULL)) return "GStreamer could not initialize playback.";
+    gpointer factory = find_factory("playbin3");
+    if (!factory) {
+        return "Video playback is unavailable: GStreamer's playbin3 plugin is missing. "
+               "Install the GStreamer base plugins or launch from your configured development environment.";
+    }
+    g_object_unref(factory);
+#endif
+    return NULL;
+}
 
 static inline GtkWidget *
 gtk_swift_video_new(void) {
