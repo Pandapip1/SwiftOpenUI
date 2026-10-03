@@ -64,11 +64,11 @@ func gtkAppendChildrenPropagatingExpand(
     var needsHExpand = false
     var needsVExpand = false
     for widget in widgets {
-        if gtk_widget_get_hexpand(widget) != 0 {
+        if gtkWantsExpand(widget, GTK_ORIENTATION_HORIZONTAL) {
             needsHExpand = true
             gtk_widget_set_halign(widget, GTK_ALIGN_FILL)
         }
-        if gtk_widget_get_vexpand(widget) != 0 { needsVExpand = true }
+        if gtkWantsExpand(widget, GTK_ORIENTATION_VERTICAL) { needsVExpand = true }
         gtk_box_append(boxPointer(box), widget)
     }
     if needsHExpand { gtk_widget_set_hexpand(box, 1) }
@@ -858,13 +858,13 @@ private func gtkRenderFallbackVStack(
             gtk_widget_set_hexpand(widget, 0)
             gtk_widget_set_vexpand(widget, 1)
         }
-        if gtk_widget_get_hexpand(widget) != 0 {
+        if gtkWantsExpand(widget, GTK_ORIENTATION_HORIZONTAL) {
             needsHExpand = true
             gtk_widget_set_halign(widget, GTK_ALIGN_FILL)
         } else {
             gtk_widget_set_halign(widget, gtkAlign)
         }
-        if gtk_widget_get_vexpand(widget) != 0 { needsVExpand = true }
+        if gtkWantsExpand(widget, GTK_ORIENTATION_VERTICAL) { needsVExpand = true }
         gtk_box_append(boxPointer(box), widget)
     }
     if needsHExpand { gtk_widget_set_hexpand(box, 1) }
@@ -978,8 +978,8 @@ private func gtkRenderFallbackHStack(
             gtk_widget_set_hexpand(widget, 0)
             gtk_widget_set_vexpand(widget, 1)
         }
-        if gtk_widget_get_hexpand(widget) != 0 { needsHExpand = true }
-        if gtk_widget_get_vexpand(widget) != 0 {
+        if gtkWantsExpand(widget, GTK_ORIENTATION_HORIZONTAL) { needsHExpand = true }
+        if gtkWantsExpand(widget, GTK_ORIENTATION_VERTICAL) {
             needsVExpand = true
             gtk_widget_set_valign(widget, GTK_ALIGN_FILL)
         } else {
@@ -4717,18 +4717,32 @@ extension List: GTKRenderable {
         gtk_widget_set_vexpand(scrolled, 1)
         gtk_widget_set_hexpand(scrolled, 1)
 
-        // GTK styles a bare list with view_bg_color, which is the surface
-        // themes reserve for sidebars and dedicated views -- on COSMIC it is
-        // pure black, while that desktop's own file list sits on the window
-        // background. SwiftUI's List is opaque over the window background
-        // too, so paint that, and let .scrollContentBackground(.hidden) drop
-        // it for callers who want their own background behind the rows.
-        let hidden = getCurrentEnvironment().scrollContentBackground == .hidden
-        let listBackground = hidden
-            ? "background-color: transparent;"
-            : getCurrentEnvironment().themePalette.map {
-                gtkBackgroundColorCSS($0.windowBackground)
-            } ?? "background-color: transparent;"
+        // Two things are wrong with letting GTK style this itself, and with
+        // painting a theme colour over it.
+        //
+        // GTK styles a bare list with view_bg_color, the surface themes reserve
+        // for sidebars and dedicated views -- pure black on COSMIC, while that
+        // desktop's own file manager puts its file list on the window.
+        //
+        // But window_bg_color is not the answer either. That name, like
+        // card_bg_color and view_bg_color, is a libadwaita convention: a desktop
+        // declares it for libadwaita apps, and plain GTK4 never paints with it.
+        // Measured on COSMIC, @define-color window_bg_color is 38,37,37 while the
+        // window GTK actually draws is #353535 -- so painting the declared colour
+        // puts a visibly different slab behind the rows.
+        //
+        // The window is painted from the same palette (gtkApplyWindowBackground),
+        // so a List can state its own background as that colour and match exactly,
+        // while .scrollContentBackground(.hidden) drops it for callers who put
+        // something of their own behind the rows.
+        let listBackground: String
+        if getCurrentEnvironment().scrollContentBackground == .hidden {
+            listBackground = "background: transparent;"
+        } else if let palette = getCurrentEnvironment().themePalette {
+            listBackground = gtkBackgroundColorCSS(palette.windowBackground)
+        } else {
+            listBackground = "background: transparent;"
+        }
         applyCSSToWidget(scrolled, properties: listBackground)
         applyCSSToWidget(listBox, properties: listBackground)
 
@@ -7206,8 +7220,8 @@ private func gtkRenderStatefulView<V: View>(_ view: V) -> OpaquePointer {
     GTKViewHost.setCurrentRebuilding(previousHost)
 
     let child = widgetFromOpaque(widget)
-    let childHexpand = gtk_widget_get_hexpand(child) != 0
-    let childVexpand = gtk_widget_get_vexpand(child) != 0
+    let childHexpand = gtkWantsExpand(child, GTK_ORIENTATION_HORIZONTAL)
+    let childVexpand = gtkWantsExpand(child, GTK_ORIENTATION_VERTICAL)
     gtk_widget_set_hexpand(host.container, childHexpand ? 1 : 0)
     gtk_widget_set_vexpand(host.container, childVexpand ? 1 : 0)
     if childHexpand {
@@ -7485,4 +7499,18 @@ extension ViewThatFits: GTKRenderable {
 
         return opaqueFromWidget(stack)
     }
+}
+
+// MARK: - Expansion queries
+
+/// Whether `widget`'s subtree wants to expand along `orientation`.
+///
+/// `gtk_widget_get_hexpand` / `get_vexpand` report only the widget's *own*
+/// explicit flag. A container that expands solely because a descendant does —
+/// a view host wrapping a List, say — answers 0 there, so using it to decide
+/// whether a parent should expand truncates the chain and the content stops
+/// filling the window. `gtk_widget_compute_expand` is the query that accounts
+/// for children.
+func gtkWantsExpand(_ widget: UnsafeMutablePointer<GtkWidget>, _ orientation: GtkOrientation) -> Bool {
+    gtk_widget_compute_expand(widget, orientation) != 0
 }

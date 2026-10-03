@@ -98,6 +98,7 @@ extension WindowGroup: GTKWindowRenderable {
     func gtkRender(app: OpaquePointer) {
         let window = gtk_application_window_new(gtkApplicationPointer(app))!
         let winPtr = windowPointer(window)
+        gtkApplyWindowBackground(window)
         gtk_window_set_title(winPtr, title)
 
         // Set window ID in environment for keyboard shortcut scoping
@@ -660,6 +661,7 @@ extension Window: GTKWindowRenderable {
     func gtkCreateWindow(app: OpaquePointer) {
         let window = gtk_application_window_new(gtkApplicationPointer(app))!
         let winPtr = windowPointer(window)
+        gtkApplyWindowBackground(window)
         gtk_window_set_title(winPtr, title)
 
         // Set window ID in environment for keyboard shortcut scoping
@@ -836,4 +838,23 @@ func gtkSampleThemePalette(scheme: ColorScheme) -> ThemePalette {
             fallback: Color(red: 0.0, green: 0.48, blue: 1.0)
         )
     )
+}
+
+/// Paints a window with the desktop's declared window background.
+///
+/// `window_bg_color` and its siblings are a libadwaita convention: a desktop
+/// declares them for libadwaita apps, and plain GTK4 — which is what this
+/// backend is — never paints with them. On COSMIC the declared value is
+/// 38,37,37 while the window GTK actually draws is #353535, so anything
+/// SwiftOpenUI renders from the sampled palette sits on a visibly different
+/// backdrop than it expects.
+///
+/// Painting the window from the same palette closes that gap: window from
+/// `windowBackground`, raised surfaces from `cardBackground`, text from
+/// `foreground`, all one palette. Widgets GTK draws itself (header bar, tab
+/// bar) keep their own colours, which are close enough to the declared ones to
+/// sit together — on COSMIC, 35,35,35 and 40,40,40 against 38,37,37.
+func gtkApplyWindowBackground(_ window: UnsafeMutablePointer<GtkWidget>) {
+    guard let palette = getCurrentEnvironment().themePalette else { return }
+    applyCSSToWidget(window, properties: gtkBackgroundColorCSS(palette.windowBackground))
 }
