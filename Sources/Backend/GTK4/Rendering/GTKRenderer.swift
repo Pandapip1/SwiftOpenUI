@@ -4645,9 +4645,15 @@ private func ensureListCSS(_ widget: UnsafeMutablePointer<GtkWidget>) {
     guard !listCSSDisplays.contains(displayId) else { return }
     listCSSDisplays.insert(displayId)
 
+    // Deliberately no background here. This rule used to pin the list to
+    // @view_bg_color, the surface themes reserve for sidebars and dedicated views
+    // -- pure black on COSMIC. It also sits at PRIORITY_USER, so it fought the
+    // per-widget background the List sets from the theme palette and won or lost
+    // depending on provider order. The List states its own background; this rule
+    // only carries the shape and the row separators.
     let provider = gtk_css_provider_new()!
     let css = """
-        .swiftopenui-list { background: @view_bg_color; border-radius: 10px; padding: 0; }
+        .swiftopenui-list { border-radius: 10px; padding: 0; }
         .swiftopenui-list row { border-bottom: 1px solid alpha(currentColor, 0.18); padding: 8px 16px; }
         .swiftopenui-list row:last-child { border-bottom: none; }
         """
