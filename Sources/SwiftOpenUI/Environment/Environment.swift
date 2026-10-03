@@ -203,6 +203,24 @@ private class EnvironmentBox {
 /// never trigger rebuilds.
 public protocol AnyObjectInjectionEnvironment {}
 
+/// The last object seen for each injected type, used when `@Environment(Type.self)` is read outside a render pass
+/// (a button action, a `.task` body, a callback) where the thread-local environment is no longer set. SwiftUI
+/// resolves those reads through the view's stored environment; here, apps normally inject one instance per type
+/// for the app's lifetime, so the most recently rendered one is the right answer.
+private final class InjectedObjectFallback: @unchecked Sendable {
+    private let lock = NSLock()
+    private var objects: [ObjectIdentifier: AnyObject] = [:]
+    func get<T: AnyObject>(_ type: T.Type) -> T? {
+        lock.lock(); defer { lock.unlock() }
+        return objects[ObjectIdentifier(type)] as? T
+    }
+    func set<T: AnyObject>(_ type: T.Type, _ object: T) {
+        lock.lock(); defer { lock.unlock() }
+        objects[ObjectIdentifier(type)] = object
+    }
+}
+private let injectedObjectFallback = InjectedObjectFallback()
+
 @propertyWrapper
 public struct Environment<Value> {
     /// How the wrapper reads its value at render time. A keyPath reads
@@ -241,7 +259,7 @@ public struct Environment<Value> {
         // `AnyObject` constraint at read time without propagating it
         // to the outer Environment<Value> struct.
         self.reader = .injectedObject {
-            guard let object = getCurrentEnvironment().getObject(type) else {
+            guard let object = getCurrentEnvironment().getObject(type) ?? injectedObjectFallback.get(type) else {
                 fatalError(
                     "@Environment(\(type).self) lookup failed — no object of this type was injected. " +
                     "Call `.environment(object)` on an ancestor view."
@@ -254,6 +272,7 @@ public struct Environment<Value> {
             // in the render tree) and wouldn't otherwise be
             // guaranteed to re-run before this read fires again.
             recordEnvironmentRead(typeID: ObjectIdentifier(type), object: object)
+            injectedObjectFallback.set(type, object)
             return object
         }
     }
