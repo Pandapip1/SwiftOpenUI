@@ -4741,16 +4741,26 @@ extension List: GTKRenderable {
         // so a List can state its own background as that colour and match exactly,
         // while .scrollContentBackground(.hidden) drops it for callers who put
         // something of their own behind the rows.
-        let listBackground: String
+        // SwiftUI's List is an inset-grouped card: rows on a raised surface that
+        // hugs its content, over the window background. GTK's own convention for
+        // the same thing is libadwaita's .boxed-list, drawn in card_bg_color.
+        //
+        // The card has to hug. A GtkListBox fills whatever its viewport allocates,
+        // so with the scrolled window stretched to the window the card covered the
+        // whole viewport, until some later rebuild happened to shrink it -- which
+        // is what made a single source entry look enormous until + was clicked.
+        gtk_widget_set_valign(listBox, GTK_ALIGN_START)
+
+        applyCSSToWidget(scrolled, properties: "background: transparent;")
+        let cardBackground: String
         if getCurrentEnvironment().scrollContentBackground == .hidden {
-            listBackground = "background: transparent;"
+            cardBackground = "background: transparent;"
         } else if let palette = getCurrentEnvironment().themePalette {
-            listBackground = gtkBackgroundColorCSS(palette.windowBackground)
+            cardBackground = gtkBackgroundColorCSS(palette.cardBackground)
         } else {
-            listBackground = "background: transparent;"
+            cardBackground = "background: transparent;"
         }
-        applyCSSToWidget(scrolled, properties: listBackground)
-        applyCSSToWidget(listBox, properties: listBackground)
+        applyCSSToWidget(listBox, properties: cardBackground)
 
         return opaqueFromWidget(scrolled)
     }
