@@ -1325,3 +1325,37 @@ gtk_swift_set_prefer_dark_theme(int dark) {
     if (!settings) return;
     g_object_set(settings, "gtk-application-prefer-dark-theme", dark ? TRUE : FALSE, NULL);
 }
+
+// --- Theme palette ---
+
+/// Look up a named color from the current GTK theme.
+///
+/// Returns non-zero when the theme defines `name`. Prefer the libadwaita-style
+/// names (`window_bg_color`, `card_bg_color`, `accent_color`): on a COSMIC or
+/// GNOME dark session those carry the real values, while the legacy GTK3 names
+/// (`theme_bg_color`, `theme_fg_color`) are often left at stale light defaults.
+static inline int
+gtk_swift_theme_lookup_color(const char *name, double *r, double *g, double *b, double *a) {
+    GtkWidget *probe = gtk_label_new("");
+    g_object_ref_sink(probe);
+    GtkStyleContext *ctx = gtk_widget_get_style_context(probe);
+    GdkRGBA rgba;
+    int found = gtk_style_context_lookup_color(ctx, name, &rgba) ? 1 : 0;
+    if (found) { *r = rgba.red; *g = rgba.green; *b = rgba.blue; *a = rgba.alpha; }
+    g_object_unref(probe);
+    return found;
+}
+
+/// The theme's primary text color, as GTK would paint a plain label.
+///
+/// Unlike the named-color table this always reflects the stylesheet actually in
+/// force, so it is the reliable source for the foreground.
+static inline void
+gtk_swift_theme_foreground(double *r, double *g, double *b, double *a) {
+    GtkWidget *probe = gtk_label_new("");
+    g_object_ref_sink(probe);
+    GdkRGBA rgba;
+    gtk_widget_get_color(probe, &rgba);
+    *r = rgba.red; *g = rgba.green; *b = rgba.blue; *a = rgba.alpha;
+    g_object_unref(probe);
+}

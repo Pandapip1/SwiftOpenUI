@@ -34,13 +34,24 @@ public struct HierarchicalShapeStyle: Sendable, Equatable {
         }
     }
 
-    /// Flat-color approximation resolved against the current color scheme.
+    /// Resolved against the host theme when a backend publishes one, and
+    /// against the fixed per-scheme constants otherwise.
     ///
     /// Read at view-body build time, which runs inside a render pass, so the
-    /// render-time environment is the one in effect. Outside a render pass this
-    /// falls back to `ColorSchemeKey.defaultValue`.
+    /// render-time environment is the one in effect.
     public var approximatedColor: Color {
-        approximatedColor(for: getCurrentEnvironment().colorScheme)
+        let env = getCurrentEnvironment()
+        guard let palette = env.themePalette else {
+            return approximatedColor(for: env.colorScheme)
+        }
+        // Lower tiers step from the theme's own foreground toward its
+        // background, so they stay legible whichever way round it is.
+        switch level {
+        case .primary:    return palette.foreground
+        case .secondary:  return ThemePalette.blend(palette.foreground, palette.windowBackground, 0.35)
+        case .tertiary:   return ThemePalette.blend(palette.foreground, palette.windowBackground, 0.55)
+        case .quaternary: return ThemePalette.blend(palette.foreground, palette.windowBackground, 0.78)
+        }
     }
 }
 
@@ -64,9 +75,20 @@ public struct Material: Sendable, Equatable {
         }
     }
 
-    /// Flat-color approximation resolved against the current color scheme.
+    /// Resolved against the host theme when a backend publishes one, and
+    /// against the fixed per-scheme constants otherwise.
     public var approximatedColor: Color {
-        approximatedColor(for: getCurrentEnvironment().colorScheme)
+        let env = getCurrentEnvironment()
+        guard let palette = env.themePalette else {
+            return approximatedColor(for: env.colorScheme)
+        }
+        // Materials stand in for raised, translucent surfaces; the
+        // theme's card background is the closest thing it defines.
+        switch kind {
+        case .regular: return palette.cardBackground
+        case .thin:    return ThemePalette.blend(palette.cardBackground, palette.windowBackground, 0.45)
+        case .thick:   return palette.windowBackground
+        }
     }
 }
 

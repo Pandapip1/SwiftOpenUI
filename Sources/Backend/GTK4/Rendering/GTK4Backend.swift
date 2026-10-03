@@ -594,6 +594,9 @@ public struct GTK4Backend: RenderBackend {
             // told or dark content lands on light widgets.
             gtk_swift_set_prefer_dark_theme(scheme == .dark ? 1 : 0)
             env.colorScheme = scheme
+            // Derive the palette from the theme rather than fixed constants,
+            // so content sits on the desktop's own colours.
+            env.themePalette = gtkSampleThemePalette(scheme: scheme)
             env.openWindow = OpenWindowAction { id in
                 GTK4WindowRegistry.shared.open(id: id)
             }
@@ -797,4 +800,40 @@ func gtkDetectColorScheme() -> ColorScheme {
         }
     }
     return gtk_swift_prefers_dark_theme() != 0 ? .dark : .light
+}
+
+/// The palette SwiftOpenUI should render with, sampled from the GTK theme.
+///
+/// Falls back to the scheme's fixed constants for anything the theme does not
+/// define, so a minimal stylesheet still produces something sane.
+func gtkSampleThemePalette(scheme: ColorScheme) -> ThemePalette {
+    func lookup(_ name: String) -> Color? {
+        var r = 0.0, g = 0.0, b = 0.0, a = 0.0
+        guard gtk_swift_theme_lookup_color(name, &r, &g, &b, &a) != 0 else { return nil }
+        return Color(red: r, green: g, blue: b, opacity: a)
+    }
+    // First name that the theme actually defines wins.
+    func firstDefined(_ names: [String], fallback: Color) -> Color {
+        for name in names { if let c = lookup(name) { return c } }
+        return fallback
+    }
+
+    var fr = 0.0, fg = 0.0, fb = 0.0, fa = 0.0
+    gtk_swift_theme_foreground(&fr, &fg, &fb, &fa)
+
+    return ThemePalette(
+        foreground: Color(red: fr, green: fg, blue: fb, opacity: fa),
+        windowBackground: firstDefined(
+            ["window_bg_color", "theme_bg_color"],
+            fallback: Material.thickMaterial.approximatedColor(for: scheme)
+        ),
+        cardBackground: firstDefined(
+            ["card_bg_color", "theme_base_color"],
+            fallback: Material.regularMaterial.approximatedColor(for: scheme)
+        ),
+        accent: firstDefined(
+            ["accent_color", "theme_selected_bg_color"],
+            fallback: Color(red: 0.0, green: 0.48, blue: 1.0)
+        )
+    )
 }
