@@ -4751,17 +4751,11 @@ extension List: GTKRenderable {
         // is what made a single source entry look enormous until + was clicked.
         gtk_widget_set_valign(listBox, GTK_ALIGN_START)
 
+        // Leave the list box unpainted: rows carry their own surfaces, and
+        // painting a background here turns the whole list into one card with
+        // separators instead of the separate cards the rows draw themselves.
         applyCSSToWidget(scrolled, properties: "background: transparent;")
-        let cardBackground: String
-        if getCurrentEnvironment().scrollContentBackground == .hidden {
-            cardBackground = "background: transparent;"
-        } else if let palette = getCurrentEnvironment().themePalette {
-            cardBackground = gtkBackgroundColorCSS(palette.cardBackground)
-        } else {
-            cardBackground = "background: transparent;"
-        }
-        applyCSSToWidget(listBox, properties: cardBackground)
-
+        applyCSSToWidget(listBox, properties: "background: transparent;")
         return opaqueFromWidget(scrolled)
     }
 }
