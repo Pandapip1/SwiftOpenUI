@@ -349,8 +349,8 @@ public class GTKViewHost: AnyViewHost, DependencyTrackingHost {
         GTKViewHost.setCurrentRebuilding(previousHost)
 
         let newChild = widgetFromOpaque(widget)
-        let childHexpand = gtk_widget_get_hexpand(newChild) != 0
-        let childVexpand = gtk_widget_get_vexpand(newChild) != 0
+        let childHexpand = gtkWantsExpand(newChild, GTK_ORIENTATION_HORIZONTAL)
+        let childVexpand = gtkWantsExpand(newChild, GTK_ORIENTATION_VERTICAL)
         gtk_widget_set_hexpand(container, childHexpand ? 1 : 0)
         gtk_widget_set_vexpand(container, childVexpand ? 1 : 0)
         if childHexpand {
