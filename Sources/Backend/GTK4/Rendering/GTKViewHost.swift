@@ -93,8 +93,13 @@ public class GTKViewHost: AnyViewHost, DependencyTrackingHost {
         self.capturedEnvironment = getCurrentEnvironment()
         let box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
         self.container = box
-        gtk_widget_set_hexpand(box, 0)
-        gtk_widget_set_vexpand(box, 0)
+        // Deliberately not calling gtk_widget_set_[hv]expand here. Setting
+        // either explicitly -- even to 0 -- marks it as set, which stops GTK
+        // computing expansion from the children. A host wrapping a List then
+        // reports "I do not expand", gets only its natural height, and the
+        // content sits in a short box with the rest of the window empty
+        // beneath it. Left unset, expansion propagates up from the content,
+        // which is what SwiftUI does.
         // Transparent so content backgrounds fill edge-to-edge
         applyCSSToWidget(box, properties: "background: transparent;")
 
