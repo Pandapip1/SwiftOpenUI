@@ -83,7 +83,12 @@ class GTKNavigationContext {
     func pushValue(_ value: AnyHashable) {
         guard let resolved = destinationRegistry.resolve(value) else { return }
 
-        let title = resolved.title.isEmpty ? String(describing: value.base) : resolved.title
+        // No fallback to the value's description. SwiftUI shows no title when a
+        // destination sets none, and a Hashable path value is not a label: for
+        // an enum wrapping a struct, String(describing:) is the whole debug
+        // dump on one unbreakable line. That became the header, and the window's
+        // natural width grew to several screens to fit it.
+        let title = resolved.title
         push(title: title, toolbarItems: resolved.toolbarItems) {
             resolved.widget
         }
