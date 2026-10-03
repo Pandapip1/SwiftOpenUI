@@ -2308,18 +2308,12 @@ extension TagView: GTKRenderable {
 extension AspectRatioView: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
         let widget = widgetFromOpaque(gtkRenderView(content))
-        var css = ""
-        if let ratio {
-            css += "aspect-ratio: \(ratio);"
-        }
-        switch contentMode {
-        case .fit:
-            css += " object-fit: contain;"
-        case .fill:
-            css += " object-fit: cover; overflow: hidden;"
-        }
-        if !css.isEmpty {
-            applyCSSToWidget(widget, properties: css)
+        // GTK CSS has no aspect-ratio, object-fit or overflow property --
+        // all three only ever produced "No property named" parser warnings,
+        // re-emitted on every render. Clipping is a real widget property, so
+        // .fill at least gets that; the ratio itself stays unimplemented.
+        if contentMode == .fill {
+            gtk_widget_set_overflow(widget, GTK_OVERFLOW_HIDDEN)
         }
         return opaqueFromWidget(widget)
     }
