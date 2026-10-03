@@ -359,6 +359,11 @@ gtk_swift_stack_set_visible_child_name(GtkWidget *stack, const char *name) {
     gtk_stack_set_visible_child_name(GTK_STACK(stack), name);
 }
 
+static inline const char *
+gtk_swift_stack_get_visible_child_name(GtkWidget *stack) {
+    return gtk_stack_get_visible_child_name(GTK_STACK(stack));
+}
+
 static inline void
 gtk_swift_stack_switcher_set_stack(GtkWidget *switcher, GtkWidget *stack) {
     gtk_stack_switcher_set_stack(GTK_STACK_SWITCHER(switcher), GTK_STACK(stack));
@@ -1190,4 +1195,33 @@ gtk_swift_get_active_window(void) {
     GApplication *app = g_application_get_default();
     if (!app || !GTK_IS_APPLICATION(app)) return NULL;
     return gtk_application_get_active_window(GTK_APPLICATION(app));
+}
+
+
+// --- GtkVideo shims (used by the VideoPlayer renderer) ---
+
+static inline GtkWidget *
+gtk_swift_video_new(void) {
+    GtkWidget *video = gtk_video_new();
+    gtk_widget_set_hexpand(video, TRUE);
+    gtk_widget_set_vexpand(video, TRUE);
+    return video;
+}
+
+static inline void
+gtk_swift_video_open_uri(GtkWidget *video, const char *uri, int autoplay) {
+    GFile *file = g_file_new_for_uri(uri);
+    gtk_video_set_autoplay(GTK_VIDEO(video), autoplay ? TRUE : FALSE);
+    gtk_video_set_file(GTK_VIDEO(video), file);
+    g_object_unref(file);
+}
+
+static inline void
+gtk_swift_video_clear(GtkWidget *video) {
+    gtk_video_set_file(GTK_VIDEO(video), NULL);
+}
+
+static inline GtkMediaStream *
+gtk_swift_video_stream(GtkWidget *video) {
+    return gtk_video_get_media_stream(GTK_VIDEO(video));
 }

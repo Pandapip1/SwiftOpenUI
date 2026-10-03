@@ -34,10 +34,19 @@ public struct TabView: View {
 
     public let tabs: [AnyTab]
     public let initialTab: Int?
+    /// Set by `TabView(selection:)`. Backends read it to choose the visible tab and write it when the user switches.
+    public let selectionIndex: Binding<Int>?
 
     public init(initialTab: Int? = nil, @TabBuilder content: () -> [AnyTab]) {
         self.initialTab = initialTab
         self.tabs = content()
+        self.selectionIndex = nil
+    }
+
+    init(tabs: [AnyTab], selectionIndex: Binding<Int>) {
+        self.initialTab = nil
+        self.tabs = tabs
+        self.selectionIndex = selectionIndex
     }
 
     public var body: Never { fatalError("TabView is a primitive view") }

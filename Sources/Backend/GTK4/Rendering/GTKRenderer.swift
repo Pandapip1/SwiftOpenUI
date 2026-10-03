@@ -4836,6 +4836,33 @@ extension TabView: GTKRenderable {
             gtk_swift_stack_set_visible_child_name(stack, orderedIds[tabIndex])
         }
 
+        // `TabView(selection:)`: show the bound tab, and write the binding back when the user picks another.
+        if let selection = selectionIndex {
+            let current = selection.wrappedValue
+            if current >= 0, current < orderedIds.count {
+                gtk_swift_stack_set_visible_child_name(stack, orderedIds[current])
+            }
+            let ids = orderedIds
+            let box = Unmanaged.passRetained(StringClosureBox { name in
+                guard let index = ids.firstIndex(of: name), index != selection.wrappedValue else { return }
+                selection.wrappedValue = index
+            }).toOpaque()
+            g_signal_connect_data(
+                gpointer(stack),
+                "notify::visible-child-name",
+                unsafeBitCast({ (widget: gpointer?, _: gpointer?, userData: gpointer?) in
+                    let box = Unmanaged<StringClosureBox>.fromOpaque(userData!).takeUnretainedValue()
+                    guard let widget, let cName = gtk_swift_stack_get_visible_child_name(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkWidget.self)) else { return }
+                    box.closure(String(cString: cName))
+                } as @convention(c) (gpointer?, gpointer?, gpointer?) -> Void, to: GCallback.self),
+                box,
+                { (userData: gpointer?, _: UnsafeMutablePointer<GClosure>?) in
+                    Unmanaged<StringClosureBox>.fromOpaque(userData!).release()
+                },
+                GConnectFlags(rawValue: 0)
+            )
+        }
+
         let switcher = gtk_stack_switcher_new()!
         gtk_swift_stack_switcher_set_stack(switcher, stack)
 
