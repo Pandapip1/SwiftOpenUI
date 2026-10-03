@@ -585,6 +585,15 @@ public struct GTK4Backend: RenderBackend {
             // Inject openWindow action into the environment so views
             // can programmatically open Window scenes by id.
             var env = getCurrentEnvironment()
+            // Resolve the desktop's appearance once, up front: without it the
+            // whole tree renders with the default .light scheme regardless of
+            // what the desktop asked for.
+            let scheme = gtkDetectColorScheme()
+            // GTK draws its own chrome from GtkSettings, which never
+            // learns the portal preference, so both layers have to be
+            // told or dark content lands on light widgets.
+            gtk_swift_set_prefer_dark_theme(scheme == .dark ? 1 : 0)
+            env.colorScheme = scheme
             env.openWindow = OpenWindowAction { id in
                 GTK4WindowRegistry.shared.open(id: id)
             }
@@ -769,4 +778,23 @@ func gtkInstallSystemServices() {
     SystemServices.openURL = { url in
         g_app_info_launch_default_for_uri(url.absoluteString, nil, nil)
     }
+}
+
+// MARK: - Color scheme
+
+/// The color scheme to render with, from the GTK theme.
+///
+/// `SWIFTOPENUI_COLOR_SCHEME=dark|light` overrides the detection, which is
+/// useful on desktops whose preference only reaches apps through the XDG
+/// appearance portal — plain GTK4 does not read that, so a dark desktop can
+/// still look light to `GtkSettings`.
+func gtkDetectColorScheme() -> ColorScheme {
+    if let override = ProcessInfo.processInfo.environment["SWIFTOPENUI_COLOR_SCHEME"] {
+        switch override.lowercased() {
+        case "dark": return .dark
+        case "light": return .light
+        default: break
+        }
+    }
+    return gtk_swift_prefers_dark_theme() != 0 ? .dark : .light
 }

@@ -1225,3 +1225,103 @@ static inline GtkMediaStream *
 gtk_swift_video_stream(GtkWidget *video) {
     return gtk_video_get_media_stream(GTK_VIDEO(video));
 }
+
+// --- Color scheme detection ---
+
+/// Whether the desktop prefers a dark appearance, per the XDG settings portal.
+///
+/// Returns 1 for dark, 0 for light, -1 if the portal is unavailable or states
+/// no preference. This is the only place the preference reliably appears:
+/// GtkSettings does not learn it (a COSMIC or GNOME session set to dark still
+/// reports `gtk-theme-name = Adwaita` and
+/// `gtk-application-prefer-dark-theme = FALSE`), and the GNOME GSettings key
+/// is not set outside GNOME. libadwaita's AdwStyleManager reads this portal;
+/// SwiftOpenUI does not link libadwaita, so it reads it directly.
+///
+/// The reply is `(v)` wrapping a variant wrapping a `u`:
+/// 0 = no preference, 1 = prefer dark, 2 = prefer light.
+static inline int
+gtk_swift_portal_prefers_dark(void) {
+    GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
+    if (!bus) return -1;
+
+    GVariant *reply = g_dbus_connection_call_sync(
+        bus,
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.Settings",
+        "Read",
+        g_variant_new("(ss)", "org.freedesktop.appearance", "color-scheme"),
+        G_VARIANT_TYPE("(v)"),
+        G_DBUS_CALL_FLAGS_NONE,
+        1000 /* ms; never block startup on a missing portal */,
+        NULL, NULL);
+    g_object_unref(bus);
+    if (!reply) return -1;
+
+    GVariant *inner = NULL;
+    g_variant_get(reply, "(v)", &inner);
+
+    guint32 value = 0;
+    int known = 0;
+    if (inner) {
+        GVariant *scalar = g_variant_is_of_type(inner, G_VARIANT_TYPE_VARIANT)
+            ? g_variant_get_variant(inner)
+            : g_variant_ref(inner);
+        if (scalar && g_variant_is_of_type(scalar, G_VARIANT_TYPE_UINT32)) {
+            value = g_variant_get_uint32(scalar);
+            known = 1;
+        }
+        if (scalar) g_variant_unref(scalar);
+        g_variant_unref(inner);
+    }
+    g_variant_unref(reply);
+
+    if (!known) return -1;
+    if (value == 1) return 1;
+    if (value == 2) return 0;
+    return -1; /* 0 = no preference */
+}
+
+/// Whether to render dark.
+///
+/// Prefers the XDG appearance portal, and falls back to what GtkSettings
+/// exposes: the explicit `gtk-application-prefer-dark-theme` flag, then the
+/// conventional `-dark` suffix on the theme name.
+static inline int
+gtk_swift_prefers_dark_theme(void) {
+    int portal = gtk_swift_portal_prefers_dark();
+    if (portal >= 0) return portal;
+
+    GtkSettings *settings = gtk_settings_get_default();
+    if (!settings) return 0;
+
+    gboolean prefer_dark = FALSE;
+    char *theme_name = NULL;
+    g_object_get(settings,
+                 "gtk-application-prefer-dark-theme", &prefer_dark,
+                 "gtk-theme-name", &theme_name,
+                 NULL);
+
+    int dark = prefer_dark ? 1 : 0;
+    if (!dark && theme_name) {
+        char *lowered = g_ascii_strdown(theme_name, -1);
+        dark = (lowered && strstr(lowered, "dark") != NULL) ? 1 : 0;
+        g_free(lowered);
+    }
+    g_free(theme_name);
+    return dark;
+}
+
+/// Tell GTK to use the dark variant of its theme.
+///
+/// Needed alongside the SwiftOpenUI-side color scheme: GTK draws its own
+/// widget chrome from GtkSettings, which does not learn the portal preference
+/// on its own. Without this, resolving the scheme to dark would paint dark
+/// SwiftOpenUI colors onto light GTK chrome.
+static inline void
+gtk_swift_set_prefer_dark_theme(int dark) {
+    GtkSettings *settings = gtk_settings_get_default();
+    if (!settings) return;
+    g_object_set(settings, "gtk-application-prefer-dark-theme", dark ? TRUE : FALSE, NULL);
+}
