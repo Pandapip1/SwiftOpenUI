@@ -4905,6 +4905,26 @@ extension TabView: GTKRenderable {
         let switcher = gtk_stack_switcher_new()!
         gtk_swift_stack_switcher_set_stack(switcher, stack)
 
+        // Spacing comes from the theme, not from a number picked here. GTK's
+        // own stylesheet gives .toolbar `padding: 4px; border-spacing: 4px`, so
+        // the class supplies both the gap to the window edge and the gap between
+        // tabs, and follows whatever stylesheet is loaded rather than pinning a
+        // value that only suits one theme. stackswitcher itself has no margin
+        // rule, which is why the tabs ran flush to the border without this.
+        gtk_widget_add_css_class(switcher, "toolbar")
+
+        // .toolbar also paints background-color: $bg_color, GTK's own colour
+        // rather than the one the window is painted with -- measured as a
+        // 53,53,53 strip around the tabs against a 38,37,37 window. Take the
+        // spacing from the theme and let the window supply the colour.
+        applyCSSToWidget(switcher, properties: "background: transparent;")
+
+        // .toolbar also paints background-color: $bg_color, which is GTK's own
+        // colour rather than the one the window is painted with -- measured as a
+        // 53,53,53 strip around the tabs against a 38,37,37 window. Take the
+        // spacing and let the window show through.
+        applyCSSToWidget(switcher, properties: "background: transparent;")
+
         let vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
         gtk_box_append(boxPointer(vbox), switcher)
         gtk_box_append(boxPointer(vbox), stack)
