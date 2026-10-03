@@ -10,7 +10,7 @@ public struct TaskIDModifierView<Content: View, ID: Equatable & Sendable>: View 
     let content: Content
     let id: ID
     let priority: TaskPriority
-    let action: @Sendable () async -> Void
+    let action: @MainActor @Sendable () async -> Void
     @State private var runner = TaskRunner()
 
     public var body: some View {
@@ -58,7 +58,7 @@ extension View {
     public func task<ID: Equatable & Sendable>(
         id: ID,
         priority: TaskPriority = .userInitiated,
-        _ action: @escaping @Sendable () async -> Void
+        _ action: @escaping @MainActor @Sendable () async -> Void
     ) -> TaskIDModifierView<Self, ID> {
         TaskIDModifierView(content: self, id: id, priority: priority, action: action)
     }
@@ -130,4 +130,29 @@ extension ToolbarContentBuilder {
     public static func buildExpression<V: View>(_ expression: V) -> ToolbarContent {
         ToolbarContent(items: [AnyToolbarItem(ToolbarItem(placement: .primaryAction) { expression })])
     }
+}
+
+// MARK: - Editing affordances (no-ops where there is no edit mode)
+
+extension ForEach {
+    /// Accepted for source compatibility; swipe-to-delete has no desktop equivalent here.
+    public func onDelete(perform action: ((IndexSet) -> Void)?) -> ForEach { self }
+    /// Accepted for source compatibility; drag-to-reorder is not rendered.
+    public func onMove(perform action: ((IndexSet, Int) -> Void)?) -> ForEach { self }
+}
+
+/// SwiftUI's EditButton. There is no list edit mode, so it renders nothing.
+public struct EditButton: View {
+    public init() {}
+    public var body: some View { EmptyView() }
+}
+
+extension URL {
+    /// Security-scoped access only exists on Apple sandboxes; elsewhere the URL is directly readable.
+    public func startAccessingSecurityScopedResource() -> Bool { false }
+    public func stopAccessingSecurityScopedResource() {}
+}
+
+extension Link {
+    public init(_ title: String, destination: URL) { self.init(title, destination: destination.absoluteString) }
 }

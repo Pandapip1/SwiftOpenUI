@@ -14,7 +14,7 @@
 public struct TaskModifierView<Content: View>: View {
     let content: Content
     let priority: TaskPriority
-    let action: @Sendable () async -> Void
+    let action: @MainActor @Sendable () async -> Void
 
     @State private var hasStarted = false
 
@@ -30,7 +30,7 @@ public struct TaskModifierView<Content: View>: View {
 extension View {
     public func task(
         priority: TaskPriority = .userInitiated,
-        _ action: @escaping @Sendable () async -> Void
+        _ action: @escaping @MainActor @Sendable () async -> Void
     ) -> TaskModifierView<Self> {
         TaskModifierView(content: self, priority: priority, action: action)
     }
