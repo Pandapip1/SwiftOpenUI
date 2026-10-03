@@ -4,6 +4,8 @@ public struct Button<Label: View>: View {
 
     public let action: () -> Void
     public let label: Label
+    /// Set by `Button(role:)`; read by alerts, dialogs and the GTK renderer for destructive styling.
+    public var buttonRole: ButtonRole? = nil
 
     public var body: Never { fatalError("Button is a primitive view") }
 }

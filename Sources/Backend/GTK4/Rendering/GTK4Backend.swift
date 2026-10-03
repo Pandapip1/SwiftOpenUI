@@ -576,6 +576,7 @@ public struct GTK4Backend: RenderBackend {
         // to do exactly once per process, and must happen before any widget
         // asks Pango to resolve the "Material Symbols Rounded" family.
         gtkRegisterBundledIconFont()
+        gtkInstallSystemServices()
 
         let gtkApp = gtk_application_new(nil, G_APPLICATION_DEFAULT_FLAGS)!
         let appPtr = OpaquePointer(gtkApp)
@@ -753,5 +754,19 @@ private func gtkRenderScene<S: Scene>(_ scene: S, app: OpaquePointer) {
     // Composite scene — recurse through body
     if S.Body.self != Never.self {
         gtkRenderScene(scene.body, app: app)
+    }
+}
+
+
+// MARK: - System services
+
+/// Connects the core `SystemServices` hooks (clipboard, open URL) to GDK/GIO.
+func gtkInstallSystemServices() {
+    SystemServices.copyToClipboard = { text in
+        guard let display = gdk_display_get_default() else { return }
+        gdk_clipboard_set_text(gdk_display_get_clipboard(display), text)
+    }
+    SystemServices.openURL = { url in
+        g_app_info_launch_default_for_uri(url.absoluteString, nil, nil)
     }
 }
