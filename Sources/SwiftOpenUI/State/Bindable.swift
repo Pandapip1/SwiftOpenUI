@@ -22,9 +22,9 @@
 /// the underlying `ReferenceWritableKeyPath`.
 ///
 /// Reactivity comes from the same path as a plain `@Environment`
-/// read — the binding's `get` reads the property inside
-/// `withObservationTracking`, so the surrounding view rebuilds on
-/// mutation through the existing view-host plumbing.
+/// read — projecting the binding reads the property while body is evaluated
+/// inside `withObservationTracking`. Rendering the control can then happen
+/// outside that scope without losing the dependency.
 @propertyWrapper
 @dynamicMemberLookup
 public struct Bindable<Value: AnyObject> {
@@ -46,6 +46,11 @@ public struct Bindable<Value: AnyObject> {
         dynamicMember keyPath: ReferenceWritableKeyPath<Value, T>
     ) -> Binding<T> {
         let object = wrappedValue
+        // Register this dependency while the owning body is being evaluated.
+        // The native control may not read its binding until rendering, after
+        // the body's observation scope has ended. Keep the getter live below;
+        // this read registers observation, it does not snapshot the value.
+        _ = object[keyPath: keyPath]
         return Binding(
             get: { object[keyPath: keyPath] },
             set: { object[keyPath: keyPath] = $0 }

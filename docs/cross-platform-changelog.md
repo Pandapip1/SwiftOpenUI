@@ -21,6 +21,19 @@ backend.
 
 ---
 
+## 2026-10-03 — GTK4 — scope observation to each composite body
+
+- Shared surface: `Bindable` now reads a projected property during projection,
+  registering the dependency when the owning body evaluates. Its returned
+  binding still reads and writes the live property.
+- Impact: GTK4 ends body observation before rendering descendants, preventing a
+  child's observable reads from rebuilding ancestors and resetting navigation.
+  Other backends retain their rendering paths; binding projection now performs
+  one additional getter read. GTK regressions cover external binding updates and
+  repeated child changes without ancestor rebuilds.
+- Ping: Pandapip1 / Hummingbird GTK maintainer.
+- Refs: `GTK4ObservationIsolationTests`.
+
 ## 2026-07-10 — Windows (Win32) — shared symbol map entry + child-@State convergence
 
 - **Shared surface:** `SwiftOpenUISymbols/SFSymbolCompatibility.swift` +

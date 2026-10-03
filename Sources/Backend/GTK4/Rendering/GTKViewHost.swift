@@ -21,6 +21,9 @@ public class GTKViewHost: AnyViewHost, DependencyTrackingHost {
     public var lastInputSnapshot: [StorageSnapshot]?
     public let container: UnsafeMutablePointer<GtkWidget>
     let buildBody: () -> OpaquePointer
+    /// Evaluate this composite's body under observation, then render its children
+    /// after the observation scope ends. Descendant reads belong to their hosts.
+    var prepareBody: (() -> (() -> OpaquePointer))?
     /// Describes the body as a descriptor tree without creating widgets.
     var describeBody: (() -> GTK4DescriptorNode)?
     /// Retained descriptor state for narrow mutation path.
@@ -187,8 +190,8 @@ public class GTKViewHost: AnyViewHost, DependencyTrackingHost {
         lock.unlock()
     }
 
-    /// Build the body with observation tracking.  Any @Observable properties
-    /// accessed during rendering are automatically tracked; when they change,
+    /// Build the body with observation tracking. @Observable properties
+    /// accessed by this body's evaluation are tracked; when they change,
     /// scheduleRebuild() fires and the next rebuild re-registers tracking.
     func buildBodyWithTracking() -> OpaquePointer {
         // Positional keys for nested stateful children restart each pass.
@@ -203,8 +206,13 @@ public class GTKViewHost: AnyViewHost, DependencyTrackingHost {
         #if canImport(Observation)
         if #available(macOS 14.0, iOS 17.0, *) {
             var result: OpaquePointer!
+            var renderBody: (() -> OpaquePointer)?
             withObservationTracking {
-                result = buildBody()
+                if let prepareBody {
+                    renderBody = prepareBody()
+                } else {
+                    result = buildBody()
+                }
             } onChange: { [weak self] in
                 guard let self else { return }
                 self.lock.lock()
@@ -212,6 +220,7 @@ public class GTKViewHost: AnyViewHost, DependencyTrackingHost {
                 self.lock.unlock()
                 self.scheduleRebuild()
             }
+            if let renderBody { result = renderBody() }
             if let reads = endEnvironmentReadTracking() {
                 capturedInjectedObjects = reads
             }
