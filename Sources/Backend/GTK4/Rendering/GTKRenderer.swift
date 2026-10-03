@@ -2314,14 +2314,28 @@ extension TagView: GTKRenderable {
 extension AspectRatioView: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
         let widget = widgetFromOpaque(gtkRenderView(content))
-        // GTK CSS has no aspect-ratio, object-fit or overflow property --
-        // all three only ever produced "No property named" parser warnings,
-        // re-emitted on every render. Clipping is a real widget property, so
-        // .fill at least gets that; the ratio itself stays unimplemented.
+
+        // .fill crops to the frame rather than letterboxing inside it.
         if contentMode == .fill {
             gtk_widget_set_overflow(widget, GTK_OVERFLOW_HIDDEN)
         }
-        return opaqueFromWidget(widget)
+
+        // GtkAspectFrame is the real mechanism. The previous implementation
+        // wrote `aspect-ratio`/`object-fit` CSS, which GTK has no properties
+        // for, so the ratio was never applied: a `ZStack { Color.black }` with
+        // .aspectRatio(16/9) expanded without bound and took the whole window.
+        //
+        // obey_child = false uses the ratio given; with no explicit ratio it is
+        // true, meaning "keep the child's own ratio".
+        let frame = gtk_aspect_frame_new(0.5, 0.5, Float(ratio ?? 1), ratio == nil ? 1 : 0)!
+        gtk_aspect_frame_set_child(OpaquePointer(frame), widget)
+
+        // The frame is the thing that stretches; the ratio keeps the child in
+        // proportion inside whatever it is given.
+        gtk_widget_set_hexpand(frame, gtkWantsExpand(widget, GTK_ORIENTATION_HORIZONTAL) ? 1 : 0)
+        gtk_widget_set_vexpand(frame, gtkWantsExpand(widget, GTK_ORIENTATION_VERTICAL) ? 1 : 0)
+
+        return opaqueFromWidget(frame)
     }
 }
 

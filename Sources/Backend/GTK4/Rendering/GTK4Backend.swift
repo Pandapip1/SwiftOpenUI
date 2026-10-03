@@ -858,3 +858,4 @@ func gtkApplyWindowBackground(_ window: UnsafeMutablePointer<GtkWidget>) {
     guard let palette = getCurrentEnvironment().themePalette else { return }
     applyCSSToWidget(window, properties: gtkBackgroundColorCSS(palette.windowBackground))
 }
+
