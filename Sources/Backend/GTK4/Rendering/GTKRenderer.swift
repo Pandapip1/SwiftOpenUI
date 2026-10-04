@@ -5281,10 +5281,19 @@ extension Form: GTKRenderable {
         }
 
         gtk_widget_set_hexpand(box, 1)
-        gtk_widget_set_vexpand(box, 1)
+        // Forms are vertically scrollable in SwiftUI. Keep the content's
+        // natural height inside a scrolled window so long plugin settings
+        // remain reachable instead of extending below the window.
+        let scrolled = gtk_scrolled_window_new()!
+        let scrolledOp = OpaquePointer(scrolled)
+        gtk_scrolled_window_set_policy(scrolledOp, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        gtk_scrolled_window_set_propagate_natural_height(scrolledOp, 0)
+        gtk_widget_set_hexpand(scrolled, 1)
+        gtk_widget_set_vexpand(scrolled, 1)
+        gtk_scrolled_window_set_child(scrolledOp, box)
         applyCSSToWidget(box, properties: "padding: 16px;")
 
-        return opaqueFromWidget(box)
+        return opaqueFromWidget(scrolled)
     }
 }
 
