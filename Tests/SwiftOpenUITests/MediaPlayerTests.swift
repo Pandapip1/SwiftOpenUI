@@ -1,40 +1,58 @@
 import Foundation
 import XCTest
-@testable import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) @testable import SwiftOpenUI
 
-final class MediaPlayerTests: XCTestCase {
-    private final class Driver: MediaPlayerDriver {
-        var installedItem: MediaPlayerItem?
-        var autoplay = false
-        var startAt = 0.0
+final class AVPlayerCompatibilityTests: XCTestCase {
+    @MainActor
+    private final class Driver: _AVPlayerDriver {
+        var installedItem: AVPlayerItem?
+        var rate: Float = 0
+        var currentTime = CMTime.zero
+        var pictureInPictureActive = false
 
-        func open(url: URL, autoplay: Bool, startAt: Double) {}
-        func replaceCurrentItem(with item: MediaPlayerItem?) {
-            installedItem = item
-        }
-        func play() { autoplay = true }
-        func pause() {}
-        func seek(to seconds: Double) { startAt = seconds }
-        func stop() {}
-        var currentTime: Double { 0 }
-        var duration: Double { 0 }
-        var isPlaying: Bool { false }
+        func replaceCurrentItem(with item: AVPlayerItem?) { installedItem = item }
+        func play() { rate = 1 }
+        func pause() { rate = 0 }
+        func seek(to time: CMTime) { currentTime = time }
+        var isPictureInPicturePossible: Bool { true }
+        func startPictureInPicture() { pictureInPictureActive = true }
+        func stopPictureInPicture() { pictureInPictureActive = false }
     }
 
-    func testCompositionItemQueuedBeforeDriverPreservesBothSources() throws {
+    func testCompositionItemQueuedBeforeDriverPreservesBothSources() async throws {
+        try await MainActor.run {
         let video = URL(string: "https://example.com/video.mp4")!
         let audio = URL(string: "https://example.com/audio.m4a")!
-        let player = MediaPlayer()
-        player.replaceCurrentItem(with: MediaPlayerItem(asset: MediaAsset(videoURL: video, audioURL: audio)))
-        player.seek(to: 12.5)
+        let composition = AVMutableComposition()
+        let videoTrack = AVAssetTrack(mediaType: .video, sourceURL: video)
+        let audioTrack = AVAssetTrack(mediaType: .audio, sourceURL: audio)
+        try composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)?
+            .insertTimeRange(CMTimeRange(start: .zero, duration: CMTime(seconds: 30, preferredTimescale: 600)),
+                             of: videoTrack, at: .zero)
+        try composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)?
+            .insertTimeRange(CMTimeRange(start: .zero, duration: CMTime(seconds: 30, preferredTimescale: 600)),
+                             of: audioTrack, at: .zero)
+        let player = AVPlayer(playerItem: AVPlayerItem(asset: composition))
+        player.seek(to: CMTime(seconds: 12.5, preferredTimescale: 600))
         player.play()
 
         let driver = Driver()
-        player.driver = driver
+        player._swiftOpenUIAttachDriver(driver)
 
-        XCTAssertEqual(driver.installedItem?.asset.videoURL, video)
-        XCTAssertEqual(driver.installedItem?.asset.audioURL, audio)
-        XCTAssertTrue(driver.autoplay)
-        XCTAssertEqual(driver.startAt, 12.5)
+        let installedAsset = driver.installedItem?.asset
+        let rate = driver.rate
+        let seconds = driver.currentTime.seconds
+        XCTAssertTrue(installedAsset === composition)
+        XCTAssertEqual(rate, 1)
+        XCTAssertEqual(seconds, 12.5)
+
+        let pip = AVPictureInPictureController(contentSource: .init(playerLayer: AVPlayerLayer(player: player)))
+        XCTAssertTrue(pip.isPictureInPicturePossible)
+        pip.startPictureInPicture()
+        XCTAssertTrue(pip.isPictureInPictureActive)
+        XCTAssertTrue(driver.pictureInPictureActive)
+        pip.stopPictureInPicture()
+        XCTAssertFalse(driver.pictureInPictureActive)
+        }
     }
 }

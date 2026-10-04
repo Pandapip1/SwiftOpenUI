@@ -1,177 +1,187 @@
 import Foundation
 
-/// A media asset used to create a player item. A supplemental audio URL models
-/// the video and audio tracks of a composition while keeping URL loading in the
-/// platform driver.
-public struct MediaAsset: Hashable, Sendable {
-    public let videoURL: URL
-    public let audioURL: URL?
-
-    public init(url: URL) {
-        videoURL = url
-        audioURL = nil
+#if canImport(AVFoundation)
+@_exported import AVFoundation
+#else
+public struct CMTime: Hashable, Sendable {
+    public var value: Int64
+    public var timescale: Int32
+    public init(value: Int64, timescale: Int32) { self.value = value; self.timescale = timescale }
+    public init(seconds: Double, preferredTimescale: Int32) {
+        value = Int64(seconds * Double(preferredTimescale)); timescale = preferredTimescale
     }
+    public var seconds: Double { timescale == 0 ? .nan : Double(value) / Double(timescale) }
+    public static let zero = CMTime(value: 0, timescale: 1)
+}
 
-    public init(videoURL: URL, audioURL: URL) {
-        self.videoURL = videoURL
-        self.audioURL = audioURL
+public struct CMTimeRange: Hashable, Sendable {
+    public var start: CMTime
+    public var duration: CMTime
+    public init(start: CMTime, duration: CMTime) { self.start = start; self.duration = duration }
+}
+
+public struct AVMediaType: RawRepresentable, Hashable, Sendable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public static let video = AVMediaType(rawValue: "vide")
+    public static let audio = AVMediaType(rawValue: "soun")
+}
+
+public typealias CMPersistentTrackID = Int32
+public let kCMPersistentTrackID_Invalid: CMPersistentTrackID = 0
+
+open class AVAsset: @unchecked Sendable {
+    @_spi(SwiftOpenUIBackend) public var _swiftOpenUITracks: [AVAssetTrack] = []
+    public init() {}
+    open func loadTracks(withMediaType mediaType: AVMediaType) async throws -> [AVAssetTrack] {
+        _swiftOpenUITracks.filter { $0.mediaType == mediaType }
     }
 }
 
-/// The item installed on a `MediaPlayer`, analogous to `AVPlayerItem`.
-public final class MediaPlayerItem: @unchecked Sendable {
-    public let asset: MediaAsset
-    public init(asset: MediaAsset) { self.asset = asset }
-    public convenience init(url: URL) { self.init(asset: MediaAsset(url: url)) }
-}
-
-/// A selectable media rendition exposed by a backend.
-public struct MediaTrack: Hashable, Sendable {
-    public enum Kind: String, Sendable { case video, audio, subtitles }
-    public let id: String
-    public let kind: Kind
-    public let language: String?
-    public let label: String?
-
-    public init(id: String, kind: Kind, language: String? = nil, label: String? = nil) {
-        self.id = id; self.kind = kind; self.language = language; self.label = label
+public final class AVURLAsset: AVAsset, @unchecked Sendable {
+    public let url: URL
+    @_spi(SwiftOpenUIBackend) public let _swiftOpenUIOptions: [String: Any]?
+    public init(url: URL, options: [String: Any]? = nil) {
+        self.url = url; _swiftOpenUIOptions = options
+        super.init()
+        _swiftOpenUITracks = [AVAssetTrack(mediaType: .video, sourceURL: url),
+                              AVAssetTrack(mediaType: .audio, sourceURL: url)]
     }
 }
 
-/// What a backend provides to play media for a `VideoPlayer`.
-public protocol MediaPlayerDriver: AnyObject {
-    func open(url: URL, autoplay: Bool, startAt: Double)
-    func replaceCurrentItem(with item: MediaPlayerItem?)
+public final class AVAssetTrack: @unchecked Sendable {
+    public let mediaType: AVMediaType
+    @_spi(SwiftOpenUIBackend) public let _swiftOpenUISourceURL: URL
+    @_spi(SwiftOpenUIBackend) public init(mediaType: AVMediaType, sourceURL: URL) {
+        self.mediaType = mediaType; _swiftOpenUISourceURL = sourceURL
+    }
+}
+
+public final class AVMutableCompositionTrack: @unchecked Sendable {
+    public let mediaType: AVMediaType
+    @_spi(SwiftOpenUIBackend) public private(set) var _swiftOpenUISourceTrack: AVAssetTrack?
+    fileprivate init(mediaType: AVMediaType) { self.mediaType = mediaType }
+    public func insertTimeRange(_ timeRange: CMTimeRange, of track: AVAssetTrack, at startTime: CMTime) throws {
+        _ = timeRange; _ = startTime; _swiftOpenUISourceTrack = track
+    }
+}
+
+public final class AVMutableComposition: AVAsset, @unchecked Sendable {
+    private var mutableTracks: [AVMutableCompositionTrack] = []
+    public override init() { super.init() }
+    public func addMutableTrack(withMediaType mediaType: AVMediaType,
+                                preferredTrackID: CMPersistentTrackID) -> AVMutableCompositionTrack? {
+        _ = preferredTrackID
+        let track = AVMutableCompositionTrack(mediaType: mediaType)
+        mutableTracks.append(track)
+        return track
+    }
+    @_spi(SwiftOpenUIBackend) public var _swiftOpenUICompositionTracks: [AVMutableCompositionTrack] { mutableTracks }
+}
+
+public final class AVPlayerItem: @unchecked Sendable {
+    public let asset: AVAsset
+    public init(asset: AVAsset) { self.asset = asset }
+    public convenience init(url: URL) { self.init(asset: AVURLAsset(url: url)) }
+}
+
+@_spi(SwiftOpenUIBackend)
+@MainActor
+public protocol _AVPlayerDriver: AnyObject {
+    func replaceCurrentItem(with item: AVPlayerItem?)
     func play()
     func pause()
-    func seek(to seconds: Double)
-    func stop()
-    var currentTime: Double { get }
-    var duration: Double { get }
-    var isPlaying: Bool { get }
-    var tracks: [MediaTrack] { get }
-    func selectTrack(_ track: MediaTrack?)
-    func setExternalSubtitle(_ url: URL?)
-    var pictureInPictureSupported: Bool { get }
+    func seek(to time: CMTime)
+    var currentTime: CMTime { get }
+    var rate: Float { get }
+    var isPictureInPicturePossible: Bool { get }
     func startPictureInPicture()
     func stopPictureInPicture()
 }
 
-public extension MediaPlayerDriver {
-    func replaceCurrentItem(with item: MediaPlayerItem?) {
-        guard let item else { stop(); return }
-        open(url: item.asset.videoURL, autoplay: false, startAt: 0)
+@MainActor
+public final class AVPlayer: @unchecked Sendable {
+    public private(set) var currentItem: AVPlayerItem?
+    @_spi(SwiftOpenUIBackend) public var _swiftOpenUIDriver: _AVPlayerDriver?
+    @_spi(SwiftOpenUIBackend) public var _swiftOpenUIOnEnded: (@Sendable () -> Void)?
+    @_spi(SwiftOpenUIBackend) public var _swiftOpenUIOnFailure: (@Sendable (String) -> Void)?
+    private var pendingTime: CMTime?
+    private var pendingRate: Float = 0
+
+    nonisolated public init() {}
+    nonisolated public convenience init(url: URL) { self.init(playerItem: AVPlayerItem(url: url)) }
+    nonisolated public init(playerItem item: AVPlayerItem?) { currentItem = item }
+    public func replaceCurrentItem(with item: AVPlayerItem?) {
+        currentItem = item; pendingTime = nil; _swiftOpenUIDriver?.replaceCurrentItem(with: item)
     }
-    var tracks: [MediaTrack] { [] }
-    func selectTrack(_: MediaTrack?) {}
-    func setExternalSubtitle(_: URL?) {}
-    var pictureInPictureSupported: Bool { false }
-    func startPictureInPicture() {}
-    func stopPictureInPicture() {}
+    public func play() { pendingRate = 1; _swiftOpenUIDriver?.play() }
+    public func pause() { pendingRate = 0; _swiftOpenUIDriver?.pause() }
+    public func seek(to time: CMTime) { pendingTime = time; _swiftOpenUIDriver?.seek(to: time) }
+    public func currentTime() -> CMTime { _swiftOpenUIDriver?.currentTime ?? pendingTime ?? .zero }
+    public var rate: Float { _swiftOpenUIDriver?.rate ?? pendingRate }
+    @_spi(SwiftOpenUIBackend) public func _swiftOpenUIAttachDriver(_ driver: _AVPlayerDriver) {
+        _swiftOpenUIDriver = driver
+        driver.replaceCurrentItem(with: currentItem)
+        if let pendingTime { driver.seek(to: pendingTime) }
+        if pendingRate > 0 { driver.play() } else { driver.pause() }
+    }
 }
 
-/// Controls playback for a `VideoPlayer`, standing in for AVKit's `AVPlayer`.
-///
-/// The player works before its view exists: calls made earlier are remembered and applied when the backend attaches
-/// its driver. Backends that cannot play media never attach a driver, and `onFailure` reports that.
-public final class MediaPlayer: @unchecked Sendable {
-    private let lock = NSLock()
-    private var _driver: MediaPlayerDriver?
-    private var pendingItem: MediaPlayerItem?
-    private var pendingSeek: Double?
-    private var pendingPlayback: Bool?
-
-    public private(set) var url: URL?
-    /// Called on the main thread when playback reaches the end.
-    public var onEnded: (@Sendable () -> Void)?
-    /// Called on the main thread with a human-readable reason when media cannot be opened or played.
-    public var onFailure: (@Sendable (String) -> Void)?
-
-    public init() {}
-
-    /// Installed by the backend that renders the player's view.
-    public var driver: MediaPlayerDriver? {
-        get { lock.lock(); defer { lock.unlock() }; return _driver }
-        set {
-            lock.lock()
-            _driver = newValue
-            let item = pendingItem
-            let seek = pendingSeek
-            let playback = pendingPlayback
-            pendingItem = nil
-            pendingSeek = nil
-            pendingPlayback = nil
-            lock.unlock()
-            if let newValue {
-                if let item { newValue.replaceCurrentItem(with: item) }
-                if let seek { newValue.seek(to: seek) }
-                if playback == true { newValue.play() }
-                else if playback == false { newValue.pause() }
-            }
-        }
-    }
-
-    public func open(_ url: URL, autoplay: Bool = true, startAt: Double = 0) {
-        replaceCurrentItem(with: MediaPlayerItem(url: url))
-        if startAt > 0 { seek(to: startAt) }
-        if autoplay { play() } else { pause() }
-    }
-
-    /// Replaces the current item, matching AVPlayer's item-based API.
-    public func replaceCurrentItem(with item: MediaPlayerItem?) {
-        lock.lock()
-        self.url = item?.asset.videoURL
-        if let d = _driver {
-            lock.unlock()
-            d.replaceCurrentItem(with: item)
-        } else if let item {
-            pendingItem = item
-            lock.unlock()
-        } else {
-            pendingItem = nil
-            pendingSeek = nil
-            pendingPlayback = nil
-            lock.unlock()
-        }
-    }
-
-    public func play() {
-        lock.lock()
-        if let driver = _driver { lock.unlock(); driver.play() }
-        else { pendingPlayback = true; lock.unlock() }
-    }
-    public func pause() {
-        lock.lock()
-        if let driver = _driver { lock.unlock(); driver.pause() }
-        else { pendingPlayback = false; lock.unlock() }
-    }
-    public func seek(to seconds: Double) {
-        lock.lock()
-        if let driver = _driver { lock.unlock(); driver.seek(to: seconds) }
-        else { pendingSeek = seconds; lock.unlock() }
-    }
-
-    public func stop() {
-        lock.lock(); pendingItem = nil; pendingSeek = nil; pendingPlayback = nil; url = nil; lock.unlock()
-        driver?.stop()
-    }
-
-    public var currentTime: Double { driver?.currentTime ?? 0 }
-    public var duration: Double { driver?.duration ?? 0 }
-    public var isPlaying: Bool { driver?.isPlaying ?? false }
-
-    public var tracks: [MediaTrack] { driver?.tracks ?? [] }
-    public func selectTrack(_ track: MediaTrack?) { driver?.selectTrack(track) }
-    public func setExternalSubtitle(_ url: URL?) { driver?.setExternalSubtitle(url) }
-    public var pictureInPictureSupported: Bool { driver?.pictureInPictureSupported ?? false }
-    public func startPictureInPicture() { driver?.startPictureInPicture() }
-    public func stopPictureInPicture() { driver?.stopPictureInPicture() }
+public final class AVPlayerLayer: @unchecked Sendable {
+    public var player: AVPlayer?
+    public init(player: AVPlayer? = nil) { self.player = player }
 }
 
-/// A video surface with the platform's playback controls, driven by a `MediaPlayer`.
-public struct VideoPlayer: View, PrimitiveView {
+@MainActor
+public final class AVPictureInPictureController: @unchecked Sendable {
+    nonisolated(unsafe) private static var backendSupportsPictureInPicture = false
+    public final class ContentSource: @unchecked Sendable {
+        public let playerLayer: AVPlayerLayer?
+        public init(playerLayer: AVPlayerLayer) { self.playerLayer = playerLayer }
+    }
+    public var contentSource: ContentSource?
+    public private(set) var isPictureInPictureActive = false
+    public var isPictureInPicturePossible: Bool {
+        contentSource?.playerLayer?.player?._swiftOpenUIDriver?.isPictureInPicturePossible ?? false
+    }
+    public var canStartPictureInPictureAutomaticallyFromInline = false
+    public var requiresLinearPlayback = false
+    public static func isPictureInPictureSupported() -> Bool {
+        backendSupportsPictureInPicture
+    }
+    @_spi(SwiftOpenUIBackend)
+    public static func _swiftOpenUISetPictureInPictureSupported(_ supported: Bool) {
+        backendSupportsPictureInPicture = supported
+    }
+    public init(contentSource: ContentSource) { self.contentSource = contentSource }
+    public convenience init?(playerLayer: AVPlayerLayer) {
+        guard Self.isPictureInPictureSupported() else { return nil }
+        self.init(contentSource: ContentSource(playerLayer: playerLayer))
+    }
+    public func startPictureInPicture() {
+        guard isPictureInPicturePossible, let driver = contentSource?.playerLayer?.player?._swiftOpenUIDriver else { return }
+        driver.startPictureInPicture()
+        isPictureInPictureActive = true
+    }
+    public func stopPictureInPicture() {
+        contentSource?.playerLayer?.player?._swiftOpenUIDriver?.stopPictureInPicture()
+        isPictureInPictureActive = false
+    }
+}
+#endif
+
+@MainActor @preconcurrency
+public struct VideoPlayer<VideoOverlay: View>: View, PrimitiveView {
     public typealias Body = Never
-    public let player: MediaPlayer
-    public init(player: MediaPlayer) { self.player = player }
+    @_spi(SwiftOpenUIBackend) public let player: AVPlayer?
+    @_spi(SwiftOpenUIBackend) public let videoOverlay: VideoOverlay
+    public init(player: AVPlayer?, @ViewBuilder videoOverlay: () -> VideoOverlay) {
+        self.player = player
+        self.videoOverlay = videoOverlay()
+    }
     public var body: Never { fatalError("VideoPlayer is a primitive view") }
+}
+
+public extension VideoPlayer where VideoOverlay == EmptyView {
+    init(player: AVPlayer?) { self.init(player: player) { EmptyView() } }
 }

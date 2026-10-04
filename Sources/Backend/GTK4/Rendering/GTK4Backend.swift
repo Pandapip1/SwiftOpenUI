@@ -1,6 +1,6 @@
 import CGTK
 import CGTKBridge
-import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) import SwiftOpenUI
 import SwiftOpenUISymbols
 import Foundation
 #if canImport(Observation)
@@ -569,7 +569,11 @@ func gtkSetupMenuBarIfNeeded(
 
 /// GTK4 rendering backend for SwiftOpenUI.
 public struct GTK4Backend: RenderBackend {
-    public init() {}
+    public init() {
+        MainActor.assumeIsolated {
+            AVPictureInPictureController._swiftOpenUISetPictureInPictureSupported(true)
+        }
+    }
 
     public func run<A: App>(_ appType: A.Type) {
         // Load bundled icon fonts into FontConfig before GTK/Pango builds

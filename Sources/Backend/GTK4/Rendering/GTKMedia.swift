@@ -2,23 +2,29 @@ import CGTK
 import CGTKBridge
 import CGStreamer
 import Foundation
-import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) import SwiftOpenUI
 
 // MARK: - VideoPlayer
 
 /// Direct GStreamer playbin3 driver. Frames are delivered through appsink and
 /// uploaded to a GtkPicture, avoiding GtkVideo's single-stream limitations.
-final class GTKVideoDriver: MediaPlayerDriver {
+@MainActor
+final class GTKVideoDriver: _AVPlayerDriver {
     let widget: UnsafeMutablePointer<GtkWidget>
-    private weak var player: MediaPlayer?
+    private let videoWidget: UnsafeMutablePointer<GtkWidget>
+    private weak var player: AVPlayer?
     private var gst: UnsafeMutablePointer<SwiftOpenUIGStreamerPlayer>?
     private var pendingSeek: Double?
     private var startSource: guint = 0
     private var pendingAutoplay = true
+    private var pictureInPictureWindow: UnsafeMutablePointer<GtkWidget>?
 
-    init(player: MediaPlayer) {
+    init(player: AVPlayer) {
         self.player = player
-        widget = gtk_swift_video_surface_new()!
+        widget = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)
+        videoWidget = gtk_swift_video_surface_new()!
+        g_object_ref_sink(gpointer(videoWidget))
+        gtk_box_append(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkBox.self), videoWidget)
         g_object_ref_sink(gpointer(widget))
         gst = swift_openui_gst_player_new()
         let context = Unmanaged.passUnretained(self).toOpaque()
@@ -26,33 +32,49 @@ final class GTKVideoDriver: MediaPlayerDriver {
         // coalesces delivery onto GTK's main context before calling Swift.
         if let gst { swift_openui_gst_player_set_frame_callback(gst, { data in
             guard let data else { return }
-            Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue().presentFrame()
+            MainActor.assumeIsolated {
+                Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue().presentFrame()
+            }
         }, context) }
     }
 
     deinit {
         if startSource != 0 { g_source_remove(startSource) }
+        MainActor.assumeIsolated { stopPictureInPicture() }
         if let gst { swift_openui_gst_player_free(gst) }
+        if gtk_widget_get_parent(videoWidget) != nil { gtk_widget_unparent(videoWidget) }
+        g_object_unref(gpointer(videoWidget))
         g_object_unref(gpointer(widget))
     }
 
-    func open(url: URL, autoplay: Bool, startAt: Double) {
-        replaceCurrentItem(with: MediaPlayerItem(url: url))
-        if startAt > 0 { seek(to: startAt) }
-        if autoplay { play() } else { pause() }
-    }
-
-    func replaceCurrentItem(with item: MediaPlayerItem?) {
+    func replaceCurrentItem(with item: AVPlayerItem?) {
         guard let item else { stop(); return }
+        let videoURL: URL?
+        let audioURL: URL?
+        if let asset = item.asset as? AVURLAsset {
+            videoURL = asset.url
+            audioURL = nil
+        } else if let asset = item.asset as? AVMutableComposition {
+            videoURL = asset._swiftOpenUICompositionTracks
+                .first(where: { $0.mediaType == .video })?._swiftOpenUISourceTrack?._swiftOpenUISourceURL
+            audioURL = asset._swiftOpenUICompositionTracks
+                .first(where: { $0.mediaType == .audio })?._swiftOpenUISourceTrack?._swiftOpenUISourceURL
+        } else {
+            videoURL = nil
+            audioURL = nil
+        }
+        guard let videoURL else {
+            player?._swiftOpenUIOnFailure?("The player item has no video track")
+            return
+        }
         guard let gst else {
             stop()
-            player?.onFailure?("GStreamer playbin3 is unavailable")
+            player?._swiftOpenUIOnFailure?("GStreamer playbin3 is unavailable")
             return
         }
         pendingSeek = nil
         swift_openui_gst_player_stop(gst)
-        swift_openui_gst_player_set_uris(gst, item.asset.videoURL.absoluteString,
-                                         item.asset.audioURL?.absoluteString)
+        swift_openui_gst_player_set_uris(gst, videoURL.absoluteString, audioURL?.absoluteString)
         pendingAutoplay = false
         if startSource != 0 { g_source_remove(startSource) }
         let context = Unmanaged.passUnretained(self).toOpaque()
@@ -75,7 +97,8 @@ final class GTKVideoDriver: MediaPlayerDriver {
         if startSource == 0, let gst { swift_openui_gst_player_pause(gst) }
     }
 
-    func seek(to seconds: Double) {
+    func seek(to time: CMTime) {
+        let seconds = time.seconds
         guard let gst else { pendingSeek = seconds; return }
         guard duration > 0 else { pendingSeek = seconds; return }
         _ = swift_openui_gst_player_seek(gst, gint64(max(0, seconds) * 1_000_000_000))
@@ -86,17 +109,41 @@ final class GTKVideoDriver: MediaPlayerDriver {
         pendingSeek = nil
     }
 
-    func setExternalSubtitle(_ url: URL?) {
-        guard let gst else { return }
-        swift_openui_gst_player_set_subtitle_uri(gst, url?.absoluteString)
+    var currentTime: CMTime {
+        CMTime(seconds: gst.map { Double(swift_openui_gst_player_position($0)) / 1_000_000_000 } ?? 0,
+               preferredTimescale: 600)
+    }
+    var duration: Double { gst.map { Double(swift_openui_gst_player_duration($0)) / 1_000_000_000 } ?? 0 }
+    var rate: Float { gst.map { swift_openui_gst_player_is_playing($0) != 0 ? 1 : 0 } ?? 0 }
+    var isPictureInPicturePossible: Bool { player?.currentItem != nil }
+
+    func startPictureInPicture() {
+        guard pictureInPictureWindow == nil else { return }
+        if gtk_widget_get_parent(videoWidget) != nil { gtk_widget_unparent(videoWidget) }
+        let window = gtk_window_new()!
+        pictureInPictureWindow = window
+        gtk_window_set_title(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), "Picture in Picture")
+        gtk_window_set_default_size(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), 480, 270)
+        gtk_window_set_resizable(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), 1)
+        gtk_window_set_child(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), videoWidget)
+        gtk_window_present(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self))
     }
 
-    var currentTime: Double { gst.map { Double(swift_openui_gst_player_position($0)) / 1_000_000_000 } ?? 0 }
-    var duration: Double { gst.map { Double(swift_openui_gst_player_duration($0)) / 1_000_000_000 } ?? 0 }
-    var isPlaying: Bool { gst.map { swift_openui_gst_player_is_playing($0) != 0 } ?? false }
+    func stopPictureInPicture() {
+        guard let window = pictureInPictureWindow else { return }
+        pictureInPictureWindow = nil
+        let gtkWindow = UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self)
+        gtk_window_set_child(gtkWindow, nil)
+        if gtk_widget_get_parent(videoWidget) != nil { gtk_widget_unparent(videoWidget) }
+        gtk_box_append(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkBox.self), videoWidget)
+        gtk_window_destroy(gtkWindow)
+    }
 
     private func presentFrame() {
-        if let target = pendingSeek, duration > 0 { pendingSeek = nil; seek(to: target) }
+        if let target = pendingSeek, duration > 0 {
+            pendingSeek = nil
+            seek(to: CMTime(seconds: target, preferredTimescale: 600))
+        }
         guard let gst else { return }
         var data: UnsafeMutablePointer<UInt8>?
         var length: gsize = 0
@@ -104,25 +151,37 @@ final class GTKVideoDriver: MediaPlayerDriver {
         var height: gint = 0
         var stride: gint = 0
         if swift_openui_gst_player_pull_frame(gst, &data, &length, &width, &height, &stride) != 0, let data {
-            gtk_swift_video_surface_set_pixels(widget, data, length, width, height, stride)
+            gtk_swift_video_surface_set_pixels(videoWidget, data, length, width, height, stride)
             swift_openui_gst_player_free_frame(data)
         }
-        if duration > 0, currentTime >= duration - 0.1, !isPlaying { player?.onEnded?() }
+        if duration > 0, currentTime.seconds >= duration - 0.1, rate == 0 { player?._swiftOpenUIOnEnded?() }
     }
 }
 
 extension VideoPlayer: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
+        MainActor.assumeIsolated { gtkCreateWidgetOnMainActor() }
+    }
+
+    @MainActor
+    private func gtkCreateWidgetOnMainActor() -> OpaquePointer {
+        AVPictureInPictureController._swiftOpenUISetPictureInPictureSupported(true)
+        guard let player else { return opaqueFromWidget(gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)) }
         let driver: GTKVideoDriver
-        if let existing = player.driver as? GTKVideoDriver {
+        if let existing = player._swiftOpenUIDriver as? GTKVideoDriver {
             driver = existing
         } else {
             driver = GTKVideoDriver(player: player)
-            player.driver = driver   // flushes any `open` queued before the view existed
+            player._swiftOpenUIAttachDriver(driver)
         }
-        // The surface is re-created on every render; keep one GtkPicture alive so playback is not interrupted.
+        // Keep one GtkPicture alive so playback is not interrupted by view updates.
         if gtk_widget_get_parent(driver.widget) != nil { gtk_widget_unparent(driver.widget) }
-        return opaqueFromWidget(driver.widget)
+        if VideoOverlay.self == EmptyView.self { return opaqueFromWidget(driver.widget) }
+        let overlay = gtk_overlay_new()!
+        gtk_overlay_set_child(OpaquePointer(overlay), driver.widget)
+        let overlayView = widgetFromOpaque(gtkRenderView(videoOverlay))
+        gtk_overlay_add_overlay(OpaquePointer(overlay), overlayView)
+        return opaqueFromWidget(overlay)
     }
 }
 
