@@ -21,6 +21,14 @@ backend.
 
 ---
 
+## 2026-10-04 — GTK4 — fullscreen control symbol mappings
+
+- **Shared surface:** mapped the SF Symbols for entering and exiting fullscreen
+  to the bundled Material fullscreen glyphs.
+- **Impact:** non-Apple custom player controls render both fullscreen actions.
+- **Ping:** Hummingbird UI owner.
+- **Refs:** `SFSymbolCompatibility.swift`.
+
 ## 2026-10-04 — GTK4 — media-control symbol mappings
 
 - **Shared surface:** mapped the SF Symbols used by custom video controls for

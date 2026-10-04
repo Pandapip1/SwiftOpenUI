@@ -89,6 +89,8 @@ public enum SFSymbolCompatibility {
         "arrow.triangle.2.circlepath": "sync",
         "arrow.up":               "arrow_upward",
         "arrow.up.arrow.down":    "swap_vert",
+        "arrow.up.left.and.arrow.down.right": "fullscreen",
+        "arrow.down.right.and.arrow.up.left": "fullscreen_exit",
 
         // MARK: File / folder
         "doc":                    "description",
