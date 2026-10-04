@@ -1962,6 +1962,23 @@ final class GTK4RenderTests: XCTestCase {
         )
     }
 
+    func testExpandingFramePreservesMinimumHeightRequest() throws {
+        try requireGTK()
+
+        let wrapper = widgetFromOpaque(gtkRenderView(
+            Color.blue.frame(minHeight: 120)
+        ))
+        var minimum: gint = 0
+        var natural: gint = 0
+        gtk_widget_measure(
+            wrapper, GTK_ORIENTATION_VERTICAL, -1,
+            &minimum, &natural, nil, nil
+        )
+
+        XCTAssertGreaterThanOrEqual(minimum, 120)
+        XCTAssertGreaterThanOrEqual(natural, 120)
+    }
+
     func testMiddleTruncationFrameRendersScrolledWindowWithSingleLabel() throws {
         try requireGTK()
 

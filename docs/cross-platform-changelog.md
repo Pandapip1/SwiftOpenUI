@@ -21,6 +21,16 @@ backend.
 
 ---
 
+## 2026-10-04 — GTK4 — navigation chrome in sheets
+
+- **Shared surface:** sheets containing a `NavigationStack` now install its
+  attached header bar on the transient GTK window.
+- **Impact:** sheet titles and toolbar actions such as Close remain visible.
+- **Layout:** expanding frames retain explicit minimum width and height requests,
+  allowing content-sized sheets to honor form minimums.
+- **Ping:** Hummingbird UI owner.
+- **Refs:** `GTK4Backend.swift`, `GTKRenderer.swift`.
+
 ## 2026-10-04 — GTK4 — full-width custom navigation labels
 
 - **Shared surface:** GTK4 `NavigationLink` now propagates horizontal expansion

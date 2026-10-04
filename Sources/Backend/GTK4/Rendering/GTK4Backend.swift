@@ -24,7 +24,7 @@ private func gtkRegisterBundledIconFont() {
 }
 
 /// Recursively search a widget tree for a navigation-provided window titlebar.
-private func findTitlebar(in widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget>? {
+func gtkFindTitlebar(in widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget>? {
     let gobject = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
     if let data = g_object_get_data(gobject, "gtk-swift-window-titlebar") {
         return UnsafeMutableRawPointer(data).assumingMemoryBound(to: GtkWidget.self)
@@ -35,14 +35,14 @@ private func findTitlebar(in widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeM
     if typeName == "GtkStack" {
         let stackOp = OpaquePointer(widget)
         if let visibleChild = gtk_stack_get_visible_child(stackOp) {
-            return findTitlebar(in: visibleChild)
+            return gtkFindTitlebar(in: visibleChild)
         }
         return nil
     }
 
     var child = gtk_widget_get_first_child(widget)
     while let c = child {
-        if let found = findTitlebar(in: c) {
+        if let found = gtkFindTitlebar(in: c) {
             return found
         }
         child = gtk_widget_get_next_sibling(c)
@@ -107,7 +107,7 @@ extension WindowGroup: GTKWindowRenderable {
         setCurrentEnvironment(wgEnv)
 
         let contentWidget = widgetFromOpaque(gtkRenderView(content))
-        if let titlebarWidget = findTitlebar(in: contentWidget) {
+        if let titlebarWidget = gtkFindTitlebar(in: contentWidget) {
             gtk_window_set_titlebar(winPtr, titlebarWidget)
         }
 
@@ -858,4 +858,3 @@ func gtkApplyWindowBackground(_ window: UnsafeMutablePointer<GtkWidget>) {
     guard let palette = getCurrentEnvironment().themePalette else { return }
     applyCSSToWidget(window, properties: gtkBackgroundColorCSS(palette.windowBackground))
 }
-

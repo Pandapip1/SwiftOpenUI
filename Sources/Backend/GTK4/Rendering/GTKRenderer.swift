@@ -1706,8 +1706,14 @@ extension FrameView: GTKRenderable, GTKDescribable {
                 || (maxHeight == nil && childExpV)
             )
 
-        let requestWidth = widthMayGrowWithParent ? -1 : gtkPixelSize(layout.containerSize.width)
-        let requestHeight = heightMayGrowWithParent ? -1 : gtkPixelSize(layout.containerSize.height)
+        // Expansion controls how additional parent space is consumed; it must
+        // not erase an explicit minimum from the widget's size request.
+        let requestWidth = widthMayGrowWithParent
+            ? minWidth.map(gtkPixelSize) ?? -1
+            : gtkPixelSize(layout.containerSize.width)
+        let requestHeight = heightMayGrowWithParent
+            ? minHeight.map(gtkPixelSize) ?? -1
+            : gtkPixelSize(layout.containerSize.height)
         gtk_widget_set_size_request(wrapper, requestWidth, requestHeight)
         if widthMayGrowWithParent {
             gtk_widget_set_hexpand(wrapper, 1)
@@ -3499,6 +3505,9 @@ extension SheetModifierView: GTKRenderable {
             let sheetWidget = widgetFromOpaque(info.render())
             setCurrentEnvironment(previous)
             gtk_window_set_child(dialogWin, sheetWidget)
+            if let titlebar = gtkFindTitlebar(in: sheetWidget) {
+                gtk_window_set_titlebar(dialogWin, titlebar)
+            }
             gtkSetSheetDefaultSize(dialogWin, sheetWidget)
 
             let anchorObj = UnsafeMutableRawPointer(info.anchor).assumingMemoryBound(to: GObject.self)
@@ -3648,6 +3657,9 @@ extension ItemSheetModifierView: GTKRenderable {
             let sheetWidget = widgetFromOpaque(info.render())
             setCurrentEnvironment(previous)
             gtk_window_set_child(dialogWin, sheetWidget)
+            if let titlebar = gtkFindTitlebar(in: sheetWidget) {
+                gtk_window_set_titlebar(dialogWin, titlebar)
+            }
             gtkSetSheetDefaultSize(dialogWin, sheetWidget)
 
             let anchorObj = UnsafeMutableRawPointer(info.anchor).assumingMemoryBound(to: GObject.self)
