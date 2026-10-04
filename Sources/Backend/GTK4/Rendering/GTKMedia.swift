@@ -58,6 +58,11 @@ final class GTKVideoDriver: MediaPlayerDriver {
         pendingSeek = nil
     }
 
+    func setExternalSubtitle(_ url: URL?) {
+        guard let gst else { return }
+        swift_openui_gst_player_set_subtitle_uri(gst, url?.absoluteString)
+    }
+
     var currentTime: Double { gst.map { Double(swift_openui_gst_player_position($0)) / 1_000_000_000 } ?? 0 }
     var duration: Double { gst.map { Double(swift_openui_gst_player_duration($0)) / 1_000_000_000 } ?? 0 }
     var isPlaying: Bool { gst.map { swift_openui_gst_player_is_playing($0) != 0 } ?? false }

@@ -31,6 +31,15 @@ backend.
 - **Ping:** Hummingbird media owner.
 - **Refs:** `GTKMedia.swift`, `CGStreamer/gstshim.h`.
 
+## 2026-10-04 — Media — external subtitle routing
+
+- **Shared surface:** `MediaPlayerDriver` and `MediaPlayer` expose an optional
+  external subtitle URL without exposing platform media types.
+- **Impact:** GTK forwards the URL to GStreamer `playbin3`'s `suburi` property;
+  existing custom subtitle parsing remains available for styled overlays.
+- **Ping:** Hummingbird media owner.
+- **Refs:** `Compat/MediaPlayer.swift`, `GTKMedia.swift`.
+
 ## 2026-10-04 — Media — backend-neutral track and PiP capabilities
 
 - **Shared surface:** `MediaPlayerDriver` and `MediaPlayer` now expose

@@ -25,6 +25,7 @@ public protocol MediaPlayerDriver: AnyObject {
     var isPlaying: Bool { get }
     var tracks: [MediaTrack] { get }
     func selectTrack(_ track: MediaTrack?)
+    func setExternalSubtitle(_ url: URL?)
     var pictureInPictureSupported: Bool { get }
     func startPictureInPicture()
     func stopPictureInPicture()
@@ -33,6 +34,7 @@ public protocol MediaPlayerDriver: AnyObject {
 public extension MediaPlayerDriver {
     var tracks: [MediaTrack] { [] }
     func selectTrack(_: MediaTrack?) {}
+    func setExternalSubtitle(_: URL?) {}
     var pictureInPictureSupported: Bool { false }
     func startPictureInPicture() {}
     func stopPictureInPicture() {}
@@ -90,6 +92,7 @@ public final class MediaPlayer: @unchecked Sendable {
 
     public var tracks: [MediaTrack] { driver?.tracks ?? [] }
     public func selectTrack(_ track: MediaTrack?) { driver?.selectTrack(track) }
+    public func setExternalSubtitle(_ url: URL?) { driver?.setExternalSubtitle(url) }
     public var pictureInPictureSupported: Bool { driver?.pictureInPictureSupported ?? false }
     public func startPictureInPicture() { driver?.startPictureInPicture() }
     public func stopPictureInPicture() { driver?.stopPictureInPicture() }
