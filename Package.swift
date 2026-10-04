@@ -58,6 +58,17 @@ var exampleDeps: [Target.Dependency] = ["SwiftOpenUI", "MacExampleSupport"]
 // GTK4 backend (Linux)
 #if os(Linux)
 targets += [
+    .target(
+        name: "WebKit",
+        dependencies: ["SwiftOpenUI"],
+        path: "Sources/WebKit"
+    ),
+    .systemLibrary(
+        name: "CWebKitGTK",
+        path: "Sources/Backend/GTK4/CWebKitGTK",
+        pkgConfig: "webkitgtk-6.0",
+        providers: [.apt(["libwebkitgtk-6.0-dev"])]
+    ),
     .systemLibrary(
         name: "CGTK",
         path: "Sources/Backend/GTK4/CGTK",
@@ -77,7 +88,7 @@ targets += [
     ),
     .target(
         name: "BackendGTK4",
-        dependencies: ["SwiftOpenUI", "CGTK", "CGTKBridge", "CGStreamer", "SwiftOpenUISymbols"],
+        dependencies: ["SwiftOpenUI", "WebKit", "CGTK", "CGTKBridge", "CGStreamer", "CWebKitGTK", "SwiftOpenUISymbols"],
         path: "Sources/Backend/GTK4/Rendering",
         linkerSettings: [
             // FontConfig is used by the process-local font registration
@@ -96,7 +107,7 @@ targets += [
         // SwiftOpenUISymbols is a DIRECT dependency: the symbol-mapping
         // tests import it (declared, not leaked transitively — see the
         // librano NIOFoundationCompat cold-build lesson).
-        dependencies: ["SwiftOpenUI", "BackendGTK4", "CGTK", "CGTKBridge", "SwiftOpenUISymbols"],
+        dependencies: ["SwiftOpenUI", "WebKit", "BackendGTK4", "CGTK", "CGTKBridge", "SwiftOpenUISymbols"],
         path: "Tests/BackendTests/GTK4Tests"
     ),
     // Layout parity — GTK comparison against macOS reference
@@ -401,6 +412,7 @@ let package = Package(
             .library(name: "SwiftOpenUI", targets: ["SwiftOpenUI"]),
         ]
         #if os(Linux)
+        p.append(.library(name: "WebKit", targets: ["WebKit"]))
         p.append(.library(name: "CGTK", targets: ["CGTK"]))
         p.append(.library(name: "CGTKBridge", targets: ["CGTKBridge"]))
         p.append(.library(name: "BackendGTK4", targets: ["BackendGTK4"]))

@@ -21,6 +21,15 @@ backend.
 
 ---
 
+## 2026-10-04 — WebKit/GTK4 — SwiftUI WebView surface
+
+- **Shared surface:** added a `WebKit` product with `WebView(url:)`,
+  `WebView(WebPage)`, and the initial `WebPage` navigation API.
+- **Impact:** GTK4 applications can embed a persistent WebKitGTK 6 browser using
+  the same SwiftUI-facing API introduced by Apple WebKit.
+- **Ping:** GTK4 and WebKit integrators.
+- **Refs:** `Sources/WebKit`, `GTKWebView.swift`, `CWebKitGTK`.
+
 ## 2026-10-04 — GTK4 — same-window full-screen covers
 
 - **Shared surface:** `fullScreenCover(isPresented:onDismiss:content:)`.
