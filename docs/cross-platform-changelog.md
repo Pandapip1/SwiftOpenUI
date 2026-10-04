@@ -21,6 +21,15 @@ backend.
 
 ---
 
+## 2026-10-04 — GTK4 — same-window full-screen covers
+
+- **Shared surface:** `fullScreenCover(isPresented:onDismiss:content:)`.
+- **Impact:** GTK now retains and replaces the existing root window content,
+  fullscreens that window, and restores its original content when dismissed.
+  It no longer creates a separate modal window for a full-screen cover.
+- **Ping:** GTK4 integrators.
+- **Refs:** `GTKRenderer.swift`, `shim.h`.
+
 ## 2026-10-04 — GTK4 — continuous Slider bindings
 
 - **Shared surface:** GTK `Slider` now updates its binding continuously as the

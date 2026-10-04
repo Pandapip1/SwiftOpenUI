@@ -974,9 +974,19 @@ gtk_swift_window_set_child(GtkWidget *window, GtkWidget *child) {
     gtk_window_set_child(GTK_WINDOW(window), child);
 }
 
+static inline GtkWidget *
+gtk_swift_window_get_child(GtkWidget *window) {
+    return gtk_window_get_child(GTK_WINDOW(window));
+}
+
 static inline void
 gtk_swift_window_fullscreen(GtkWidget *window) {
     gtk_window_fullscreen(GTK_WINDOW(window));
+}
+
+static inline void
+gtk_swift_window_unfullscreen(GtkWidget *window) {
+    gtk_window_unfullscreen(GTK_WINDOW(window));
 }
 
 static inline void
