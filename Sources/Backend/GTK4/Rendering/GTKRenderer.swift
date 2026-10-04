@@ -2337,9 +2337,15 @@ extension AspectRatioView: GTKRenderable {
         gtk_aspect_frame_set_child(OpaquePointer(frame), widget)
 
         // The frame is the thing that stretches; the ratio keeps the child in
-        // proportion inside whatever it is given.
+        // proportion inside whatever it is given. An explicit ratio derives
+        // its height from its allocated width; propagating a vertically
+        // expanding child instead makes a VStack squeeze it into the viewport
+        // and letterbox the child inside that arbitrary height.
         gtk_widget_set_hexpand(frame, gtkWantsExpand(widget, GTK_ORIENTATION_HORIZONTAL) ? 1 : 0)
-        gtk_widget_set_vexpand(frame, gtkWantsExpand(widget, GTK_ORIENTATION_VERTICAL) ? 1 : 0)
+        gtk_widget_set_vexpand(
+            frame,
+            ratio == nil && gtkWantsExpand(widget, GTK_ORIENTATION_VERTICAL) ? 1 : 0
+        )
 
         return opaqueFromWidget(frame)
     }

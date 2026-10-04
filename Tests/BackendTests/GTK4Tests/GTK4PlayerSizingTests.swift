@@ -62,4 +62,19 @@ final class GTK4PlayerSizingTests: XCTestCase {
         print("PAGE allocated height \(h)")
         XCTAssertLessThanOrEqual(h, 600, "page wants \(h)pt in a 600pt window")
     }
+
+    func testExplicitRatioDoesNotLeakVerticalExpansion() throws {
+        guard gtk_is_initialized() != 0 else { throw XCTSkip("no GTK") }
+        let player = widgetFromOpaque(gtkRenderView(
+            ZStack { Color.black }
+                .frame(maxWidth: .infinity)
+                .aspectRatio(16.0 / 9.0, contentMode: .fit)
+        ))
+
+        XCTAssertNotEqual(gtk_widget_get_hexpand(player), 0)
+        XCTAssertEqual(
+            gtk_widget_get_vexpand(player), 0,
+            "an explicit aspect ratio must derive height from width instead of consuming arbitrary vertical space"
+        )
+    }
 }

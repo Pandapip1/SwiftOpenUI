@@ -31,6 +31,15 @@ backend.
 - **Ping:** Hummingbird UI owner.
 - **Refs:** `GTK4Backend.swift`, `GTKRenderer.swift`.
 
+## 2026-10-04 — GTK4 — explicit aspect ratios in vertical layouts
+
+- **Shared surface:** an explicit `.aspectRatio` no longer inherits vertical
+  expansion from its content; its height is derived from the available width.
+- **Impact:** video surfaces in scrolling detail pages scale to their intended
+  ratio instead of being squeezed to the viewport remainder.
+- **Ping:** Hummingbird UI owner.
+- **Refs:** `GTKRenderer.swift`, `GTK4PlayerSizingTests.swift`.
+
 ## 2026-10-04 — GTK4 — full-width custom navigation labels
 
 - **Shared surface:** GTK4 `NavigationLink` now propagates horizontal expansion
