@@ -81,8 +81,10 @@ private final class GTKWebPageBackend: _WebPageBackend {
             guard let context else { return }
             let state = Unmanaged<CookieState>.fromOpaque(context).takeUnretainedValue()
             if done != 0 {
+                let completion = state.completion
+                let cookies = state.cookies
                 Unmanaged<CookieState>.fromOpaque(context).release()
-                state.completion(state.cookies)
+                completion(cookies)
             } else if let name, let value, let domain,
                       let cookie = HTTPCookie(properties: [
                         .name: String(cString: name), .value: String(cString: value),
