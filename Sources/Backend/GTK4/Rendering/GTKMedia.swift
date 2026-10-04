@@ -13,7 +13,7 @@ final class GTKVideoDriver: MediaPlayerDriver {
     private weak var player: MediaPlayer?
     private var gst: UnsafeMutablePointer<SwiftOpenUIGStreamerPlayer>?
     private var pendingSeek: Double?
-    private var timer: guint = 0
+    private var tickCallback: guint = 0
     private var startSource: guint = 0
     private var pendingAutoplay = true
 
@@ -23,16 +23,16 @@ final class GTKVideoDriver: MediaPlayerDriver {
         g_object_ref_sink(gpointer(widget))
         gst = swift_openui_gst_player_new()
         let context = Unmanaged.passUnretained(self).toOpaque()
-        // Poll without blocking at a cadence fast enough for 60 fps sources.
-        // GStreamer still decides when a timestamped frame becomes eligible.
-        timer = g_timeout_add(8, { data in
+        // Present on GTK's compositor frame clock. GStreamer decodes
+        // asynchronously; each display tick only checks for an eligible frame.
+        tickCallback = gtk_widget_add_tick_callback(widget, { _, _, data in
             guard let data else { return 0 }
             return Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue().tick()
-        }, context)
+        }, context, nil)
     }
 
     deinit {
-        if timer != 0 { g_source_remove(timer) }
+        if tickCallback != 0 { gtk_widget_remove_tick_callback(widget, tickCallback) }
         if startSource != 0 { g_source_remove(startSource) }
         if let gst { swift_openui_gst_player_free(gst) }
         g_object_unref(gpointer(widget))
