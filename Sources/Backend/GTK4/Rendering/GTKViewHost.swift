@@ -661,6 +661,10 @@ private func restoreFocusInfo(_ info: FocusInfo, in widget: UnsafeMutablePointer
                 gtk_text_buffer_place_cursor(buffer, &iter)
             }
         } else {
+            // The editable index is structural and can shift when a rebuilt
+            // branch changes shape. Never pass a stale match to GtkEditable;
+            // GTK treats that as a programmer error and emits a critical.
+            guard gtk_swift_widget_is_editable(target) != 0 else { return }
             let editable = OpaquePointer(target)
             if info.selectionStart >= 0 && info.selectionEnd >= 0 {
                 // Restore selection range (also moves cursor to selectionEnd)
