@@ -8,7 +8,15 @@ typedef struct {
     GstElement *playbin;
     GstElement *video_bin;
     GstElement *appsink;
+    GstSample *pending_sample;
 } SwiftOpenUIGStreamerPlayer;
+
+static inline void swift_openui_gst_player_clear_pending_sample(SwiftOpenUIGStreamerPlayer *player) {
+    if (player && player->pending_sample) {
+        gst_sample_unref(player->pending_sample);
+        player->pending_sample = NULL;
+    }
+}
 
 static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
     static gsize initialized = 0;
@@ -40,12 +48,16 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
 static inline void swift_openui_gst_player_free(SwiftOpenUIGStreamerPlayer *player) {
     if (!player) return;
     gst_element_set_state(player->playbin, GST_STATE_NULL);
+    swift_openui_gst_player_clear_pending_sample(player);
     gst_object_unref(player->playbin);
     g_free(player);
 }
 
 static inline void swift_openui_gst_player_set_uri(SwiftOpenUIGStreamerPlayer *player, const char *uri) {
-    if (player && player->playbin) g_object_set(player->playbin, "uri", uri, NULL);
+    if (player && player->playbin) {
+        swift_openui_gst_player_clear_pending_sample(player);
+        g_object_set(player->playbin, "uri", uri, NULL);
+    }
 }
 
 static inline void swift_openui_gst_player_set_subtitle_uri(SwiftOpenUIGStreamerPlayer *player, const char *uri) {
@@ -53,10 +65,7 @@ static inline void swift_openui_gst_player_set_subtitle_uri(SwiftOpenUIGStreamer
 }
 
 static inline void swift_openui_gst_player_play(SwiftOpenUIGStreamerPlayer *player) {
-    if (player) {
-        gst_element_set_state(player->video_bin, GST_STATE_PLAYING);
-        gst_element_set_state(player->playbin, GST_STATE_PLAYING);
-    }
+    if (player) gst_element_set_state(player->playbin, GST_STATE_PLAYING);
 }
 
 static inline void swift_openui_gst_player_pause(SwiftOpenUIGStreamerPlayer *player) {
@@ -64,12 +73,17 @@ static inline void swift_openui_gst_player_pause(SwiftOpenUIGStreamerPlayer *pla
 }
 
 static inline void swift_openui_gst_player_stop(SwiftOpenUIGStreamerPlayer *player) {
-    if (player) gst_element_set_state(player->playbin, GST_STATE_NULL);
+    if (player) {
+        gst_element_set_state(player->playbin, GST_STATE_NULL);
+        swift_openui_gst_player_clear_pending_sample(player);
+    }
 }
 
 static inline gboolean swift_openui_gst_player_seek(SwiftOpenUIGStreamerPlayer *player, gint64 nanoseconds) {
-    return player ? gst_element_seek_simple(player->playbin, GST_FORMAT_TIME,
-        GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT, nanoseconds) : FALSE;
+    if (!player) return FALSE;
+    swift_openui_gst_player_clear_pending_sample(player);
+    return gst_element_seek_simple(player->playbin, GST_FORMAT_TIME,
+        GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT, nanoseconds);
 }
 
 static inline gint64 swift_openui_gst_player_position(SwiftOpenUIGStreamerPlayer *player) {
@@ -92,7 +106,9 @@ static inline gboolean swift_openui_gst_player_pull_frame(SwiftOpenUIGStreamerPl
                                                             guint8 **data, gsize *length,
                                                             gint *width, gint *height, gint *stride) {
     if (!player || !data || !length || !width || !height || !stride) return FALSE;
-    GstSample *sample = gst_app_sink_try_pull_sample(GST_APP_SINK(player->appsink), 50 * GST_MSECOND);
+    GstSample *sample = player->pending_sample;
+    player->pending_sample = NULL;
+    if (!sample) sample = gst_app_sink_try_pull_sample(GST_APP_SINK(player->appsink), 50 * GST_MSECOND);
     if (!sample) return FALSE;
     GstCaps *caps = gst_sample_get_caps(sample);
     GstStructure *structure = caps ? gst_caps_get_structure(caps, 0) : NULL;
@@ -102,6 +118,26 @@ static inline gboolean swift_openui_gst_player_pull_frame(SwiftOpenUIGStreamerPl
         return FALSE;
     }
     GstBuffer *buffer = gst_sample_get_buffer(sample);
+    GstClockTime pts = buffer ? GST_BUFFER_PTS(buffer) : GST_CLOCK_TIME_NONE;
+    const GstSegment *segment = gst_sample_get_segment(sample);
+    GstClockTime sample_running_time = segment && GST_CLOCK_TIME_IS_VALID(pts)
+        ? gst_segment_to_running_time(segment, GST_FORMAT_TIME, pts)
+        : GST_CLOCK_TIME_NONE;
+    GstClock *clock = gst_element_get_clock(player->playbin);
+    GstClockTime pipeline_running_time = GST_CLOCK_TIME_NONE;
+    if (clock) {
+        GstClockTime now = gst_clock_get_time(clock);
+        GstClockTime base = gst_element_get_base_time(player->playbin);
+        if (GST_CLOCK_TIME_IS_VALID(now) && GST_CLOCK_TIME_IS_VALID(base) && now >= base)
+            pipeline_running_time = now - base;
+        gst_object_unref(clock);
+    }
+    if (GST_CLOCK_TIME_IS_VALID(sample_running_time)
+        && GST_CLOCK_TIME_IS_VALID(pipeline_running_time)
+        && sample_running_time > pipeline_running_time + 5 * GST_MSECOND) {
+        player->pending_sample = sample;
+        return FALSE;
+    }
     GstMapInfo map;
     if (!buffer || !gst_buffer_map(buffer, &map, GST_MAP_READ)) {
         gst_sample_unref(sample);

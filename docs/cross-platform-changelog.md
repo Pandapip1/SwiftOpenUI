@@ -21,6 +21,18 @@ backend.
 
 ---
 
+## 2026-10-04 — GTK4 — present video by pipeline running time
+
+- **Shared surface:** the custom GStreamer video bin now inherits state and
+  clock timing from `playbin3`; appsink frames are additionally held until
+  their segment-adjusted PTS reaches the pipeline's running time. GtkPicture
+  uploads now preserve GStreamer's RGBA channel layout.
+- **Impact:** video advances with clocked audio instead of decoding to the end
+  immediately, pending frames are discarded across seeks/source changes, and
+  the displayed texture matches the decoded buffer.
+- **Ping:** Hummingbird media owner.
+- **Refs:** `CGStreamer/gstshim.h`, `CGTK/shim.h`.
+
 ## 2026-10-04 — GTK4 — synchronize appsink video to the pipeline clock
 
 - **Shared surface:** GTK4's GStreamer appsink now honors the pipeline clock

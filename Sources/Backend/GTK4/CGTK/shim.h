@@ -348,15 +348,12 @@ static inline void gtk_swift_video_surface_set_pixels(GtkWidget *area, const gui
     for (gint y = 0; y < height; y++) {
         const guint8 *src = pixels + (gsize)y * stride;
         guint8 *dst = copy + (gsize)y * outputStride;
-        for (gint x = 0; x < width; x++) {
-            // Cairo ARGB32 is BGRA in little-endian memory; GStreamer supplies RGBA.
-            dst[x * 4] = src[x * 4 + 2]; dst[x * 4 + 1] = src[x * 4 + 1];
-            dst[x * 4 + 2] = src[x * 4]; dst[x * 4 + 3] = src[x * 4 + 3];
-        }
+        memcpy(dst, src, outputStride);
     }
     GBytes *bytes = g_bytes_new_take(copy, outputStride * (gsize)height);
-    GdkTexture *texture = gdk_memory_texture_new(width, height, GDK_MEMORY_B8G8R8A8, bytes, outputStride);
+    GdkTexture *texture = gdk_memory_texture_new(width, height, GDK_MEMORY_R8G8B8A8, bytes, outputStride);
     g_bytes_unref(bytes);
+    gtk_picture_set_paintable(GTK_PICTURE(area), NULL);
     gtk_picture_set_paintable(GTK_PICTURE(area), GDK_PAINTABLE(texture));
     g_object_unref(texture);
     gtk_widget_queue_draw(area);
