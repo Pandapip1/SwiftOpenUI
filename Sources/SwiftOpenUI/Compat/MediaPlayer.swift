@@ -1,5 +1,30 @@
 import Foundation
 
+/// A media asset used to create a player item. A supplemental audio URL models
+/// the video and audio tracks of a composition while keeping URL loading in the
+/// platform driver.
+public struct MediaAsset: Hashable, Sendable {
+    public let videoURL: URL
+    public let audioURL: URL?
+
+    public init(url: URL) {
+        videoURL = url
+        audioURL = nil
+    }
+
+    public init(videoURL: URL, audioURL: URL) {
+        self.videoURL = videoURL
+        self.audioURL = audioURL
+    }
+}
+
+/// The item installed on a `MediaPlayer`, analogous to `AVPlayerItem`.
+public final class MediaPlayerItem: @unchecked Sendable {
+    public let asset: MediaAsset
+    public init(asset: MediaAsset) { self.asset = asset }
+    public convenience init(url: URL) { self.init(asset: MediaAsset(url: url)) }
+}
+
 /// A selectable media rendition exposed by a backend.
 public struct MediaTrack: Hashable, Sendable {
     public enum Kind: String, Sendable { case video, audio, subtitles }
@@ -16,6 +41,7 @@ public struct MediaTrack: Hashable, Sendable {
 /// What a backend provides to play media for a `VideoPlayer`.
 public protocol MediaPlayerDriver: AnyObject {
     func open(url: URL, autoplay: Bool, startAt: Double)
+    func replaceCurrentItem(with item: MediaPlayerItem?)
     func play()
     func pause()
     func seek(to seconds: Double)
@@ -32,6 +58,10 @@ public protocol MediaPlayerDriver: AnyObject {
 }
 
 public extension MediaPlayerDriver {
+    func replaceCurrentItem(with item: MediaPlayerItem?) {
+        guard let item else { stop(); return }
+        open(url: item.asset.videoURL, autoplay: false, startAt: 0)
+    }
     var tracks: [MediaTrack] { [] }
     func selectTrack(_: MediaTrack?) {}
     func setExternalSubtitle(_: URL?) {}
@@ -47,7 +77,9 @@ public extension MediaPlayerDriver {
 public final class MediaPlayer: @unchecked Sendable {
     private let lock = NSLock()
     private var _driver: MediaPlayerDriver?
-    private var pending: (url: URL, autoplay: Bool, startAt: Double)?
+    private var pendingItem: MediaPlayerItem?
+    private var pendingSeek: Double?
+    private var pendingPlayback: Bool?
 
     public private(set) var url: URL?
     /// Called on the main thread when playback reaches the end.
@@ -63,26 +95,64 @@ public final class MediaPlayer: @unchecked Sendable {
         set {
             lock.lock()
             _driver = newValue
-            let queued = pending
-            pending = nil
+            let item = pendingItem
+            let seek = pendingSeek
+            let playback = pendingPlayback
+            pendingItem = nil
+            pendingSeek = nil
+            pendingPlayback = nil
             lock.unlock()
-            if let queued, let newValue { newValue.open(url: queued.url, autoplay: queued.autoplay, startAt: queued.startAt) }
+            if let newValue {
+                if let item { newValue.replaceCurrentItem(with: item) }
+                if let seek { newValue.seek(to: seek) }
+                if playback == true { newValue.play() }
+                else if playback == false { newValue.pause() }
+            }
         }
     }
 
     public func open(_ url: URL, autoplay: Bool = true, startAt: Double = 0) {
-        lock.lock()
-        self.url = url
-        if let d = _driver { lock.unlock(); d.open(url: url, autoplay: autoplay, startAt: startAt) }
-        else { pending = (url, autoplay, startAt); lock.unlock() }
+        replaceCurrentItem(with: MediaPlayerItem(url: url))
+        if startAt > 0 { seek(to: startAt) }
+        if autoplay { play() } else { pause() }
     }
 
-    public func play() { driver?.play() }
-    public func pause() { driver?.pause() }
-    public func seek(to seconds: Double) { driver?.seek(to: seconds) }
+    /// Replaces the current item, matching AVPlayer's item-based API.
+    public func replaceCurrentItem(with item: MediaPlayerItem?) {
+        lock.lock()
+        self.url = item?.asset.videoURL
+        if let d = _driver {
+            lock.unlock()
+            d.replaceCurrentItem(with: item)
+        } else if let item {
+            pendingItem = item
+            lock.unlock()
+        } else {
+            pendingItem = nil
+            pendingSeek = nil
+            pendingPlayback = nil
+            lock.unlock()
+        }
+    }
+
+    public func play() {
+        lock.lock()
+        if let driver = _driver { lock.unlock(); driver.play() }
+        else { pendingPlayback = true; lock.unlock() }
+    }
+    public func pause() {
+        lock.lock()
+        if let driver = _driver { lock.unlock(); driver.pause() }
+        else { pendingPlayback = false; lock.unlock() }
+    }
+    public func seek(to seconds: Double) {
+        lock.lock()
+        if let driver = _driver { lock.unlock(); driver.seek(to: seconds) }
+        else { pendingSeek = seconds; lock.unlock() }
+    }
 
     public func stop() {
-        lock.lock(); pending = nil; url = nil; lock.unlock()
+        lock.lock(); pendingItem = nil; pendingSeek = nil; pendingPlayback = nil; url = nil; lock.unlock()
         driver?.stop()
     }
 

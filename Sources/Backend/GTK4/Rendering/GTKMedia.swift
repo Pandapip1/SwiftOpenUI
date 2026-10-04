@@ -37,15 +37,23 @@ final class GTKVideoDriver: MediaPlayerDriver {
     }
 
     func open(url: URL, autoplay: Bool, startAt: Double) {
+        replaceCurrentItem(with: MediaPlayerItem(url: url))
+        if startAt > 0 { seek(to: startAt) }
+        if autoplay { play() } else { pause() }
+    }
+
+    func replaceCurrentItem(with item: MediaPlayerItem?) {
+        guard let item else { stop(); return }
         guard let gst else {
             stop()
             player?.onFailure?("GStreamer playbin3 is unavailable")
             return
         }
-        pendingSeek = startAt > 0 ? startAt : nil
+        pendingSeek = nil
         swift_openui_gst_player_stop(gst)
-        swift_openui_gst_player_set_uri(gst, url.absoluteString)
-        pendingAutoplay = autoplay
+        swift_openui_gst_player_set_uris(gst, item.asset.videoURL.absoluteString,
+                                         item.asset.audioURL?.absoluteString)
+        pendingAutoplay = false
         if startSource != 0 { g_source_remove(startSource) }
         let context = Unmanaged.passUnretained(self).toOpaque()
         startSource = g_idle_add({ data in
@@ -58,11 +66,18 @@ final class GTKVideoDriver: MediaPlayerDriver {
         }, context)
     }
 
-    func play() { if let gst { swift_openui_gst_player_play(gst) } }
-    func pause() { if let gst { swift_openui_gst_player_pause(gst) } }
+    func play() {
+        pendingAutoplay = true
+        if startSource == 0, let gst { swift_openui_gst_player_play(gst) }
+    }
+    func pause() {
+        pendingAutoplay = false
+        if startSource == 0, let gst { swift_openui_gst_player_pause(gst) }
+    }
 
     func seek(to seconds: Double) {
         guard let gst else { pendingSeek = seconds; return }
+        guard duration > 0 else { pendingSeek = seconds; return }
         _ = swift_openui_gst_player_seek(gst, gint64(max(0, seconds) * 1_000_000_000))
     }
 
