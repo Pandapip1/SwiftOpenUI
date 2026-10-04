@@ -2,6 +2,9 @@ import CGTK
 import CGTKBridge
 import CGStreamer
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @_spi(SwiftOpenUIBackend) import SwiftOpenUI
 
 // MARK: - VideoPlayer
@@ -18,6 +21,10 @@ final class GTKVideoDriver: _AVPlayerDriver {
     private var startSource: guint = 0
     private var pendingAutoplay = true
     private var pictureInPictureWindow: UnsafeMutablePointer<GtkWidget>?
+    private var sourceVideoURL: URL?
+    private var sourceAudioURL: URL?
+    private var localVideoURL: URL?
+    private var downloadTask: URLSessionDownloadTask?
 
     init(player: AVPlayer) {
         self.player = player
@@ -39,6 +46,8 @@ final class GTKVideoDriver: _AVPlayerDriver {
     }
 
     deinit {
+        downloadTask?.cancel()
+        if let localVideoURL { try? FileManager.default.removeItem(at: localVideoURL) }
         if startSource != 0 { g_source_remove(startSource) }
         MainActor.assumeIsolated { stopPictureInPicture() }
         if let gst { swift_openui_gst_player_free(gst) }
@@ -72,6 +81,12 @@ final class GTKVideoDriver: _AVPlayerDriver {
             player?._swiftOpenUIOnFailure?("GStreamer playbin3 is unavailable")
             return
         }
+        downloadTask?.cancel()
+        downloadTask = nil
+        if let localVideoURL { try? FileManager.default.removeItem(at: localVideoURL) }
+        localVideoURL = nil
+        sourceVideoURL = videoURL
+        sourceAudioURL = audioURL
         pendingSeek = nil
         swift_openui_gst_player_stop(gst)
         swift_openui_gst_player_set_uris(gst, videoURL.absoluteString, audioURL?.absoluteString)
@@ -101,12 +116,57 @@ final class GTKVideoDriver: _AVPlayerDriver {
         let seconds = time.seconds
         guard let gst else { pendingSeek = seconds; return }
         guard durationSeconds > 0 else { pendingSeek = seconds; return }
-        _ = swift_openui_gst_player_seek(gst, gint64(max(0, seconds) * 1_000_000_000))
+        if swift_openui_gst_player_is_seekable(gst) != 0 {
+            _ = swift_openui_gst_player_seek(gst, gint64(max(0, seconds) * 1_000_000_000))
+        } else {
+            pendingSeek = seconds
+            downloadForSeekingIfNeeded()
+        }
     }
 
     func stop() {
         if let gst { swift_openui_gst_player_stop(gst) }
         pendingSeek = nil
+    }
+
+    private func downloadForSeekingIfNeeded() {
+        guard downloadTask == nil, localVideoURL == nil, let sourceVideoURL,
+              sourceVideoURL.scheme == "http" || sourceVideoURL.scheme == "https" else { return }
+        downloadTask = URLSession.shared.downloadTask(with: sourceVideoURL) { [weak self] temporaryURL, _, error in
+            guard let self else { return }
+            var result: Result<URL, Error>
+            do {
+                if let error { throw error }
+                guard let temporaryURL else { throw URLError(.cannotCreateFile) }
+                let extensionName = sourceVideoURL.pathExtension
+                let destination = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("swift-openui-\(UUID().uuidString)")
+                    .appendingPathExtension(extensionName)
+                try FileManager.default.moveItem(at: temporaryURL, to: destination)
+                result = .success(destination)
+            } catch { result = .failure(error) }
+            Task { @MainActor [weak self] in self?.finishSeekDownload(result, sourceURL: sourceVideoURL) }
+        }
+        downloadTask?.resume()
+    }
+
+    private func finishSeekDownload(_ result: Result<URL, Error>, sourceURL: URL) {
+        downloadTask = nil
+        guard sourceVideoURL == sourceURL else {
+            if case .success(let url) = result { try? FileManager.default.removeItem(at: url) }
+            return
+        }
+        switch result {
+        case .failure(let error):
+            pendingSeek = nil
+            player?._swiftOpenUIOnFailure?("Could not buffer this video for seeking: \(error.localizedDescription)")
+        case .success(let localURL):
+            guard let gst else { try? FileManager.default.removeItem(at: localURL); return }
+            localVideoURL = localURL
+            swift_openui_gst_player_stop(gst)
+            swift_openui_gst_player_set_uris(gst, localURL.absoluteString, sourceAudioURL?.absoluteString)
+            if pendingAutoplay { swift_openui_gst_player_play(gst) } else { swift_openui_gst_player_pause(gst) }
+        }
     }
 
     var currentTime: CMTime {

@@ -94,6 +94,13 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
     player->pipeline = player->playbin;
     swift_openui_gst_player_connect_sink(player, player->normal_appsink);
     g_object_set(player->playbin, "video-sink", player->video_bin, NULL);
+    // Keep progressively downloaded files on disk. Besides avoiding repeated
+    // network reads, queue2 can seek within media served by simple HTTP origins
+    // that do not implement byte-range requests.
+    gint flags = 0;
+    g_object_get(player->playbin, "flags", &flags, NULL);
+    flags |= (1 << 7); // GST_PLAY_FLAG_DOWNLOAD
+    g_object_set(player->playbin, "flags", flags, NULL);
     return player;
 }
 
@@ -214,6 +221,19 @@ static inline gboolean swift_openui_gst_player_seek(SwiftOpenUIGStreamerPlayer *
     swift_openui_gst_player_clear_pending_sample(player);
     return gst_element_seek_simple(player->pipeline, GST_FORMAT_TIME,
         GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE, nanoseconds);
+}
+
+static inline gboolean swift_openui_gst_player_is_seekable(SwiftOpenUIGStreamerPlayer *player) {
+    if (!player) return FALSE;
+    GstQuery *query = gst_query_new_seeking(GST_FORMAT_TIME);
+    gboolean seekable = FALSE;
+    if (gst_element_query(player->pipeline, query)) {
+        GstFormat format;
+        gint64 start, end;
+        gst_query_parse_seeking(query, &format, &seekable, &start, &end);
+    }
+    gst_query_unref(query);
+    return seekable;
 }
 
 static inline gint64 swift_openui_gst_player_position(SwiftOpenUIGStreamerPlayer *player) {
