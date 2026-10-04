@@ -14,7 +14,7 @@ private final class GTKWebPageBackend: _WebPageBackend {
 
     init(page: WebPage) {
         self.page = page
-        widget = swift_openui_webkit_new(page._isEphemeral ? 1 : 0)!
+        widget = webkit_web_view_new()!
         let webView = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: WebKitWebView.self)
         gtk_widget_set_hexpand(widget, 1)
         gtk_widget_set_vexpand(widget, 1)
@@ -45,30 +45,6 @@ private final class GTKWebPageBackend: _WebPageBackend {
         else { webkit_web_view_reload(webView()) }
     }
     func stopLoading() { webkit_web_view_stop_loading(webView()) }
-    func addUserScript(_ source: String) { swift_openui_webkit_add_user_script(webView(), source) }
-    func evaluateJavaScript(_ source: String, completion: @escaping (Result<String?, Error>) -> Void) {
-        let box = Unmanaged.passRetained(CallbackBox(completion))
-        swift_openui_webkit_evaluate(webView(), source, { value, error, context in
-            guard let context else { return }
-            let callback = Unmanaged<CallbackBox<Result<String?, Error>>>.fromOpaque(context).takeRetainedValue().callback
-            if let error { callback(.failure(NSError(domain: "WebKitGTK", code: 1, userInfo: [NSLocalizedDescriptionKey: String(cString: error)]))) }
-            else { callback(.success(value.map(String.init(cString:)))) }
-        }, box.toOpaque())
-    }
-    func getCookies(completion: @escaping ([(name: String, value: String, domain: String)]) -> Void) {
-        let state = CookieCallbackState(completion)
-        let box = Unmanaged.passRetained(state)
-        swift_openui_webkit_get_cookies(webView(), { name, value, domain, done, context in
-            guard let context else { return }
-            let state = Unmanaged<CookieCallbackState>.fromOpaque(context).takeUnretainedValue()
-            if done != 0 {
-                Unmanaged<CookieCallbackState>.fromOpaque(context).release()
-                state.completion(state.cookies)
-            } else if let name, let value, let domain {
-                state.cookies.append((String(cString: name), String(cString: value), String(cString: domain)))
-            }
-        }, box.toOpaque())
-    }
 
     private func changed(view: UnsafeMutablePointer<WebKitWebView>?, event: WebKitLoadEvent) {
         guard let view else { return }
@@ -96,17 +72,6 @@ private final class GTKWebPageBackend: _WebPageBackend {
     private func webView() -> UnsafeMutablePointer<WebKitWebView> {
         UnsafeMutableRawPointer(widget).assumingMemoryBound(to: WebKitWebView.self)
     }
-}
-
-private final class CallbackBox<T> {
-    let callback: (T) -> Void
-    init(_ callback: @escaping (T) -> Void) { self.callback = callback }
-}
-
-private final class CookieCallbackState {
-    var cookies: [(name: String, value: String, domain: String)] = []
-    let completion: ([(name: String, value: String, domain: String)]) -> Void
-    init(_ completion: @escaping ([(name: String, value: String, domain: String)]) -> Void) { self.completion = completion }
 }
 
 extension WebView: GTKRenderable {
