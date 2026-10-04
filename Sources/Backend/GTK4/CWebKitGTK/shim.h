@@ -48,7 +48,7 @@ typedef void (*SwiftOpenUIWebKitJavaScriptResult)(const char *, const char *, vo
 static inline void swift_openui_webkit_evaluate_finished(GObject *object, GAsyncResult *result, gpointer data) {
     gpointer *items = data;
     GError *error = NULL;
-    JSCValue *value = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(object), result, &error);
+    JSCValue *value = webkit_web_view_call_async_javascript_function_finish(WEBKIT_WEB_VIEW(object), result, &error);
     char *json = value ? jsc_value_to_json(value, 0) : NULL;
     ((SwiftOpenUIWebKitJavaScriptResult)items[0])(json, error ? error->message : NULL, items[1]);
     g_free(json);
@@ -61,8 +61,10 @@ static inline void swift_openui_webkit_evaluate(
     WebKitWebView *view, const char *source, SwiftOpenUIWebKitJavaScriptResult callback, void *context
 ) {
     gpointer *items = g_new(gpointer, 2); items[0] = (gpointer)callback; items[1] = context;
-    webkit_web_view_evaluate_javascript(view, source, -1, NULL, NULL, NULL,
-                                        swift_openui_webkit_evaluate_finished, items);
+    char *body = g_strdup_printf("return await (%s);", source);
+    webkit_web_view_call_async_javascript_function(view, body, -1, NULL, NULL, NULL, NULL,
+                                                    swift_openui_webkit_evaluate_finished, items);
+    g_free(body);
 }
 
 typedef void (*SwiftOpenUIWebKitCookieResult)(const char *, const char *, const char *, gboolean, void *);
