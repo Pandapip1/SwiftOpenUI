@@ -21,6 +21,18 @@ backend.
 
 ---
 
+## 2026-10-04 — Media — backend-neutral track and PiP capabilities
+
+- **Shared surface:** `MediaPlayerDriver` and `MediaPlayer` now expose
+  selectable `MediaTrack` values plus picture-in-picture capability/actions.
+  Apple platforms include an `AVMediaPlayerDriver` adapter that maps AVFoundation
+  audible, visual, and legible media-selection groups and AVKit PiP.
+- **Impact:** applications can build one custom player surface without importing
+  AVFoundation or AVKit. GTK retains safe no-op capability defaults until its
+  direct GStreamer backend supplies stream selection and desktop PiP.
+- **Ping:** Hummingbird media owner.
+- **Refs:** `Compat/MediaPlayer.swift`, `Compat/AVMediaPlayerDriver.swift`.
+
 ## 2026-10-03 — GTK4 — scope observation to each composite body
 
 - Shared surface: `Bindable` now reads a projected property during projection,

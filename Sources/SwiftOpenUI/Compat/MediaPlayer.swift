@@ -1,5 +1,18 @@
 import Foundation
 
+/// A selectable media rendition exposed by a backend.
+public struct MediaTrack: Hashable, Sendable {
+    public enum Kind: String, Sendable { case video, audio, subtitles }
+    public let id: String
+    public let kind: Kind
+    public let language: String?
+    public let label: String?
+
+    public init(id: String, kind: Kind, language: String? = nil, label: String? = nil) {
+        self.id = id; self.kind = kind; self.language = language; self.label = label
+    }
+}
+
 /// What a backend provides to play media for a `VideoPlayer`.
 public protocol MediaPlayerDriver: AnyObject {
     func open(url: URL, autoplay: Bool, startAt: Double)
@@ -10,6 +23,19 @@ public protocol MediaPlayerDriver: AnyObject {
     var currentTime: Double { get }
     var duration: Double { get }
     var isPlaying: Bool { get }
+    var tracks: [MediaTrack] { get }
+    func selectTrack(_ track: MediaTrack?)
+    var pictureInPictureSupported: Bool { get }
+    func startPictureInPicture()
+    func stopPictureInPicture()
+}
+
+public extension MediaPlayerDriver {
+    var tracks: [MediaTrack] { [] }
+    func selectTrack(_: MediaTrack?) {}
+    var pictureInPictureSupported: Bool { false }
+    func startPictureInPicture() {}
+    func stopPictureInPicture() {}
 }
 
 /// Controls playback for a `VideoPlayer`, standing in for AVKit's `AVPlayer`.
@@ -61,6 +87,12 @@ public final class MediaPlayer: @unchecked Sendable {
     public var currentTime: Double { driver?.currentTime ?? 0 }
     public var duration: Double { driver?.duration ?? 0 }
     public var isPlaying: Bool { driver?.isPlaying ?? false }
+
+    public var tracks: [MediaTrack] { driver?.tracks ?? [] }
+    public func selectTrack(_ track: MediaTrack?) { driver?.selectTrack(track) }
+    public var pictureInPictureSupported: Bool { driver?.pictureInPictureSupported ?? false }
+    public func startPictureInPicture() { driver?.startPictureInPicture() }
+    public func stopPictureInPicture() { driver?.stopPictureInPicture() }
 }
 
 /// A video surface with the platform's playback controls, driven by a `MediaPlayer`.
