@@ -9,12 +9,16 @@ import SwiftOpenUI
 
 @MainActor
 private final class GTKWebPageBackend: _WebPageBackend {
-    let widget: UnsafeMutablePointer<GtkWidget>
+    private(set) var widget: UnsafeMutablePointer<GtkWidget>!
     weak var page: WebPage?
 
     init(page: WebPage) {
         self.page = page
-        widget = webkit_web_view_new()!
+    }
+
+    func configure(persistentDataStore: Bool, userScripts: [WKUserScript]) {
+        guard widget == nil else { return }
+        widget = swift_openui_webkit_new(persistentDataStore ? 1 : 0)!
         let webView = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: WebKitWebView.self)
         gtk_widget_set_hexpand(widget, 1)
         gtk_widget_set_vexpand(widget, 1)
@@ -30,6 +34,15 @@ private final class GTKWebPageBackend: _WebPageBackend {
         }
         swift_openui_webkit_on_title_changed(webView, propertyChanged, Unmanaged.passUnretained(self).toOpaque())
         swift_openui_webkit_on_progress_changed(webView, propertyChanged, Unmanaged.passUnretained(self).toOpaque())
+        for script in userScripts {
+            let time: WebKitUserScriptInjectionTime = script.injectionTime == .atDocumentStart
+                ? WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START : WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_END
+            swift_openui_webkit_add_user_script(webView, script.source, time, script.isForMainFrameOnly ? 1 : 0)
+        }
+    }
+
+    func getAllCookies(_ completion: @escaping ([HTTPCookie]) -> Void) {
+        readCookies(completion)
     }
 
     func load(_ request: URLRequest) {
@@ -45,6 +58,38 @@ private final class GTKWebPageBackend: _WebPageBackend {
         else { webkit_web_view_reload(webView()) }
     }
     func stopLoading() { webkit_web_view_stop_loading(webView()) }
+    func evaluateJavaScript(_ source: String) async throws -> Any? {
+        try await withCheckedThrowingContinuation { continuation in
+            let box = Unmanaged.passRetained(JavaScriptCallback(continuation))
+            swift_openui_webkit_evaluate(webView(), source, { json, error, context in
+                guard let context else { return }
+                let continuation = Unmanaged<JavaScriptCallback>.fromOpaque(context).takeRetainedValue().continuation
+                if let error {
+                    continuation.resume(throwing: NSError(domain: "WebKit", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: String(cString: error)]))
+                } else if let json, let data = String(cString: json).data(using: .utf8) {
+                    continuation.resume(returning: try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]))
+                } else { continuation.resume(returning: nil) }
+            }, box.toOpaque())
+        }
+    }
+
+    private func readCookies(_ completion: @escaping ([HTTPCookie]) -> Void) {
+        let state = CookieState(completion)
+        let box = Unmanaged.passRetained(state)
+        swift_openui_webkit_get_cookies(webView(), { name, value, domain, done, context in
+            guard let context else { return }
+            let state = Unmanaged<CookieState>.fromOpaque(context).takeUnretainedValue()
+            if done != 0 {
+                Unmanaged<CookieState>.fromOpaque(context).release()
+                state.completion(state.cookies)
+            } else if let name, let value, let domain,
+                      let cookie = HTTPCookie(properties: [
+                        .name: String(cString: name), .value: String(cString: value),
+                        .domain: String(cString: domain), .path: "/"
+                      ]) { state.cookies.append(cookie) }
+        }, box.toOpaque())
+    }
 
     private func changed(view: UnsafeMutablePointer<WebKitWebView>?, event: WebKitLoadEvent) {
         guard let view else { return }
@@ -72,6 +117,17 @@ private final class GTKWebPageBackend: _WebPageBackend {
     private func webView() -> UnsafeMutablePointer<WebKitWebView> {
         UnsafeMutableRawPointer(widget).assumingMemoryBound(to: WebKitWebView.self)
     }
+}
+
+private final class JavaScriptCallback {
+    let continuation: CheckedContinuation<Any?, Error>
+    init(_ continuation: CheckedContinuation<Any?, Error>) { self.continuation = continuation }
+}
+
+private final class CookieState {
+    var cookies: [HTTPCookie] = []
+    let completion: ([HTTPCookie]) -> Void
+    init(_ completion: @escaping ([HTTPCookie]) -> Void) { self.completion = completion }
 }
 
 extension WebView: GTKRenderable {

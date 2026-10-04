@@ -7,6 +7,8 @@ import FoundationNetworking
 public final class WebPage {
     public struct Configuration: Sendable {
         public var loadsSubresources = true
+        public var websiteDataStore: WKWebsiteDataStore = .default()
+        public var userContentController = WKUserContentController()
         public init() {}
     }
 
@@ -24,6 +26,8 @@ public final class WebPage {
         case webContentProcessTerminated
     }
 
+    public struct FrameInfo: Sendable {}
+
     public private(set) var url: URL?
     public private(set) var title = ""
     public private(set) var isLoading = false
@@ -32,8 +36,17 @@ public final class WebPage {
 
     private enum PendingLoad { case request(URLRequest), html(String, URL) }
     private var pendingLoad: PendingLoad?
+    private let configuration: Configuration
     @_spi(SwiftOpenUIBackend) public var _backend: (any _WebPageBackend)? {
         didSet {
+            guard let backend = _backend else { return }
+            backend.configure(
+                persistentDataStore: configuration.websiteDataStore.isPersistent,
+                userScripts: configuration.userContentController.scripts
+            )
+            configuration.websiteDataStore.httpCookieStore.reader = { [weak backend] completion in
+                backend?.getAllCookies(completion) ?? completion([])
+            }
             _backend?.setCustomUserAgent(customUserAgent)
             if let pendingLoad { perform(pendingLoad) }
         }
@@ -45,7 +58,7 @@ public final class WebPage {
 
     @_spi(SwiftOpenUIBackend)
     public init(configuration: Configuration = Configuration(), initialURL: URL?) {
-        _ = configuration
+        self.configuration = configuration
         if let initialURL { pendingLoad = .request(URLRequest(url: initialURL)) }
     }
 
@@ -80,6 +93,25 @@ public final class WebPage {
         return eventsForCurrentNavigation()
     }
     public func stopLoading() { _backend?.stopLoading() }
+
+    @discardableResult
+    public func callJavaScript(
+        _ functionBody: String,
+        arguments: [String: Any] = [:],
+        in frame: FrameInfo? = nil,
+        contentWorld: WKContentWorld? = nil
+    ) async throws -> sending Any? {
+        _ = frame; _ = contentWorld
+        guard let backend = _backend else { throw NavigationError.pageClosed }
+        let names = arguments.keys.sorted()
+        let values = try names.map { key -> String in
+            let data = try JSONSerialization.data(withJSONObject: [arguments[key] ?? NSNull()])
+            let json = String(decoding: data, as: UTF8.self)
+            return String(json.dropFirst().dropLast())
+        }
+        let source = "(async function(\(names.joined(separator: ","))){\(functionBody)})(\(values.joined(separator: ",")))"
+        return try await backend.evaluateJavaScript(source)
+    }
 
     private var observers: [UUID: AsyncThrowingStream<NavigationEvent, any Error>.Continuation] = [:]
     private func eventsForCurrentNavigation() -> AsyncThrowingStream<NavigationEvent, any Error> {
@@ -128,4 +160,7 @@ public protocol _WebPageBackend: AnyObject {
     func setCustomUserAgent(_ userAgent: String?)
     func reload(fromOrigin: Bool)
     func stopLoading()
+    func configure(persistentDataStore: Bool, userScripts: [WKUserScript])
+    func getAllCookies(_ completion: @escaping ([HTTPCookie]) -> Void)
+    func evaluateJavaScript(_ source: String) async throws -> Any?
 }

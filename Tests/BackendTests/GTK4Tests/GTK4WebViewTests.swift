@@ -14,12 +14,19 @@ final class GTK4WebViewTests: XCTestCase {
     func testWebViewLoadsHTMLAndReportsNavigation() async throws {
         try await MainActor.run {
             guard gtk_is_initialized() != 0 else { throw XCTSkip("no GTK") }
-            let page = WebPage()
+            var configuration = WebPage.Configuration()
+            configuration.websiteDataStore = .nonPersistent()
+            configuration.userContentController.addUserScript(WKUserScript(
+                source: "document.title = 'SwiftOpenUI WebKit';",
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
+            ))
+            let page = WebPage(configuration: configuration)
             let widget = widgetFromOpaque(gtkRenderView(WebView(page)))
             let window = gtk_window_new()!
             gtk_window_set_child(windowPointer(window), widget)
             gtk_widget_set_visible(window, 1)
-            page.load(html: "<html><head><title>SwiftOpenUI WebKit</title></head><body>ready</body></html>")
+            page.load(html: "<html><head><title>Before injection</title></head><body>ready</body></html>")
 
             let deadline = Date().addingTimeInterval(10)
             while page.title != "SwiftOpenUI WebKit", Date() < deadline {
