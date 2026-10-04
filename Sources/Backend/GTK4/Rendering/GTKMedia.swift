@@ -23,7 +23,9 @@ final class GTKVideoDriver: MediaPlayerDriver {
         g_object_ref_sink(gpointer(widget))
         gst = swift_openui_gst_player_new()
         let context = Unmanaged.passUnretained(self).toOpaque()
-        timer = g_timeout_add(33, { data in
+        // Poll without blocking at a cadence fast enough for 60 fps sources.
+        // GStreamer still decides when a timestamped frame becomes eligible.
+        timer = g_timeout_add(8, { data in
             guard let data else { return 0 }
             return Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue().tick()
         }, context)

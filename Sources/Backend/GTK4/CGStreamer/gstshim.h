@@ -108,7 +108,10 @@ static inline gboolean swift_openui_gst_player_pull_frame(SwiftOpenUIGStreamerPl
     if (!player || !data || !length || !width || !height || !stride) return FALSE;
     GstSample *sample = player->pending_sample;
     player->pending_sample = NULL;
-    if (!sample) sample = gst_app_sink_try_pull_sample(GST_APP_SINK(player->appsink), 50 * GST_MSECOND);
+    // This runs on GTK's main thread. Never wait here: blocking the UI loop
+    // adds the timeout duration to every frame interval and produces uneven
+    // playback even when GStreamer is decoding on time.
+    if (!sample) sample = gst_app_sink_try_pull_sample(GST_APP_SINK(player->appsink), 0);
     if (!sample) return FALSE;
     GstCaps *caps = gst_sample_get_caps(sample);
     GstStructure *structure = caps ? gst_caps_get_structure(caps, 0) : NULL;

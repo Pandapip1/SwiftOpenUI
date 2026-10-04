@@ -21,6 +21,15 @@ backend.
 
 ---
 
+## 2026-10-04 — GTK4 — nonblocking high-frame-rate video polling
+
+- **Shared surface:** GTK4 polls the GStreamer appsink without blocking the UI
+  thread and uses an 8 ms cadence rather than a 33 ms cadence.
+- **Impact:** 60 fps media can present at full rate, and GTK event processing
+  no longer inherits up to 50 ms of latency from each unsuccessful frame pull.
+- **Ping:** Hummingbird media owner.
+- **Refs:** `GTKMedia.swift`, `CGStreamer/gstshim.h`.
+
 ## 2026-10-04 — GTK4 — present video by pipeline running time
 
 - **Shared surface:** the custom GStreamer video bin now inherits state and
