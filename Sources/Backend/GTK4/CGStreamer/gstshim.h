@@ -29,7 +29,10 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
         g_free(player);
         return NULL;
     }
-    g_object_set(player->appsink, "sync", FALSE, "max-buffers", 2, "drop", TRUE, NULL);
+    // Let the sink wait for the pipeline clock. Without synchronization the
+    // polling loop drains decoded video as fast as the CPU can produce it,
+    // racing several seconds ahead of clocked audio before stalling at EOS.
+    g_object_set(player->appsink, "sync", TRUE, "max-buffers", 2, "drop", TRUE, NULL);
     g_object_set(player->playbin, "video-sink", player->video_bin, NULL);
     return player;
 }

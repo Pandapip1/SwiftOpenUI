@@ -21,6 +21,15 @@ backend.
 
 ---
 
+## 2026-10-04 — GTK4 — synchronize appsink video to the pipeline clock
+
+- **Shared surface:** GTK4's GStreamer appsink now honors the pipeline clock
+  when delivering decoded video frames.
+- **Impact:** video no longer decodes several seconds ahead of clocked audio
+  and stalls near the end; bounded buffering still drops genuinely late frames.
+- **Ping:** Hummingbird media owner.
+- **Refs:** `CGStreamer/gstshim.h`.
+
 ## 2026-10-04 — GTK4 — direct GStreamer media surface
 
 - **Shared surface:** GTK4 playback now uses a `playbin3` pipeline with an
