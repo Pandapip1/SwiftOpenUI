@@ -132,11 +132,15 @@ static inline gboolean swift_openui_gst_player_pull_frame(SwiftOpenUIGStreamerPl
             pipeline_running_time = now - base;
         gst_object_unref(clock);
     }
-    if (GST_CLOCK_TIME_IS_VALID(sample_running_time)
-        && GST_CLOCK_TIME_IS_VALID(pipeline_running_time)
-        && sample_running_time > pipeline_running_time + 5 * GST_MSECOND) {
-        player->pending_sample = sample;
-        return FALSE;
+    if (GST_CLOCK_TIME_IS_VALID(sample_running_time)) {
+        gboolean clock_not_ready = !GST_CLOCK_TIME_IS_VALID(pipeline_running_time)
+            && sample_running_time > 5 * GST_MSECOND;
+        gboolean frame_is_early = GST_CLOCK_TIME_IS_VALID(pipeline_running_time)
+            && sample_running_time > pipeline_running_time + 5 * GST_MSECOND;
+        if (clock_not_ready || frame_is_early) {
+            player->pending_sample = sample;
+            return FALSE;
+        }
     }
     GstMapInfo map;
     if (!buffer || !gst_buffer_map(buffer, &map, GST_MAP_READ)) {

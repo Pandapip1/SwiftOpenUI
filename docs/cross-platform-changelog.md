@@ -28,8 +28,9 @@ backend.
   their segment-adjusted PTS reaches the pipeline's running time. GtkPicture
   uploads now preserve GStreamer's RGBA channel layout.
 - **Impact:** video advances with clocked audio instead of decoding to the end
-  immediately, pending frames are discarded across seeks/source changes, and
-  the displayed texture matches the decoded buffer.
+  immediately, including during the startup transition before the pipeline
+  clock becomes available. Pending frames are discarded across seeks/source
+  changes, and the displayed texture matches the decoded buffer.
 - **Ping:** Hummingbird media owner.
 - **Refs:** `CGStreamer/gstshim.h`, `CGTK/shim.h`.
 
