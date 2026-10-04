@@ -1263,7 +1263,13 @@ public func gtkSetSliderValue(slotID: Int, value: Double) -> Bool {
     guard let widget = gtkWidgetFromSlotID(slotID) else { return false }
     guard gtk_swift_is_widget(widget) != 0 else { return false }
     let range = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkRange.self)
+    let object = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
+    let state = g_object_get_data(object, gtkSliderStateKey).map {
+        Unmanaged<GTKSliderState>.fromOpaque($0).takeUnretainedValue()
+    }
+    state?.updatingFromModel = true
     gtk_range_set_value(range, value)
+    state?.updatingFromModel = false
     return true
 }
 

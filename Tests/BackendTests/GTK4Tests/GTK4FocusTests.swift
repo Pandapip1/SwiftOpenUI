@@ -52,6 +52,18 @@ final class GTK4FocusTests: XCTestCase {
                           "Slider should render as a GtkScale")
     }
 
+    func testSliderUpdatesBindingSynchronously() throws {
+        try requireGTK()
+
+        var value = 0.25
+        let widget = widgetFromOpaque(gtkRenderView(
+            Slider(value: Binding(get: { value }, set: { value = $0 }))
+        ))
+        let range = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkRange.self)
+        gtk_range_set_value(range, 0.75)
+        XCTAssertEqual(value, 0.75, accuracy: 0.001)
+    }
+
     func testButtonIsNotFocusableInput() throws {
         try requireGTK()
 

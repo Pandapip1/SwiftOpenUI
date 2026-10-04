@@ -4379,43 +4379,19 @@ extension Toggle: GTKRenderable {
 
 // MARK: - Slider GTK extension
 
-/// Debounced slider state. Accumulates value changes and commits after
-/// a short delay so dragging doesn't trigger constant rebuilds.
-/// Also manages interactive update deferral: suppresses host rebuilds
-/// during pointer drag, commits one rebuild on pointer release.
-private class SliderState {
+let gtkSliderStateKey = "swift-openui-slider-state"
+
+/// Keeps model-driven range updates from feeding back into the binding while
+/// user-driven changes commit immediately, matching SwiftUI's continuous Slider.
+final class GTKSliderState {
     let closure: (Double) -> Void
-    weak var host: GTKViewHost?
-    var pendingValue: Double = 0
-    var timerSource: guint = 0
-    var dragging = false
+    var updatingFromModel = false
 
     init(closure: @escaping (Double) -> Void) {
         self.closure = closure
     }
 
-    func scheduleCommit(_ value: Double) {
-        pendingValue = value
-        if timerSource != 0 {
-            g_source_remove(timerSource)
-            timerSource = 0
-        }
-        let ptr = Unmanaged.passRetained(self).toOpaque()
-        timerSource = g_timeout_add_full(
-            G_PRIORITY_DEFAULT_IDLE,
-            150,
-            { userData -> gboolean in
-                let state = Unmanaged<SliderState>.fromOpaque(userData!).takeUnretainedValue()
-                state.timerSource = 0
-                state.closure(state.pendingValue)
-                return 0 // G_SOURCE_REMOVE
-            },
-            ptr,
-            { userData in
-                Unmanaged<SliderState>.fromOpaque(userData!).release()
-            }
-        )
-    }
+    func commit(_ value: Double) { if !updatingFromModel { closure(value) } }
 }
 
 extension Slider: GTKRenderable, GTKDescribable {
@@ -4440,35 +4416,30 @@ extension Slider: GTKRenderable, GTKDescribable {
 
         let binding = value
         let stepVal = step
-        let state = SliderState { newValue in
+        let state = GTKSliderState { newValue in
             if abs(newValue - binding.wrappedValue) > stepVal * 0.01 {
                 binding.wrappedValue = newValue
             }
         }
-        state.host = GTKViewHost.getCurrentRebuilding()
         let statePtr = Unmanaged.passRetained(state).toOpaque()
+        g_object_set_data(UnsafeMutableRawPointer(scale).assumingMemoryBound(to: GObject.self),
+                          gtkSliderStateKey, statePtr)
 
-        // Value-changed: debounced binding update
+        // SwiftUI Slider updates its binding continuously while it moves.
         g_signal_connect_data(
             gpointer(scale),
             "value-changed",
             unsafeBitCast({ (widget: gpointer?, userData: gpointer?) in
-                let state = Unmanaged<SliderState>.fromOpaque(userData!).takeUnretainedValue()
+                let state = Unmanaged<GTKSliderState>.fromOpaque(userData!).takeUnretainedValue()
                 let rng = UnsafeMutableRawPointer(widget!).assumingMemoryBound(to: GtkRange.self)
-                state.scheduleCommit(gtk_range_get_value(rng))
+                state.commit(gtk_range_get_value(rng))
             } as @convention(c) (gpointer?, gpointer?) -> Void, to: GCallback.self),
             statePtr,
             { (userData: gpointer?, _: UnsafeMutablePointer<GClosure>?) in
-                Unmanaged<SliderState>.fromOpaque(userData!).release()
+                Unmanaged<GTKSliderState>.fromOpaque(userData!).release()
             },
             GConnectFlags(rawValue: 0)
         )
-
-        // Note: interactive deferral (beginInteractiveUpdate/endInteractiveUpdate)
-        // removed — GtkGestureClick's "released" doesn't fire when the slider
-        // drag starts (GTK cancels the click gesture). This left
-        // interactiveUpdateDepth stuck > 0, blocking all future rebuilds.
-        // The debounced commit (150ms) already prevents constant rebuilds.
 
         gtkApplyEnabledState(to: scale)
         return opaqueFromWidget(scale)

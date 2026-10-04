@@ -21,13 +21,23 @@ backend.
 
 ---
 
+## 2026-10-04 — GTK4 — continuous Slider bindings
+
+- **Shared surface:** GTK `Slider` now updates its binding continuously as the
+  thumb moves, while model-driven value reconciliation is excluded from the
+  control callback.
+- **Impact:** interactive scrubbers cannot be overwritten during the former
+  150 ms debounce window, and programmatic updates do not feed back as input.
+- **Ping:** GTK4 integrators.
+- **Refs:** `GTKRenderer.swift`, `GTK4DescriptorTree.swift`.
+
 ## 2026-10-04 — GTK4 — accurate media seeking
 
 - **Shared surface:** GStreamer-backed `AVPlayer.seek(to:)` now requests an
   accurate timestamp instead of restricting seeks to keyframes.
 - **Impact:** scrubbers and relative seek controls reach the requested playback
   time even when a source has sparse keyframes.
-- **Ping:** Hummingbird UI owner.
+- **Ping:** GTK4 integrators.
 - **Refs:** `gstshim.h`.
 
 ## 2026-10-04 — GTK4 — fullscreen control symbol mappings
@@ -35,7 +45,7 @@ backend.
 - **Shared surface:** mapped the SF Symbols for entering and exiting fullscreen
   to the bundled Material fullscreen glyphs.
 - **Impact:** non-Apple custom player controls render both fullscreen actions.
-- **Ping:** Hummingbird UI owner.
+- **Ping:** GTK4 integrators.
 - **Refs:** `SFSymbolCompatibility.swift`.
 
 ## 2026-10-04 — GTK4 — media-control symbol mappings
@@ -44,7 +54,7 @@ backend.
   ten-second seek, play, pause and picture-in-picture to bundled Material glyphs.
 - **Impact:** all non-Apple renderers resolve these controls instead of showing
   the missing-symbol placeholder.
-- **Ping:** Hummingbird UI owner.
+- **Ping:** GTK4 integrators.
 - **Refs:** `SFSymbolCompatibility.swift`, `GTK4SymbolMappingTests.swift`.
 
 ## 2026-10-04 — GTK4 — backend playback duration
@@ -53,7 +63,7 @@ backend.
   duration, exposed to backend consumers through `_swiftOpenUIDuration`.
 - **Impact:** GTK applications can build their own AVKit-style scrubber without
   adding application-specific public API to SwiftOpenUI.
-- **Ping:** Hummingbird media backend owner.
+- **Ping:** GTK4 media integrators.
 - **Refs:** `MediaPlayer.swift`, `GTKMedia.swift`, `MediaPlayerTests.swift`.
 
 ## 2026-10-04 — GTK4 — navigation chrome in sheets
@@ -63,7 +73,7 @@ backend.
 - **Impact:** sheet titles and toolbar actions such as Close remain visible.
 - **Layout:** expanding frames retain explicit minimum width and height requests,
   allowing content-sized sheets to honor form minimums.
-- **Ping:** Hummingbird UI owner.
+- **Ping:** GTK4 integrators.
 - **Refs:** `GTK4Backend.swift`, `GTKRenderer.swift`.
 
 ## 2026-10-04 — GTK4 — explicit aspect ratios in vertical layouts
@@ -72,7 +82,7 @@ backend.
   expansion from its content; its height is derived from the available width.
 - **Impact:** video surfaces in scrolling detail pages scale to their intended
   ratio instead of being squeezed to the viewport remainder.
-- **Ping:** Hummingbird UI owner.
+- **Ping:** GTK4 integrators.
 - **Refs:** `GTKRenderer.swift`, `GTK4PlayerSizingTests.swift`.
 
 ## 2026-10-04 — GTK4 — full-width custom navigation labels
@@ -81,7 +91,7 @@ backend.
   from a custom label through its native button wrapper.
 - **Impact:** full-width list rows keep their allocated width, so wrapped titles
   no longer collapse to a few characters.
-- **Ping:** Hummingbird UI owner.
+- **Ping:** GTK4 integrators.
 - **Refs:** `GTKNavigation.swift`, `GTK4NavigationTitleTests.swift`.
 
 ## 2026-10-04 — GTK4 — sample-driven video presentation
@@ -92,7 +102,7 @@ backend.
   available. Low-frame-rate media no longer keeps a high-refresh-rate
   compositor callback active, while 60 fps media can still present at full
   rate without blocking GTK's event loop.
-- **Ping:** Hummingbird media owner.
+- **Ping:** GTK4 media integrators.
 - **Refs:** `GTKMedia.swift`, `CGStreamer/gstshim.h`.
 
 ## 2026-10-04 — GTK4 — present video by pipeline running time
@@ -105,7 +115,7 @@ backend.
   immediately, including during the startup transition before the pipeline
   clock becomes available. Pending frames are discarded across seeks/source
   changes, and the displayed texture matches the decoded buffer.
-- **Ping:** Hummingbird media owner.
+- **Ping:** GTK4 media integrators.
 - **Refs:** `CGStreamer/gstshim.h`, `CGTK/shim.h`.
 
 ## 2026-10-04 — GTK4 — synchronize appsink video to the pipeline clock
@@ -114,7 +124,7 @@ backend.
   when delivering decoded video frames.
 - **Impact:** video no longer decodes several seconds ahead of clocked audio
   and stalls near the end; bounded buffering still drops genuinely late frames.
-- **Ping:** Hummingbird media owner.
+- **Ping:** GTK4 media integrators.
 - **Refs:** `CGStreamer/gstshim.h`.
 
 ## 2026-10-04 — GTK4 — direct GStreamer media surface
@@ -124,7 +134,7 @@ backend.
 - **Impact:** GTK can decode through the configured GStreamer plugin set while
   SwiftUI owns the rendered surface. The Nix development and packaging inputs
   now include GStreamer development headers and linker libraries.
-- **Ping:** Hummingbird media owner.
+- **Ping:** GTK4 media integrators.
 - **Refs:** `GTKMedia.swift`, `CGStreamer/gstshim.h`.
 
 ## 2026-10-04 — GTK4 — repaint video frames through DrawingArea
@@ -133,7 +143,7 @@ backend.
   a Cairo-backed `GtkDrawingArea` and repaints it on every frame.
 - **Impact:** avoids stale or black `GtkPicture` paintable snapshots when a
   running GStreamer stream replaces its texture.
-- **Ping:** Hummingbird media owner.
+- **Ping:** GTK4 media integrators.
 - **Refs:** `CGTK/shim.h`, `GTKMedia.swift`.
 
 The sink chain uses a parsed `videoconvert`/RGBA/appsink bin and disables
@@ -146,7 +156,7 @@ The video bin is explicitly synchronized to PLAYING before `playbin3` starts.
   external subtitle URL without exposing platform media types.
 - **Impact:** GTK forwards the URL to GStreamer `playbin3`'s `suburi` property;
   existing custom subtitle parsing remains available for styled overlays.
-- **Ping:** Hummingbird media owner.
+- **Ping:** GTK4 media integrators.
 - **Refs:** `Compat/MediaPlayer.swift`, `GTKMedia.swift`.
 
 ## 2026-10-04 — Media — backend-neutral track and PiP capabilities
@@ -158,7 +168,7 @@ The video bin is explicitly synchronized to PLAYING before `playbin3` starts.
 - **Impact:** applications can build one custom player surface without importing
   AVFoundation or AVKit. GTK retains safe no-op capability defaults until its
   direct GStreamer backend supplies stream selection and desktop PiP.
-- **Ping:** Hummingbird media owner.
+- **Ping:** GTK4 media integrators.
 - **Refs:** `Compat/MediaPlayer.swift`, `Compat/AVMediaPlayerDriver.swift`.
 
 ## 2026-10-03 — GTK4 — scope observation to each composite body
@@ -171,7 +181,7 @@ The video bin is explicitly synchronized to PLAYING before `playbin3` starts.
   Other backends retain their rendering paths; binding projection now performs
   one additional getter read. GTK regressions cover external binding updates and
   repeated child changes without ancestor rebuilds.
-- Ping: Pandapip1 / Hummingbird GTK maintainer.
+- Ping: GTK4 maintainers.
 - Refs: `GTK4ObservationIsolationTests`.
 
 ## 2026-07-10 — Windows (Win32) — shared symbol map entry + child-@State convergence

@@ -14,7 +14,7 @@ final class GTK4NavigationTitleTests: XCTestCase {
         if gtk_is_initialized() == 0 { _ = gtk_init_check() }
     }
 
-    /// Stands in for Hummingbird's `Route.item(ContentItem(...))`: an enum case
+    /// Stands in for an application's `Route.item(ContentItem(...))`: an enum case
     /// wrapping a struct, whose description is long and full of internals.
     private enum Route: Hashable {
         case item(Item)
