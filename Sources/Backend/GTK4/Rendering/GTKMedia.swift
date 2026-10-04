@@ -17,10 +17,8 @@ final class GTKVideoDriver: MediaPlayerDriver {
 
     init(player: MediaPlayer) {
         self.player = player
-        widget = gtk_picture_new()!
+        widget = gtk_swift_video_surface_new()!
         g_object_ref_sink(gpointer(widget))
-        gtk_swift_picture_set_can_shrink(widget, 1)
-        gtk_swift_picture_set_content_fit(widget, GTK_CONTENT_FIT_CONTAIN)
         gst = swift_openui_gst_player_new()
         let context = Unmanaged.passUnretained(self).toOpaque()
         timer = g_timeout_add(33, { data in
@@ -78,7 +76,7 @@ final class GTKVideoDriver: MediaPlayerDriver {
         var height: gint = 0
         var stride: gint = 0
         if swift_openui_gst_player_pull_frame(gst, &data, &length, &width, &height, &stride) != 0, let data {
-            gtk_swift_picture_set_pixels(widget, data, length, width, height, stride, GDK_MEMORY_R8G8B8A8)
+            gtk_swift_video_surface_set_pixels(widget, data, length, width, height, stride)
             swift_openui_gst_player_free_frame(data)
         }
         if duration > 0, currentTime >= duration - 0.1, !isPlaying { player?.onEnded?() }

@@ -321,6 +321,67 @@ gtk_swift_picture_set_pixels(GtkWidget *picture, const unsigned char *pixels,
     gtk_widget_queue_draw(picture);
 }
 
+typedef struct {
+    guint8 *pixels;
+    gint width;
+    gint height;
+    gint stride;
+} SwiftOpenUIVideoSurface;
+
+static inline void gtk_swift_video_surface_data_free(gpointer data) {
+    SwiftOpenUIVideoSurface *surface = data;
+    if (surface) { g_free(surface->pixels); g_free(surface); }
+}
+
+static inline void gtk_swift_video_surface_draw(GtkDrawingArea *area, cairo_t *cr,
+                                                 int width, int height, gpointer user_data) {
+    SwiftOpenUIVideoSurface *surface = user_data;
+    cairo_set_source_rgb(cr, 0, 0, 0);
+    cairo_paint(cr);
+    if (!surface || !surface->pixels || surface->width <= 0 || surface->height <= 0) return;
+    cairo_surface_t *image = cairo_image_surface_create_for_data(
+        surface->pixels, CAIRO_FORMAT_ARGB32, surface->width, surface->height, surface->stride);
+    double scale = MIN((double)width / surface->width, (double)height / surface->height);
+    double x = (width - surface->width * scale) / 2.0;
+    double y = (height - surface->height * scale) / 2.0;
+    cairo_save(cr);
+    cairo_translate(cr, x, y);
+    cairo_scale(cr, scale, scale);
+    cairo_set_source_surface(cr, image, 0, 0);
+    cairo_paint(cr);
+    cairo_restore(cr);
+    cairo_surface_destroy(image);
+}
+
+static inline GtkWidget *gtk_swift_video_surface_new(void) {
+    GtkWidget *area = gtk_drawing_area_new();
+    SwiftOpenUIVideoSurface *surface = g_new0(SwiftOpenUIVideoSurface, 1);
+    g_object_set_data_full(G_OBJECT(area), "swift-video-surface", surface, gtk_swift_video_surface_data_free);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), gtk_swift_video_surface_draw, surface, NULL);
+    return area;
+}
+
+static inline void gtk_swift_video_surface_set_pixels(GtkWidget *area, const guint8 *pixels,
+                                                       gsize length, gint width, gint height,
+                                                       gint stride) {
+    SwiftOpenUIVideoSurface *surface = g_object_get_data(G_OBJECT(area), "swift-video-surface");
+    if (!surface || !pixels || width <= 0 || height <= 0 || stride < width * 4 || length < (gsize)stride * height) return;
+    gsize outputStride = (gsize)width * 4;
+    guint8 *copy = g_realloc(surface->pixels, outputStride * (gsize)height);
+    surface->pixels = copy;
+    surface->width = width; surface->height = height; surface->stride = (gint)outputStride;
+    for (gint y = 0; y < height; y++) {
+        const guint8 *src = pixels + (gsize)y * stride;
+        guint8 *dst = copy + (gsize)y * outputStride;
+        for (gint x = 0; x < width; x++) {
+            // Cairo ARGB32 is BGRA in little-endian memory; GStreamer supplies RGBA.
+            dst[x * 4] = src[x * 4 + 2]; dst[x * 4 + 1] = src[x * 4 + 1];
+            dst[x * 4 + 2] = src[x * 4]; dst[x * 4 + 3] = src[x * 4 + 3];
+        }
+    }
+    gtk_widget_queue_draw(area);
+}
+
 // --- GtkExpander shims ---
 
 static inline GtkWidget *

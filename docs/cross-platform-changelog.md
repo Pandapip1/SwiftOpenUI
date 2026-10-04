@@ -31,6 +31,15 @@ backend.
 - **Ping:** Hummingbird media owner.
 - **Refs:** `GTKMedia.swift`, `CGStreamer/gstshim.h`.
 
+## 2026-10-04 — GTK4 — repaint video frames through DrawingArea
+
+- **Shared surface:** the GTK media surface now copies decoded RGBA frames into
+  a Cairo-backed `GtkDrawingArea` and repaints it on every frame.
+- **Impact:** avoids stale or black `GtkPicture` paintable snapshots when a
+  running GStreamer stream replaces its texture.
+- **Ping:** Hummingbird media owner.
+- **Refs:** `CGTK/shim.h`, `GTKMedia.swift`.
+
 ## 2026-10-04 — Media — external subtitle routing
 
 - **Shared surface:** `MediaPlayerDriver` and `MediaPlayer` expose an optional
