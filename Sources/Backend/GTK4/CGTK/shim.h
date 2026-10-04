@@ -308,6 +308,17 @@ gtk_swift_picture_set_can_shrink(GtkWidget *picture, gboolean can_shrink) {
     gtk_picture_set_can_shrink(GTK_PICTURE(picture), can_shrink);
 }
 
+static inline void
+gtk_swift_picture_set_pixels(GtkWidget *picture, const unsigned char *pixels,
+                             gsize length, int width, int height, int stride,
+                             GdkMemoryFormat format) {
+    GBytes *bytes = g_bytes_new(pixels, length);
+    GdkTexture *texture = gdk_memory_texture_new(width, height, format, bytes, (gsize)stride);
+    g_bytes_unref(bytes);
+    gtk_picture_set_paintable(GTK_PICTURE(picture), GDK_PAINTABLE(texture));
+    g_object_unref(texture);
+}
+
 // --- GtkExpander shims ---
 
 static inline GtkWidget *

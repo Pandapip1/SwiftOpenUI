@@ -1,83 +1,81 @@
 import CGTK
 import CGTKBridge
+import CGStreamer
 import Foundation
 import SwiftOpenUI
 
 // MARK: - VideoPlayer
 
-/// Plays through GTK's media stack (GtkVideo, backed by GStreamer when its plugins are installed).
-/// GtkMediaFile has no way to set HTTP request headers, and plays one muxed stream; callers that need
-/// either should pick sources accordingly or hand playback to an external player.
+/// Direct GStreamer playbin3 driver. Frames are delivered through appsink and
+/// uploaded to a GtkPicture, avoiding GtkVideo's single-stream limitations.
 final class GTKVideoDriver: MediaPlayerDriver {
     let widget: UnsafeMutablePointer<GtkWidget>
     private weak var player: MediaPlayer?
-    private var observedStream: UnsafeMutablePointer<GtkMediaStream>?
+    private var gst: UnsafeMutablePointer<SwiftOpenUIGStreamerPlayer>?
     private var pendingSeek: Double?
+    private var timer: guint = 0
 
     init(player: MediaPlayer) {
         self.player = player
-        widget = gtk_swift_video_new()
+        widget = gtk_picture_new()!
         g_object_ref_sink(gpointer(widget))
+        gst = swift_openui_gst_player_new()
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        timer = g_timeout_add(33, { data in
+            guard let data else { return 0 }
+            return Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue().tick()
+        }, context)
     }
 
     deinit {
-        gtk_swift_video_clear(widget)
+        if timer != 0 { g_source_remove(timer) }
+        if let gst { swift_openui_gst_player_free(gst) }
         g_object_unref(gpointer(widget))
     }
 
-    private var stream: UnsafeMutablePointer<GtkMediaStream>? { gtk_swift_video_stream(widget) }
-
     func open(url: URL, autoplay: Bool, startAt: Double) {
-        if let error = gtk_swift_video_prerequisite_error() {
+        guard let gst else {
             stop()
-            player?.onFailure?(String(cString: error))
+            player?.onFailure?("GStreamer playbin3 is unavailable")
             return
         }
         pendingSeek = startAt > 0 ? startAt : nil
-        gtk_swift_video_open_uri(widget, url.absoluteString, autoplay ? 1 : 0)
-        observeCurrentStream()
+        swift_openui_gst_player_stop(gst)
+        swift_openui_gst_player_set_uri(gst, url.absoluteString)
+        if autoplay { swift_openui_gst_player_play(gst) } else { swift_openui_gst_player_pause(gst) }
     }
 
-    func play() { stream.map { gtk_media_stream_play($0) } }
-    func pause() { stream.map { gtk_media_stream_pause($0) } }
+    func play() { if let gst { swift_openui_gst_player_play(gst) } }
+    func pause() { if let gst { swift_openui_gst_player_pause(gst) } }
 
     func seek(to seconds: Double) {
-        guard let s = stream else { pendingSeek = seconds; return }
-        gtk_media_stream_seek(s, gint64(max(0, seconds) * 1_000_000))
+        guard let gst else { pendingSeek = seconds; return }
+        _ = swift_openui_gst_player_seek(gst, gint64(max(0, seconds) * 1_000_000_000))
     }
 
     func stop() {
-        gtk_swift_video_clear(widget)
-        observedStream = nil
+        if let gst { swift_openui_gst_player_stop(gst) }
         pendingSeek = nil
     }
 
-    var currentTime: Double { stream.map { Double(gtk_media_stream_get_timestamp($0)) / 1_000_000 } ?? 0 }
-    var duration: Double { stream.map { Double(gtk_media_stream_get_duration($0)) / 1_000_000 } ?? 0 }
-    var isPlaying: Bool { stream.map { gtk_media_stream_get_playing($0) != 0 } ?? false }
+    var currentTime: Double { gst.map { Double(swift_openui_gst_player_position($0)) / 1_000_000_000 } ?? 0 }
+    var duration: Double { gst.map { Double(swift_openui_gst_player_duration($0)) / 1_000_000_000 } ?? 0 }
+    var isPlaying: Bool { gst.map { swift_openui_gst_player_is_playing($0) != 0 } ?? false }
 
-    // MARK: signals
-
-    private func observeCurrentStream() {
-        guard let s = stream, s != observedStream else { return }
-        observedStream = s
-        let unmanaged = Unmanaged.passUnretained(self).toOpaque()
-        func connect(_ signal: String, _ handler: @escaping @convention(c) (gpointer?, gpointer?, gpointer?) -> Void) {
-            g_signal_connect_data(gpointer(s), signal, unsafeBitCast(handler, to: GCallback.self), unmanaged, nil, GConnectFlags(rawValue: 0))
+    private func tick() -> gboolean {
+        if let target = pendingSeek, duration > 0 { pendingSeek = nil; seek(to: target) }
+        guard let gst else { return 1 }
+        var data: UnsafeMutablePointer<UInt8>?
+        var length: gsize = 0
+        var width: gint = 0
+        var height: gint = 0
+        var stride: gint = 0
+        if swift_openui_gst_player_pull_frame(gst, &data, &length, &width, &height, &stride) != 0, let data {
+            gtk_swift_picture_set_pixels(widget, data, length, width, height, stride, GDK_MEMORY_R8G8B8A8)
+            swift_openui_gst_player_free_frame(data)
         }
-        connect("notify::prepared") { _, _, data in
-            let driver = Unmanaged<GTKVideoDriver>.fromOpaque(data!).takeUnretainedValue()
-            if let target = driver.pendingSeek { driver.pendingSeek = nil; driver.seek(to: target) }
-        }
-        connect("notify::ended") { _, _, data in
-            let driver = Unmanaged<GTKVideoDriver>.fromOpaque(data!).takeUnretainedValue()
-            if let s = driver.stream, gtk_media_stream_get_ended(s) != 0 { driver.player?.onEnded?() }
-        }
-        connect("notify::error") { _, _, data in
-            let driver = Unmanaged<GTKVideoDriver>.fromOpaque(data!).takeUnretainedValue()
-            guard let s = driver.stream, let err = gtk_media_stream_get_error(s) else { return }
-            driver.player?.onFailure?(String(cString: err.pointee.message))
-        }
+        if duration > 0, currentTime >= duration - 0.1, !isPlaying { player?.onEnded?() }
+        return 1
     }
 }
 
@@ -90,7 +88,7 @@ extension VideoPlayer: GTKRenderable {
             driver = GTKVideoDriver(player: player)
             player.driver = driver   // flushes any `open` queued before the view existed
         }
-        // The surface is re-created on every render; keep one GtkVideo alive so playback is not interrupted.
+        // The surface is re-created on every render; keep one GtkPicture alive so playback is not interrupted.
         if gtk_widget_get_parent(driver.widget) != nil { gtk_widget_unparent(driver.widget) }
         return opaqueFromWidget(driver.widget)
     }

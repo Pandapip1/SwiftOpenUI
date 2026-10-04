@@ -1,0 +1,6 @@
+module CGStreamer [system] {
+    header "gstshim.h"
+    link "gstreamer-1.0"
+    link "gstapp-1.0"
+    export *
+}

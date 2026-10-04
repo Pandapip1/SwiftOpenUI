@@ -21,6 +21,16 @@ backend.
 
 ---
 
+## 2026-10-04 — GTK4 — direct GStreamer media surface
+
+- **Shared surface:** GTK4 playback now uses a `playbin3` pipeline with an
+  `appsink` RGBA surface, replacing `GtkVideo` for embedded playback.
+- **Impact:** GTK can decode through the configured GStreamer plugin set while
+  SwiftUI owns the rendered surface. The Nix development and packaging inputs
+  now include GStreamer development headers and linker libraries.
+- **Ping:** Hummingbird media owner.
+- **Refs:** `GTKMedia.swift`, `CGStreamer/gstshim.h`.
+
 ## 2026-10-04 — Media — backend-neutral track and PiP capabilities
 
 - **Shared surface:** `MediaPlayerDriver` and `MediaPlayer` now expose

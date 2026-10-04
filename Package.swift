@@ -64,6 +64,12 @@ targets += [
         pkgConfig: "gtk4",
         providers: [.apt(["libgtk-4-dev"])]
     ),
+    .systemLibrary(
+        name: "CGStreamer",
+        path: "Sources/Backend/GTK4/CGStreamer",
+        pkgConfig: "gstreamer-app-1.0",
+        providers: [.apt(["libgstreamer1.0-dev", "libgstreamer-plugins-base1.0-dev"])]
+    ),
     .target(
         name: "CGTKBridge",
         dependencies: ["CGTK"],
@@ -71,7 +77,7 @@ targets += [
     ),
     .target(
         name: "BackendGTK4",
-        dependencies: ["SwiftOpenUI", "CGTK", "CGTKBridge", "SwiftOpenUISymbols"],
+        dependencies: ["SwiftOpenUI", "CGTK", "CGTKBridge", "CGStreamer", "SwiftOpenUISymbols"],
         path: "Sources/Backend/GTK4/Rendering",
         linkerSettings: [
             // FontConfig is used by the process-local font registration
@@ -81,6 +87,8 @@ targets += [
             // it explicitly at link time; declare it here to keep the
             // FcConfig* symbols resolvable.
             .linkedLibrary("fontconfig"),
+            .linkedLibrary("gstreamer-1.0"),
+            .linkedLibrary("gstapp-1.0"),
         ]
     ),
     .testTarget(

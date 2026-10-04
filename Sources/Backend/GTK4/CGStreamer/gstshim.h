@@ -1,0 +1,115 @@
+#ifndef SWIFT_OPENUI_GSTSHIM_H
+#define SWIFT_OPENUI_GSTSHIM_H
+
+#include <gst/app/gstappsink.h>
+#include <gst/gst.h>
+
+typedef struct {
+    GstElement *playbin;
+    GstElement *sink;
+} SwiftOpenUIGStreamerPlayer;
+
+static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
+    static gsize initialized = 0;
+    if (g_once_init_enter(&initialized)) {
+        gst_init(NULL, NULL);
+        g_once_init_leave(&initialized, 1);
+    }
+    SwiftOpenUIGStreamerPlayer *player = g_new0(SwiftOpenUIGStreamerPlayer, 1);
+    player->playbin = gst_element_factory_make("playbin3", NULL);
+    player->sink = gst_element_factory_make("appsink", NULL);
+    if (!player->playbin || !player->sink) {
+        if (player->playbin) gst_object_unref(player->playbin);
+        if (player->sink) gst_object_unref(player->sink);
+        g_free(player);
+        return NULL;
+    }
+    GstCaps *caps = gst_caps_from_string("video/x-raw,format=RGBA");
+    g_object_set(player->sink, "caps", caps, "sync", TRUE, "max-buffers", 2, "drop", TRUE, NULL);
+    gst_caps_unref(caps);
+    g_object_set(player->playbin, "video-sink", player->sink, NULL);
+    return player;
+}
+
+static inline void swift_openui_gst_player_free(SwiftOpenUIGStreamerPlayer *player) {
+    if (!player) return;
+    gst_element_set_state(player->playbin, GST_STATE_NULL);
+    gst_object_unref(player->playbin);
+    g_free(player);
+}
+
+static inline void swift_openui_gst_player_set_uri(SwiftOpenUIGStreamerPlayer *player, const char *uri) {
+    if (player && player->playbin) g_object_set(player->playbin, "uri", uri, NULL);
+}
+
+static inline void swift_openui_gst_player_set_subtitle_uri(SwiftOpenUIGStreamerPlayer *player, const char *uri) {
+    if (player && player->playbin) g_object_set(player->playbin, "suburi", uri, NULL);
+}
+
+static inline void swift_openui_gst_player_play(SwiftOpenUIGStreamerPlayer *player) {
+    if (player) gst_element_set_state(player->playbin, GST_STATE_PLAYING);
+}
+
+static inline void swift_openui_gst_player_pause(SwiftOpenUIGStreamerPlayer *player) {
+    if (player) gst_element_set_state(player->playbin, GST_STATE_PAUSED);
+}
+
+static inline void swift_openui_gst_player_stop(SwiftOpenUIGStreamerPlayer *player) {
+    if (player) gst_element_set_state(player->playbin, GST_STATE_NULL);
+}
+
+static inline gboolean swift_openui_gst_player_seek(SwiftOpenUIGStreamerPlayer *player, gint64 nanoseconds) {
+    return player ? gst_element_seek_simple(player->playbin, GST_FORMAT_TIME,
+        GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT, nanoseconds) : FALSE;
+}
+
+static inline gint64 swift_openui_gst_player_position(SwiftOpenUIGStreamerPlayer *player) {
+    gint64 value = 0;
+    return player && gst_element_query_position(player->playbin, GST_FORMAT_TIME, &value) ? value : 0;
+}
+
+static inline gint64 swift_openui_gst_player_duration(SwiftOpenUIGStreamerPlayer *player) {
+    gint64 value = 0;
+    return player && gst_element_query_duration(player->playbin, GST_FORMAT_TIME, &value) ? value : 0;
+}
+
+static inline gboolean swift_openui_gst_player_is_playing(SwiftOpenUIGStreamerPlayer *player) {
+    GstState state = GST_STATE_NULL;
+    return player && gst_element_get_state(player->playbin, &state, NULL, 0) != GST_STATE_CHANGE_FAILURE && state == GST_STATE_PLAYING;
+}
+
+// Returns a newly allocated RGBA frame. The caller owns *data and must g_free it.
+static inline gboolean swift_openui_gst_player_pull_frame(SwiftOpenUIGStreamerPlayer *player,
+                                                            guint8 **data, gsize *length,
+                                                            gint *width, gint *height, gint *stride) {
+    if (!player || !data || !length || !width || !height || !stride) return FALSE;
+    GstSample *sample = gst_app_sink_try_pull_sample(GST_APP_SINK(player->sink), 0);
+    if (!sample) return FALSE;
+    GstCaps *caps = gst_sample_get_caps(sample);
+    GstStructure *structure = caps ? gst_caps_get_structure(caps, 0) : NULL;
+    gint w = 0, h = 0;
+    if (!structure || !gst_structure_get_int(structure, "width", &w) || !gst_structure_get_int(structure, "height", &h)) {
+        gst_sample_unref(sample);
+        return FALSE;
+    }
+    GstBuffer *buffer = gst_sample_get_buffer(sample);
+    GstMapInfo map;
+    if (!buffer || !gst_buffer_map(buffer, &map, GST_MAP_READ)) {
+        gst_sample_unref(sample);
+        return FALSE;
+    }
+    guint8 *copy = g_malloc(map.size);
+    memcpy(copy, map.data, map.size);
+    gst_buffer_unmap(buffer, &map);
+    gst_sample_unref(sample);
+    *data = copy;
+    *length = map.size;
+    *width = w;
+    *height = h;
+    *stride = (gint)(map.size / (gsize)h);
+    return TRUE;
+}
+
+static inline void swift_openui_gst_player_free_frame(guint8 *data) { g_free(data); }
+
+#endif
