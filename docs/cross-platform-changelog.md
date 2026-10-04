@@ -42,6 +42,7 @@ backend.
 
 The sink chain uses a parsed `videoconvert`/RGBA/appsink bin and disables
 appsink clock synchronization so frame pulls do not wait on a UI-thread clock.
+The video bin is explicitly synchronized to PLAYING before `playbin3` starts.
 
 ## 2026-10-04 — Media — external subtitle routing
 

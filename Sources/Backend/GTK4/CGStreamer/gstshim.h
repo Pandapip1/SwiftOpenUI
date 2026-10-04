@@ -51,6 +51,7 @@ static inline void swift_openui_gst_player_set_subtitle_uri(SwiftOpenUIGStreamer
 
 static inline void swift_openui_gst_player_play(SwiftOpenUIGStreamerPlayer *player) {
     if (player) {
+        gst_element_set_state(player->video_bin, GST_STATE_PLAYING);
         gst_element_set_state(player->playbin, GST_STATE_PLAYING);
     }
 }
