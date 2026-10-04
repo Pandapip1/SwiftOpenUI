@@ -328,48 +328,23 @@ typedef struct {
     gint stride;
 } SwiftOpenUIVideoSurface;
 
-static inline void gtk_swift_video_surface_data_free(gpointer data) {
-    SwiftOpenUIVideoSurface *surface = data;
-    if (surface) { g_free(surface->pixels); g_free(surface); }
-}
-
-static inline void gtk_swift_video_surface_draw(GtkDrawingArea *area, cairo_t *cr,
-                                                 int width, int height, gpointer user_data) {
-    SwiftOpenUIVideoSurface *surface = user_data;
-    cairo_set_source_rgb(cr, 0, 0, 0);
-    cairo_paint(cr);
-    if (!surface || !surface->pixels || surface->width <= 0 || surface->height <= 0) return;
-    cairo_surface_t *image = cairo_image_surface_create_for_data(
-        surface->pixels, CAIRO_FORMAT_ARGB32, surface->width, surface->height, surface->stride);
-    double scale = MIN((double)width / surface->width, (double)height / surface->height);
-    double x = (width - surface->width * scale) / 2.0;
-    double y = (height - surface->height * scale) / 2.0;
-    cairo_save(cr);
-    cairo_translate(cr, x, y);
-    cairo_scale(cr, scale, scale);
-    cairo_set_source_surface(cr, image, 0, 0);
-    cairo_paint(cr);
-    cairo_restore(cr);
-    cairo_surface_destroy(image);
-}
-
 static inline GtkWidget *gtk_swift_video_surface_new(void) {
-    GtkWidget *area = gtk_drawing_area_new();
-    SwiftOpenUIVideoSurface *surface = g_new0(SwiftOpenUIVideoSurface, 1);
-    g_object_set_data_full(G_OBJECT(area), "swift-video-surface", surface, gtk_swift_video_surface_data_free);
-    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), gtk_swift_video_surface_draw, surface, NULL);
-    return area;
+    static const guint8 black[4] = { 0, 0, 0, 255 };
+    GtkWidget *picture = gtk_swift_picture_new_for_pixels(
+        black, sizeof(black), 1, 1, 4, GDK_MEMORY_R8G8B8A8);
+    gtk_picture_set_content_fit(GTK_PICTURE(picture), GTK_CONTENT_FIT_CONTAIN);
+    gtk_picture_set_can_shrink(GTK_PICTURE(picture), TRUE);
+    gtk_widget_set_hexpand(picture, TRUE);
+    gtk_widget_set_vexpand(picture, TRUE);
+    return picture;
 }
 
 static inline void gtk_swift_video_surface_set_pixels(GtkWidget *area, const guint8 *pixels,
                                                        gsize length, gint width, gint height,
                                                        gint stride) {
-    SwiftOpenUIVideoSurface *surface = g_object_get_data(G_OBJECT(area), "swift-video-surface");
-    if (!surface || !pixels || width <= 0 || height <= 0 || stride < width * 4 || length < (gsize)stride * height) return;
+    if (!pixels || width <= 0 || height <= 0 || stride < width * 4 || length < (gsize)stride * height) return;
     gsize outputStride = (gsize)width * 4;
-    guint8 *copy = g_realloc(surface->pixels, outputStride * (gsize)height);
-    surface->pixels = copy;
-    surface->width = width; surface->height = height; surface->stride = (gint)outputStride;
+    guint8 *copy = g_malloc(outputStride * (gsize)height);
     for (gint y = 0; y < height; y++) {
         const guint8 *src = pixels + (gsize)y * stride;
         guint8 *dst = copy + (gsize)y * outputStride;
@@ -379,6 +354,11 @@ static inline void gtk_swift_video_surface_set_pixels(GtkWidget *area, const gui
             dst[x * 4 + 2] = src[x * 4]; dst[x * 4 + 3] = src[x * 4 + 3];
         }
     }
+    GBytes *bytes = g_bytes_new_take(copy, outputStride * (gsize)height);
+    GdkTexture *texture = gdk_memory_texture_new(width, height, GDK_MEMORY_B8G8R8A8, bytes, outputStride);
+    g_bytes_unref(bytes);
+    gtk_picture_set_paintable(GTK_PICTURE(area), GDK_PAINTABLE(texture));
+    g_object_unref(texture);
     gtk_widget_queue_draw(area);
 }
 

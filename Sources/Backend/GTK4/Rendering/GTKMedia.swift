@@ -14,6 +14,8 @@ final class GTKVideoDriver: MediaPlayerDriver {
     private var gst: UnsafeMutablePointer<SwiftOpenUIGStreamerPlayer>?
     private var pendingSeek: Double?
     private var timer: guint = 0
+    private var startSource: guint = 0
+    private var pendingAutoplay = true
 
     init(player: MediaPlayer) {
         self.player = player
@@ -29,6 +31,7 @@ final class GTKVideoDriver: MediaPlayerDriver {
 
     deinit {
         if timer != 0 { g_source_remove(timer) }
+        if startSource != 0 { g_source_remove(startSource) }
         if let gst { swift_openui_gst_player_free(gst) }
         g_object_unref(gpointer(widget))
     }
@@ -42,7 +45,17 @@ final class GTKVideoDriver: MediaPlayerDriver {
         pendingSeek = startAt > 0 ? startAt : nil
         swift_openui_gst_player_stop(gst)
         swift_openui_gst_player_set_uri(gst, url.absoluteString)
-        if autoplay { swift_openui_gst_player_play(gst) } else { swift_openui_gst_player_pause(gst) }
+        pendingAutoplay = autoplay
+        if startSource != 0 { g_source_remove(startSource) }
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        startSource = g_idle_add({ data in
+            guard let data else { return 0 }
+            let driver = Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue()
+            driver.startSource = 0
+            guard let gst = driver.gst else { return 0 }
+            if driver.pendingAutoplay { swift_openui_gst_player_play(gst) } else { swift_openui_gst_player_pause(gst) }
+            return 0
+        }, context)
     }
 
     func play() { if let gst { swift_openui_gst_player_play(gst) } }
