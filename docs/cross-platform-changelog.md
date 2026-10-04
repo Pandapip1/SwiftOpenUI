@@ -203,3 +203,14 @@ The video bin is explicitly synchronized to PLAYING before `playbin3` starts.
 - **Ping:** Win32 agent (symbol map); Win32 + Linux agents (reconciliation).
 - **Refs:** SwiftOpenUI `629323a`;
   `docs/issues/win32-outlinegroup-dropdown-followups.md`.
+
+## 2026-10-04 — GTK4 — Slider editing lifecycle
+
+- **Shared surface:** `Slider` now includes SwiftUI's `onEditingChanged`
+  initializer callback.
+- **Impact:** GTK reports pointer press and release through a passive event
+  controller while continuing to update the binding for every range change.
+  Applications can keep interactive state stable during continuous scrubbing
+  without interfering with `GtkRange` gesture handling.
+- **Ping:** GTK4 integrators.
+- **Refs:** `Slider.swift`, `GTKRenderer.swift`.

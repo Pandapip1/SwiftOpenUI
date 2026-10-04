@@ -4441,6 +4441,31 @@ extension Slider: GTKRenderable, GTKDescribable {
             GConnectFlags(rawValue: 0)
         )
 
+        let editingController = gtk_event_controller_legacy_new()!
+        gtk_event_controller_set_propagation_phase(editingController, GTK_PHASE_CAPTURE)
+        let editingChanged = Unmanaged.passRetained(BoolClosureBox(onEditingChanged)).toOpaque()
+        g_signal_connect_data(
+            gpointer(editingController), "event",
+            unsafeBitCast({ (_: gpointer?, event: OpaquePointer?, data: gpointer?) -> gboolean in
+                guard let event, let data else { return 0 }
+                let callback = Unmanaged<BoolClosureBox>.fromOpaque(data).takeUnretainedValue().closure
+                switch gdk_event_get_event_type(event) {
+                case GDK_BUTTON_PRESS, GDK_TOUCH_BEGIN:
+                    callback(true)
+                case GDK_BUTTON_RELEASE, GDK_TOUCH_END, GDK_TOUCH_CANCEL:
+                    callback(false)
+                default:
+                    break
+                }
+                return 0
+            } as @convention(c) (gpointer?, OpaquePointer?, gpointer?) -> gboolean,
+            to: GCallback.self),
+            editingChanged,
+            { data, _ in Unmanaged<BoolClosureBox>.fromOpaque(data!).release() },
+            GConnectFlags(rawValue: 0)
+        )
+        gtk_widget_add_controller(scale, editingController)
+
         gtkApplyEnabledState(to: scale)
         return opaqueFromWidget(scale)
     }
