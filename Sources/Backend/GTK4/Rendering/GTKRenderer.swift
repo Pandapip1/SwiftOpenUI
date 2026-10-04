@@ -1542,10 +1542,16 @@ extension FrameView: GTKRenderable, GTKDescribable {
         // in these cases so GTK's expand/fill system handles the flexible axis.
         let heightFree = height == nil && minHeight == nil && maxHeight == nil
         let widthFree  = width == nil && minWidth == nil && (maxWidth == nil || maxWidth == .infinity)
-        let widthMayGrowWithParent = maxWidth == .infinity
-            || (width == nil && maxWidth == nil && childExpH)
-        let heightMayGrowWithParent = maxHeight == .infinity
-            || (height == nil && maxHeight == nil && childExpV)
+        let widthMayGrowWithParent = width == nil
+            && (
+                (maxWidth != nil && maxWidth == .infinity)
+                || (maxWidth == nil && childExpH)
+            )
+        let heightMayGrowWithParent = height == nil
+            && (
+                (maxHeight != nil && maxHeight == .infinity)
+                || (maxHeight == nil && childExpV)
+            )
 
         if widthMayGrowWithParent || heightMayGrowWithParent {
             return gtkFrameParentFlexibleAxes(
@@ -1689,10 +1695,16 @@ extension FrameView: GTKRenderable, GTKDescribable {
         let wrapper = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
         gtkMarkLayoutTransparent(wrapper, content: child)
 
-        let widthMayGrowWithParent = maxWidth == .infinity
-            || (width == nil && maxWidth == nil && childExpH)
-        let heightMayGrowWithParent = maxHeight == .infinity
-            || (height == nil && maxHeight == nil && childExpV)
+        let widthMayGrowWithParent = width == nil
+            && (
+                (maxWidth != nil && maxWidth == .infinity)
+                || (maxWidth == nil && childExpH)
+            )
+        let heightMayGrowWithParent = height == nil
+            && (
+                (maxHeight != nil && maxHeight == .infinity)
+                || (maxHeight == nil && childExpV)
+            )
 
         // Expansion controls how additional parent space is consumed; it must
         // not erase an explicit minimum from the widget's size request.
