@@ -21,13 +21,14 @@ backend.
 
 ---
 
-## 2026-10-04 — GTK4 — compositor-clocked video presentation
+## 2026-10-04 — GTK4 — sample-driven video presentation
 
-- **Shared surface:** GTK4 checks the asynchronous GStreamer appsink without
-  blocking whenever GTK's compositor frame clock requests a new frame.
-- **Impact:** 60 fps media can present at full rate, and GTK event processing
-  no longer inherits up to 50 ms of latency from each unsuccessful frame pull
-  or wakes on an independent fixed-rate timer.
+- **Shared surface:** GStreamer signals when a clock-eligible appsink sample is
+  available and coalesces presentation onto GTK's main context.
+- **Impact:** GTK invalidates the video surface only when a new stream frame is
+  available. Low-frame-rate media no longer keeps a high-refresh-rate
+  compositor callback active, while 60 fps media can still present at full
+  rate without blocking GTK's event loop.
 - **Ping:** Hummingbird media owner.
 - **Refs:** `GTKMedia.swift`, `CGStreamer/gstshim.h`.
 

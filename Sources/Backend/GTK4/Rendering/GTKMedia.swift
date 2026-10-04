@@ -13,7 +13,6 @@ final class GTKVideoDriver: MediaPlayerDriver {
     private weak var player: MediaPlayer?
     private var gst: UnsafeMutablePointer<SwiftOpenUIGStreamerPlayer>?
     private var pendingSeek: Double?
-    private var tickCallback: guint = 0
     private var startSource: guint = 0
     private var pendingAutoplay = true
 
@@ -23,16 +22,15 @@ final class GTKVideoDriver: MediaPlayerDriver {
         g_object_ref_sink(gpointer(widget))
         gst = swift_openui_gst_player_new()
         let context = Unmanaged.passUnretained(self).toOpaque()
-        // Present on GTK's compositor frame clock. GStreamer decodes
-        // asynchronously; each display tick only checks for an eligible frame.
-        tickCallback = gtk_widget_add_tick_callback(widget, { _, _, data in
-            guard let data else { return 0 }
-            return Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue().tick()
-        }, context, nil)
+        // GStreamer invokes this as clock-eligible samples arrive. The C shim
+        // coalesces delivery onto GTK's main context before calling Swift.
+        if let gst { swift_openui_gst_player_set_frame_callback(gst, { data in
+            guard let data else { return }
+            Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue().presentFrame()
+        }, context) }
     }
 
     deinit {
-        if tickCallback != 0 { gtk_widget_remove_tick_callback(widget, tickCallback) }
         if startSource != 0 { g_source_remove(startSource) }
         if let gst { swift_openui_gst_player_free(gst) }
         g_object_unref(gpointer(widget))
@@ -82,9 +80,9 @@ final class GTKVideoDriver: MediaPlayerDriver {
     var duration: Double { gst.map { Double(swift_openui_gst_player_duration($0)) / 1_000_000_000 } ?? 0 }
     var isPlaying: Bool { gst.map { swift_openui_gst_player_is_playing($0) != 0 } ?? false }
 
-    private func tick() -> gboolean {
+    private func presentFrame() {
         if let target = pendingSeek, duration > 0 { pendingSeek = nil; seek(to: target) }
-        guard let gst else { return 1 }
+        guard let gst else { return }
         var data: UnsafeMutablePointer<UInt8>?
         var length: gsize = 0
         var width: gint = 0
@@ -95,7 +93,6 @@ final class GTKVideoDriver: MediaPlayerDriver {
             swift_openui_gst_player_free_frame(data)
         }
         if duration > 0, currentTime >= duration - 0.1, !isPlaying { player?.onEnded?() }
-        return 1
     }
 }
 
