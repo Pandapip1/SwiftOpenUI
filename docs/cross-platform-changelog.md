@@ -21,6 +21,15 @@ backend.
 
 ---
 
+## 2026-10-04 — GTK4 — accurate media seeking
+
+- **Shared surface:** GStreamer-backed `AVPlayer.seek(to:)` now requests an
+  accurate timestamp instead of restricting seeks to keyframes.
+- **Impact:** scrubbers and relative seek controls reach the requested playback
+  time even when a source has sparse keyframes.
+- **Ping:** Hummingbird UI owner.
+- **Refs:** `gstshim.h`.
+
 ## 2026-10-04 — GTK4 — fullscreen control symbol mappings
 
 - **Shared surface:** mapped the SF Symbols for entering and exiting fullscreen

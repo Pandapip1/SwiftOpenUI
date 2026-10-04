@@ -213,7 +213,7 @@ static inline gboolean swift_openui_gst_player_seek(SwiftOpenUIGStreamerPlayer *
     if (!player) return FALSE;
     swift_openui_gst_player_clear_pending_sample(player);
     return gst_element_seek_simple(player->pipeline, GST_FORMAT_TIME,
-        GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT, nanoseconds);
+        GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE, nanoseconds);
 }
 
 static inline gint64 swift_openui_gst_player_position(SwiftOpenUIGStreamerPlayer *player) {
