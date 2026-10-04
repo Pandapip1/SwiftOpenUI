@@ -8,6 +8,7 @@ final class AVPlayerCompatibilityTests: XCTestCase {
         var installedItem: AVPlayerItem?
         var rate: Float = 0
         var currentTime = CMTime.zero
+        var duration = CMTime(seconds: 30, preferredTimescale: 600)
         var pictureInPictureActive = false
 
         func replaceCurrentItem(with item: AVPlayerItem?) { installedItem = item }
@@ -45,6 +46,7 @@ final class AVPlayerCompatibilityTests: XCTestCase {
         XCTAssertTrue(installedAsset === composition)
         XCTAssertEqual(rate, 1)
         XCTAssertEqual(seconds, 12.5)
+        XCTAssertEqual(player._swiftOpenUIDuration.seconds, 30)
 
         let pip = AVPictureInPictureController(contentSource: .init(playerLayer: AVPlayerLayer(player: player)))
         XCTAssertTrue(pip.isPictureInPicturePossible)

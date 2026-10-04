@@ -93,6 +93,7 @@ public protocol _AVPlayerDriver: AnyObject {
     func pause()
     func seek(to time: CMTime)
     var currentTime: CMTime { get }
+    var duration: CMTime { get }
     var rate: Float { get }
     var isPictureInPicturePossible: Bool { get }
     func startPictureInPicture()
@@ -119,6 +120,9 @@ public final class AVPlayer: @unchecked Sendable {
     public func seek(to time: CMTime) { pendingTime = time; _swiftOpenUIDriver?.seek(to: time) }
     public func currentTime() -> CMTime { _swiftOpenUIDriver?.currentTime ?? pendingTime ?? .zero }
     public var rate: Float { _swiftOpenUIDriver?.rate ?? pendingRate }
+    @_spi(SwiftOpenUIBackend) public var _swiftOpenUIDuration: CMTime {
+        _swiftOpenUIDriver?.duration ?? .zero
+    }
     @_spi(SwiftOpenUIBackend) public func _swiftOpenUIAttachDriver(_ driver: _AVPlayerDriver) {
         _swiftOpenUIDriver = driver
         driver.replaceCurrentItem(with: currentItem)

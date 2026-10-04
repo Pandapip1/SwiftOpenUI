@@ -100,7 +100,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
     func seek(to time: CMTime) {
         let seconds = time.seconds
         guard let gst else { pendingSeek = seconds; return }
-        guard duration > 0 else { pendingSeek = seconds; return }
+        guard durationSeconds > 0 else { pendingSeek = seconds; return }
         _ = swift_openui_gst_player_seek(gst, gint64(max(0, seconds) * 1_000_000_000))
     }
 
@@ -113,7 +113,10 @@ final class GTKVideoDriver: _AVPlayerDriver {
         CMTime(seconds: gst.map { Double(swift_openui_gst_player_position($0)) / 1_000_000_000 } ?? 0,
                preferredTimescale: 600)
     }
-    var duration: Double { gst.map { Double(swift_openui_gst_player_duration($0)) / 1_000_000_000 } ?? 0 }
+    var duration: CMTime { CMTime(seconds: durationSeconds, preferredTimescale: 600) }
+    private var durationSeconds: Double {
+        gst.map { Double(swift_openui_gst_player_duration($0)) / 1_000_000_000 } ?? 0
+    }
     var rate: Float { gst.map { swift_openui_gst_player_is_playing($0) != 0 ? 1 : 0 } ?? 0 }
     var isPictureInPicturePossible: Bool { player?.currentItem != nil }
 
@@ -140,7 +143,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
     }
 
     private func presentFrame() {
-        if let target = pendingSeek, duration > 0 {
+        if let target = pendingSeek, durationSeconds > 0 {
             pendingSeek = nil
             seek(to: CMTime(seconds: target, preferredTimescale: 600))
         }
@@ -154,7 +157,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
             gtk_swift_video_surface_set_pixels(videoWidget, data, length, width, height, stride)
             swift_openui_gst_player_free_frame(data)
         }
-        if duration > 0, currentTime.seconds >= duration - 0.1, rate == 0 { player?._swiftOpenUIOnEnded?() }
+        if durationSeconds > 0, currentTime.seconds >= durationSeconds - 0.1, rate == 0 { player?._swiftOpenUIOnEnded?() }
     }
 }
 

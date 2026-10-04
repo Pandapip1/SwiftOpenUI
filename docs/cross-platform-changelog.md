@@ -21,6 +21,24 @@ backend.
 
 ---
 
+## 2026-10-04 — GTK4 — media-control symbol mappings
+
+- **Shared surface:** mapped the SF Symbols used by custom video controls for
+  ten-second seek, play, pause and picture-in-picture to bundled Material glyphs.
+- **Impact:** all non-Apple renderers resolve these controls instead of showing
+  the missing-symbol placeholder.
+- **Ping:** Hummingbird UI owner.
+- **Refs:** `SFSymbolCompatibility.swift`, `GTK4SymbolMappingTests.swift`.
+
+## 2026-10-04 — GTK4 — backend playback duration
+
+- **Shared surface:** the backend-only `_AVPlayerDriver` SPI now reports media
+  duration, exposed to backend consumers through `_swiftOpenUIDuration`.
+- **Impact:** GTK applications can build their own AVKit-style scrubber without
+  adding application-specific public API to SwiftOpenUI.
+- **Ping:** Hummingbird media backend owner.
+- **Refs:** `MediaPlayer.swift`, `GTKMedia.swift`, `MediaPlayerTests.swift`.
+
 ## 2026-10-04 — GTK4 — navigation chrome in sheets
 
 - **Shared surface:** sheets containing a `NavigationStack` now install its
