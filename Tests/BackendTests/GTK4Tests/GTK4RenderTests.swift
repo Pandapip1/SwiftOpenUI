@@ -48,6 +48,34 @@ final class GTK4RenderTests: XCTestCase {
         XCTAssertEqual(childOrigin.y, 0, accuracy: 0.01)
     }
 
+    func testFlexibleFrameWithIdealSizeCanShrinkAndExpand() throws {
+        try requireGTK()
+
+        let wrapper = widgetFromOpaque(gtkRenderView(
+            Color.red.frame(
+                minWidth: 320, idealWidth: 720, maxWidth: .infinity,
+                minHeight: 320, idealHeight: 540, maxHeight: .infinity
+            )
+        ))
+        let child = try unwrapFirstChild(of: wrapper)
+
+        let natural = measuredSize(of: wrapper)
+        XCTAssertEqual(natural.width, 320, accuracy: 0.01)
+        XCTAssertEqual(natural.height, 320, accuracy: 0.01)
+        XCTAssertNotEqual(gtk_widget_get_hexpand(wrapper), 0)
+        XCTAssertNotEqual(gtk_widget_get_vexpand(wrapper), 0)
+
+        allocate(widget: wrapper, size: ViewSize(width: 500, height: 400))
+        var childSize = allocatedSize(of: child)
+        XCTAssertEqual(childSize.width, 500, accuracy: 0.01)
+        XCTAssertEqual(childSize.height, 400, accuracy: 0.01)
+
+        allocate(widget: wrapper, size: ViewSize(width: 900, height: 700))
+        childSize = allocatedSize(of: child)
+        XCTAssertEqual(childSize.width, 900, accuracy: 0.01)
+        XCTAssertEqual(childSize.height, 700, accuracy: 0.01)
+    }
+
     func testFrameViewClampsOversizedChildHeight() throws {
         try requireGTK()
 
