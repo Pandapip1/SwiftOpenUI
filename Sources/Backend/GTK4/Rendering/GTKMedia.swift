@@ -19,6 +19,8 @@ final class GTKVideoDriver: MediaPlayerDriver {
         self.player = player
         widget = gtk_picture_new()!
         g_object_ref_sink(gpointer(widget))
+        gtk_swift_picture_set_can_shrink(widget, 1)
+        gtk_swift_picture_set_content_fit(widget, GTK_CONTENT_FIT_CONTAIN)
         gst = swift_openui_gst_player_new()
         let context = Unmanaged.passUnretained(self).toOpaque()
         timer = g_timeout_add(33, { data in
