@@ -5,6 +5,37 @@ import Foundation
 import CGTK
 
 final class GTK4MediaPrerequisiteTests: XCTestCase {
+    @MainActor
+    func testRenderedAVPlayerSeekMovesActivePipeline() async throws {
+        if gtk_is_initialized() == 0 { _ = gtk_init_check() }
+        guard gtk_is_initialized() != 0 else { throw XCTSkip("no GTK display") }
+        guard let fixtureValue = ProcessInfo.processInfo.environment["SWIFTOPENUI_MEDIA_TEST_URL"],
+              let fixture = URL(string: fixtureValue) else {
+            throw XCTSkip("requires SWIFTOPENUI_MEDIA_TEST_URL")
+        }
+
+        let player = AVPlayer(url: fixture)
+        _ = gtkRenderView(VideoPlayer(player: player))
+        player.pause()
+
+        let deadline = Date().addingTimeInterval(3)
+        while player._swiftOpenUIDuration.seconds <= 0, Date() < deadline {
+            while g_main_context_iteration(nil, 0) != 0 {}
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertGreaterThan(player._swiftOpenUIDuration.seconds, 0)
+
+        player.seek(to: CMTime(seconds: 5, preferredTimescale: 600))
+        var observed = player.currentTime().seconds
+        let seekDeadline = Date().addingTimeInterval(3)
+        while abs(observed - 5) > 0.75, Date() < seekDeadline {
+            while g_main_context_iteration(nil, 0) != 0 {}
+            try await Task.sleep(nanoseconds: 20_000_000)
+            observed = player.currentTime().seconds
+        }
+        XCTAssertEqual(observed, 5, accuracy: 0.75)
+    }
+
     /// Run in a fresh process with empty GST_PLUGIN_{SYSTEM_,}PATH_1_0 and a
     /// disposable GST_REGISTRY_1_0; GStreamer's registry is process-global.
     func testMissingPluginsReportFailureWithoutOpeningMedia() async throws {

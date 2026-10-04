@@ -4385,13 +4385,36 @@ let gtkSliderStateKey = "swift-openui-slider-state"
 /// user-driven changes commit immediately, matching SwiftUI's continuous Slider.
 final class GTKSliderState {
     let closure: (Double) -> Void
+    let editingChanged: (Bool) -> Void
+    weak var host: GTKViewHost?
     var updatingFromModel = false
+    private var isEditing = false
 
-    init(closure: @escaping (Double) -> Void) {
+    init(closure: @escaping (Double) -> Void,
+         editingChanged: @escaping (Bool) -> Void,
+         host: GTKViewHost?) {
         self.closure = closure
+        self.editingChanged = editingChanged
+        self.host = host
     }
 
     func commit(_ value: Double) { if !updatingFromModel { closure(value) } }
+
+    func setEditing(_ editing: Bool) {
+        guard editing != isEditing else { return }
+        isEditing = editing
+        if editing {
+            host?.beginInteractiveUpdate()
+            editingChanged(true)
+        } else {
+            editingChanged(false)
+            host?.endInteractiveUpdate()
+        }
+    }
+
+    deinit {
+        if isEditing { host?.endInteractiveUpdate() }
+    }
 }
 
 extension Slider: GTKRenderable, GTKDescribable {
@@ -4416,11 +4439,15 @@ extension Slider: GTKRenderable, GTKDescribable {
 
         let binding = value
         let stepVal = step
-        let state = GTKSliderState { newValue in
-            if abs(newValue - binding.wrappedValue) > stepVal * 0.01 {
-                binding.wrappedValue = newValue
-            }
-        }
+        let state = GTKSliderState(
+            closure: { newValue in
+                if abs(newValue - binding.wrappedValue) > stepVal * 0.01 {
+                    binding.wrappedValue = newValue
+                }
+            },
+            editingChanged: onEditingChanged,
+            host: GTKViewHost.getCurrentRebuilding()
+        )
         let statePtr = Unmanaged.passRetained(state).toOpaque()
         g_object_set_data(UnsafeMutableRawPointer(scale).assumingMemoryBound(to: GObject.self),
                           gtkSliderStateKey, statePtr)
@@ -4443,25 +4470,24 @@ extension Slider: GTKRenderable, GTKDescribable {
 
         let editingController = gtk_event_controller_legacy_new()!
         gtk_event_controller_set_propagation_phase(editingController, GTK_PHASE_CAPTURE)
-        let editingChanged = Unmanaged.passRetained(BoolClosureBox(onEditingChanged)).toOpaque()
         g_signal_connect_data(
             gpointer(editingController), "event",
             unsafeBitCast({ (_: gpointer?, event: OpaquePointer?, data: gpointer?) -> gboolean in
                 guard let event, let data else { return 0 }
-                let callback = Unmanaged<BoolClosureBox>.fromOpaque(data).takeUnretainedValue().closure
+                let state = Unmanaged<GTKSliderState>.fromOpaque(data).takeUnretainedValue()
                 switch gdk_event_get_event_type(event) {
                 case GDK_BUTTON_PRESS, GDK_TOUCH_BEGIN:
-                    callback(true)
+                    state.setEditing(true)
                 case GDK_BUTTON_RELEASE, GDK_TOUCH_END, GDK_TOUCH_CANCEL:
-                    callback(false)
+                    state.setEditing(false)
                 default:
                     break
                 }
                 return 0
             } as @convention(c) (gpointer?, OpaquePointer?, gpointer?) -> gboolean,
             to: GCallback.self),
-            editingChanged,
-            { data, _ in Unmanaged<BoolClosureBox>.fromOpaque(data!).release() },
+            statePtr,
+            nil,
             GConnectFlags(rawValue: 0)
         )
         gtk_widget_add_controller(scale, editingController)

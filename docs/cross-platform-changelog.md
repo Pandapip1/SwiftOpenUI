@@ -210,7 +210,7 @@ The video bin is explicitly synchronized to PLAYING before `playbin3` starts.
   initializer callback.
 - **Impact:** GTK reports pointer press and release through a passive event
   controller while continuing to update the binding for every range change.
-  Applications can keep interactive state stable during continuous scrubbing
-  without interfering with `GtkRange` gesture handling.
+  The owning view host defers rebuilds for the life of that interaction, so
+  state changes cannot replace the range and terminate its active drag.
 - **Ping:** GTK4 integrators.
 - **Refs:** `Slider.swift`, `GTKRenderer.swift`.
