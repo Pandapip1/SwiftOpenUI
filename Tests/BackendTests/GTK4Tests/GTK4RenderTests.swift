@@ -3,6 +3,7 @@ import SwiftOpenUI
 @testable import BackendGTK4
 import CGTK
 import CGTKBridge
+import SwiftOpenUISymbols
 
 final class GTK4RenderTests: XCTestCase {
     override class func setUp() {
@@ -10,6 +11,15 @@ final class GTK4RenderTests: XCTestCase {
         if gtk_is_initialized() == 0 {
             _ = gtk_init_check()
         }
+    }
+
+    func testSystemImageUsesResolvedGlyphInsteadOfLigatureText() throws {
+        try requireGTK()
+
+        let label = widgetFromOpaque(gtkRenderView(Image(systemName: "pause.fill")))
+        let expectedCodepoint = try XCTUnwrap(MaterialSymbolsCodepoints.codepoint(for: "pause"))
+        let expected = try XCTUnwrap(UnicodeScalar(expectedCodepoint)).description
+        XCTAssertEqual(String(cString: gtk_label_get_text(OpaquePointer(label))), expected)
     }
 
     func testFrameViewCentersTextUsingFixedChildPosition() throws {

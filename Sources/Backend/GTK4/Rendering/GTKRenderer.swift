@@ -4645,9 +4645,10 @@ extension Image: GTKRenderable {
 /// Shared helper used by both `.materialSymbol` and `.systemName` (the
 /// latter via the SF→Material compatibility map). The Material Symbols
 /// Rounded family is registered process-locally at backend startup by
-/// `gtkRegisterBundledIconFont()`; OpenType ligatures in the font
-/// substitute the literal name ("search", "folder_open", ...) into the
-/// icon glyph during text shaping.
+/// `gtkRegisterBundledIconFont()`. Resolve the font's private-use codepoint
+/// directly instead of depending on OpenType ligature shaping: GTK/Pango can
+/// disable ligatures through ambient font features, which would expose names
+/// such as `picture_in_picture` as visible text in controls.
 ///
 /// Pango's font_size attribute uses thousandths of a point, hence
 /// `scale.pointSize * 1000`. The widget is clamped to a point-size box
@@ -4658,9 +4659,12 @@ private func gtkRenderMaterialSymbolLabel(
 ) -> UnsafeMutablePointer<GtkWidget> {
     let label = gtk_label_new(nil)!
     let familyName = gtkEscapeMarkup(MaterialSymbolsRoundedFamilyName)
-    let escapedName = gtkEscapeMarkup(name)
+    let codepoint = MaterialSymbolsCodepoints.codepoint(for: name)
+        ?? MaterialSymbolsCodepoints.missingGlyphCodepoint
+    let glyph = UnicodeScalar(codepoint).map(String.init) ?? "?"
+    let escapedGlyph = gtkEscapeMarkup(glyph)
     let markup = """
-        <span font_family="\(familyName)" font_size="\(scale.pointSize * 1000)">\(escapedName)</span>
+        <span font_family="\(familyName)" font_size="\(scale.pointSize * 1000)">\(escapedGlyph)</span>
         """
     gtk_swift_label_set_markup(label, markup)
     let px = gint(scale.pointSize)

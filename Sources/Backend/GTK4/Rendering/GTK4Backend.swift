@@ -13,7 +13,8 @@ import Observation
 /// bundle; this call makes it visible to FontConfig without installing it
 /// to the user's system font directory. Idempotent — calling it more than
 /// once just re-adds the same file.
-private func gtkRegisterBundledIconFont() {
+@_spi(SwiftOpenUIBackend)
+public func gtkRegisterBundledIconFont() {
     let url = MaterialSymbolsResources.roundedRegularFontURL
     let result = url.path.withCString { gtk_swift_fc_app_font_add_file($0) }
     if result == 0 {
