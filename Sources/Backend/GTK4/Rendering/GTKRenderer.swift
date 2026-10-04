@@ -3267,6 +3267,22 @@ extension OnDisappearView: GTKRenderable {
 
 // MARK: - Sheet GTK extension
 
+/// Size a sheet from its content's natural request, with guardrails for very
+/// long settings and large forms. A fixed 400x300 made sheets clip controls or
+/// open with excessive empty space.
+private func gtkSetSheetDefaultSize(
+    _ window: UnsafeMutablePointer<GtkWindow>,
+    _ content: UnsafeMutablePointer<GtkWidget>
+) {
+    var minW: gint = 0, naturalW: gint = 0
+    var minH: gint = 0, naturalH: gint = 0
+    gtk_widget_measure(content, GTK_ORIENTATION_HORIZONTAL, -1, &minW, &naturalW, nil, nil)
+    gtk_widget_measure(content, GTK_ORIENTATION_VERTICAL, -1, &minH, &naturalH, nil, nil)
+    let width = max(320, min(900, Int(naturalW)))
+    let height = max(180, min(760, Int(naturalH)))
+    gtk_window_set_default_size(window, gint(width), gint(height))
+}
+
 /// Holds sheet configuration for deferred presentation.
 /// Extract dismissal-confirmation configuration from a view tree.
 private func gtkExtractDismissalConfig(from view: Any, depth: Int = 0) -> DismissalConfirmationConfiguration? {
@@ -3462,7 +3478,6 @@ extension SheetModifierView: GTKRenderable {
             let dialogWin = windowPointer(dialog)
             gtk_window_set_modal(dialogWin, 1)
             gtk_window_set_title(dialogWin, "")
-            gtk_window_set_default_size(dialogWin, 400, 300)
             gtk_window_set_transient_for(
                 dialogWin,
                 UnsafeMutableRawPointer(root).assumingMemoryBound(to: GtkWindow.self)
@@ -3484,6 +3499,7 @@ extension SheetModifierView: GTKRenderable {
             let sheetWidget = widgetFromOpaque(info.render())
             setCurrentEnvironment(previous)
             gtk_window_set_child(dialogWin, sheetWidget)
+            gtkSetSheetDefaultSize(dialogWin, sheetWidget)
 
             let anchorObj = UnsafeMutableRawPointer(info.anchor).assumingMemoryBound(to: GObject.self)
             g_object_set_data(anchorObj, "swift-sheet-window", gpointer(dialogWin))
@@ -3613,7 +3629,6 @@ extension ItemSheetModifierView: GTKRenderable {
             let dialogWin = windowPointer(dialog)
             gtk_window_set_modal(dialogWin, 1)
             gtk_window_set_title(dialogWin, "")
-            gtk_window_set_default_size(dialogWin, 400, 300)
             gtk_window_set_transient_for(
                 dialogWin,
                 UnsafeMutableRawPointer(root).assumingMemoryBound(to: GtkWindow.self)
@@ -3633,6 +3648,7 @@ extension ItemSheetModifierView: GTKRenderable {
             let sheetWidget = widgetFromOpaque(info.render())
             setCurrentEnvironment(previous)
             gtk_window_set_child(dialogWin, sheetWidget)
+            gtkSetSheetDefaultSize(dialogWin, sheetWidget)
 
             let anchorObj = UnsafeMutableRawPointer(info.anchor).assumingMemoryBound(to: GObject.self)
             g_object_set_data(anchorObj, "swift-sheet-window", gpointer(dialogWin))
