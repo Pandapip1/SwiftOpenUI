@@ -23,6 +23,10 @@ typedef struct {
 
 static inline GstFlowReturn swift_openui_gst_player_new_sample(GstAppSink *sink, gpointer data);
 
+static inline gboolean swift_openui_gst_uses_fake_audio(void) {
+    return g_strcmp0(g_getenv("SWIFT_OPENUI_GST_FAKE_AUDIO"), "1") == 0;
+}
+
 static inline void swift_openui_gst_player_connect_sink(SwiftOpenUIGStreamerPlayer *player,
                                                          GstElement *appsink) {
     player->appsink = appsink;
@@ -94,6 +98,16 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
     player->pipeline = player->playbin;
     swift_openui_gst_player_connect_sink(player, player->normal_appsink);
     g_object_set(player->playbin, "video-sink", player->video_bin, NULL);
+    // Keep automated and headless runs away from the user's real audio
+    // device for both ordinary playbin media and split A/V compositions.
+    if (swift_openui_gst_uses_fake_audio()) {
+        GstElement *fake_audio_sink = gst_element_factory_make("fakesink", NULL);
+        if (fake_audio_sink) {
+            g_object_set(fake_audio_sink, "sync", TRUE, NULL);
+            g_object_set(player->playbin, "audio-sink", fake_audio_sink, NULL);
+            gst_object_unref(fake_audio_sink);
+        }
+    }
     // Keep progressively downloaded files on disk. Besides avoiding repeated
     // network reads, queue2 can seek within media served by simple HTTP origins
     // that do not implement byte-range requests.
@@ -164,7 +178,7 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
     gchar *audio = g_strescape(audio_uri, NULL);
     // Headless integration tests opt into a fake sink so they never route
     // fixture audio to the user's sound server.
-    const gchar *audio_sink = g_strcmp0(g_getenv("SWIFT_OPENUI_GST_FAKE_AUDIO"), "1") == 0
+    const gchar *audio_sink = swift_openui_gst_uses_fake_audio()
         ? "fakesink sync=true" : "autoaudiosink";
     gchar *description = g_strdup_printf(
         "uridecodebin uri=\"%s\" name=video_source "
