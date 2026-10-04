@@ -40,6 +40,9 @@ backend.
 - **Ping:** Hummingbird media owner.
 - **Refs:** `CGTK/shim.h`, `GTKMedia.swift`.
 
+The sink chain uses a parsed `videoconvert`/RGBA/appsink bin and disables
+appsink clock synchronization so frame pulls do not wait on a UI-thread clock.
+
 ## 2026-10-04 — Media — external subtitle routing
 
 - **Shared surface:** `MediaPlayerDriver` and `MediaPlayer` expose an optional

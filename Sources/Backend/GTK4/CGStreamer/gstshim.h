@@ -18,29 +18,18 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
     }
     SwiftOpenUIGStreamerPlayer *player = g_new0(SwiftOpenUIGStreamerPlayer, 1);
     player->playbin = gst_element_factory_make("playbin3", NULL);
-    player->appsink = gst_element_factory_make("appsink", NULL);
-    GstElement *convert = gst_element_factory_make("videoconvert", NULL);
-    GstElement *capsfilter = gst_element_factory_make("capsfilter", NULL);
-    player->video_bin = gst_bin_new(NULL);
-    if (!player->playbin || !player->appsink || !convert || !capsfilter || !player->video_bin) {
+    player->video_bin = gst_parse_bin_from_description(
+        "videoconvert ! video/x-raw,format=RGBA ! appsink name=swiftappsink",
+        TRUE, NULL);
+    player->appsink = player->video_bin ? gst_bin_get_by_name(GST_BIN(player->video_bin), "swiftappsink") : NULL;
+    if (!player->playbin || !player->appsink || !player->video_bin) {
         if (player->playbin) gst_object_unref(player->playbin);
         if (player->appsink) gst_object_unref(player->appsink);
-        if (convert) gst_object_unref(convert);
-        if (capsfilter) gst_object_unref(capsfilter);
         if (player->video_bin) gst_object_unref(player->video_bin);
         g_free(player);
         return NULL;
     }
-    GstCaps *caps = gst_caps_from_string("video/x-raw,format=RGBA");
-    g_object_set(capsfilter, "caps", caps, NULL);
-    g_object_set(player->appsink, "sync", TRUE, "max-buffers", 2, "drop", TRUE, NULL);
-    gst_caps_unref(caps);
-    gst_bin_add_many(GST_BIN(player->video_bin), convert, capsfilter, player->appsink, NULL);
-    gst_element_link_many(convert, capsfilter, player->appsink, NULL);
-    GstPad *sink_pad = gst_element_get_static_pad(convert, "sink");
-    GstPad *ghost_pad = gst_ghost_pad_new("sink", sink_pad);
-    gst_element_add_pad(player->video_bin, ghost_pad);
-    gst_object_unref(sink_pad);
+    g_object_set(player->appsink, "sync", FALSE, "max-buffers", 2, "drop", TRUE, NULL);
     g_object_set(player->playbin, "video-sink", player->video_bin, NULL);
     return player;
 }
@@ -61,7 +50,9 @@ static inline void swift_openui_gst_player_set_subtitle_uri(SwiftOpenUIGStreamer
 }
 
 static inline void swift_openui_gst_player_play(SwiftOpenUIGStreamerPlayer *player) {
-    if (player) gst_element_set_state(player->playbin, GST_STATE_PLAYING);
+    if (player) {
+        gst_element_set_state(player->playbin, GST_STATE_PLAYING);
+    }
 }
 
 static inline void swift_openui_gst_player_pause(SwiftOpenUIGStreamerPlayer *player) {
@@ -97,7 +88,7 @@ static inline gboolean swift_openui_gst_player_pull_frame(SwiftOpenUIGStreamerPl
                                                             guint8 **data, gsize *length,
                                                             gint *width, gint *height, gint *stride) {
     if (!player || !data || !length || !width || !height || !stride) return FALSE;
-    GstSample *sample = gst_app_sink_try_pull_sample(GST_APP_SINK(player->appsink), 0);
+    GstSample *sample = gst_app_sink_try_pull_sample(GST_APP_SINK(player->appsink), 50 * GST_MSECOND);
     if (!sample) return FALSE;
     GstCaps *caps = gst_sample_get_caps(sample);
     GstStructure *structure = caps ? gst_caps_get_structure(caps, 0) : NULL;
