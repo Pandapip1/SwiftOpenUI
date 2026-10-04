@@ -1,6 +1,6 @@
 import XCTest
 import SwiftOpenUI
-import WebKit
+@_spi(SwiftOpenUIBackend) import WebKit
 @testable import BackendGTK4
 import CGTK
 import CGTKBridge
@@ -29,6 +29,14 @@ final class GTK4WebViewTests: XCTestCase {
             XCTAssertEqual(page.title, "SwiftOpenUI WebKit")
             XCTAssertEqual(page.url?.absoluteString, "about:blank")
             XCTAssertFalse(page.isLoading)
+
+            var javaScriptResult: Result<String?, Error>?
+            page._evaluateJavaScript("document.title") { javaScriptResult = $0 }
+            let scriptDeadline = Date().addingTimeInterval(10)
+            while javaScriptResult == nil, Date() < scriptDeadline {
+                _ = g_main_context_iteration(nil, 0)
+            }
+            XCTAssertEqual(try javaScriptResult?.get(), "SwiftOpenUI WebKit")
             gtk_window_destroy(windowPointer(window))
         }
     }

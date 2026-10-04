@@ -32,9 +32,12 @@ public final class WebPage {
 
     private enum PendingLoad { case request(URLRequest), html(String, URL) }
     private var pendingLoad: PendingLoad?
+    @_spi(SwiftOpenUIBackend) public let _isEphemeral: Bool
+    private var userScripts: [String] = []
     @_spi(SwiftOpenUIBackend) public var _backend: (any _WebPageBackend)? {
         didSet {
             _backend?.setCustomUserAgent(customUserAgent)
+            for script in userScripts { _backend?.addUserScript(script) }
             if let pendingLoad { perform(pendingLoad) }
         }
     }
@@ -46,8 +49,12 @@ public final class WebPage {
     @_spi(SwiftOpenUIBackend)
     public init(configuration: Configuration = Configuration(), initialURL: URL?) {
         _ = configuration
+        _isEphemeral = false
         if let initialURL { pendingLoad = .request(URLRequest(url: initialURL)) }
     }
+
+    @_spi(SwiftOpenUIBackend)
+    public init(_isEphemeral: Bool) { self._isEphemeral = _isEphemeral }
 
     @discardableResult
     public func load(_ request: URLRequest) -> some AsyncSequence<NavigationEvent, any Error> {
@@ -118,6 +125,25 @@ public final class WebPage {
         self.title = title
         estimatedProgress = progress
     }
+
+    @_spi(SwiftOpenUIBackend)
+    public func _addUserScript(_ source: String) {
+        userScripts.append(source)
+        _backend?.addUserScript(source)
+    }
+
+    @_spi(SwiftOpenUIBackend)
+    public func _evaluateJavaScript(_ source: String, completion: @escaping (Result<String?, Error>) -> Void) {
+        guard let backend = _backend else {
+            completion(.failure(NavigationError.pageClosed)); return
+        }
+        backend.evaluateJavaScript(source, completion: completion)
+    }
+
+    @_spi(SwiftOpenUIBackend)
+    public func _getCookies(completion: @escaping ([(name: String, value: String, domain: String)]) -> Void) {
+        _backend?.getCookies(completion: completion) ?? completion([])
+    }
 }
 
 @_spi(SwiftOpenUIBackend)
@@ -128,4 +154,7 @@ public protocol _WebPageBackend: AnyObject {
     func setCustomUserAgent(_ userAgent: String?)
     func reload(fromOrigin: Bool)
     func stopLoading()
+    func addUserScript(_ source: String)
+    func evaluateJavaScript(_ source: String, completion: @escaping (Result<String?, Error>) -> Void)
+    func getCookies(completion: @escaping ([(name: String, value: String, domain: String)]) -> Void)
 }
