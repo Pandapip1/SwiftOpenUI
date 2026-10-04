@@ -315,8 +315,10 @@ gtk_swift_picture_set_pixels(GtkWidget *picture, const unsigned char *pixels,
     GBytes *bytes = g_bytes_new(pixels, length);
     GdkTexture *texture = gdk_memory_texture_new(width, height, format, bytes, (gsize)stride);
     g_bytes_unref(bytes);
+    gtk_picture_set_paintable(GTK_PICTURE(picture), NULL);
     gtk_picture_set_paintable(GTK_PICTURE(picture), GDK_PAINTABLE(texture));
     g_object_unref(texture);
+    gtk_widget_queue_draw(picture);
 }
 
 // --- GtkExpander shims ---
