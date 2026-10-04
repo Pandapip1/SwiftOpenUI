@@ -49,6 +49,25 @@ final class GTK4NavigationTitleTests: XCTestCase {
                 "a path value's description leaked into the UI: \(label.prefix(120))")
         }
     }
+
+    func testCustomLabelNavigationLinkPreservesFullWidthExpansion() throws {
+        guard gtk_is_initialized() != 0 else { throw XCTSkip("no GTK") }
+
+        let link = widgetFromOpaque(gtkRenderView(
+            NavigationLink(value: "destination") {
+                VStack(alignment: .leading) {
+                    Text("A readable two-line video title").lineLimit(2)
+                    Text("Channel · 123 views").lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        ))
+
+        XCTAssertNotEqual(
+            gtk_widget_get_hexpand(link), 0,
+            "a navigation row must preserve its custom label's flexible width")
+        XCTAssertEqual(gtk_widget_get_halign(link), GTK_ALIGN_FILL)
+    }
 }
 
 

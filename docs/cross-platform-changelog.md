@@ -21,6 +21,15 @@ backend.
 
 ---
 
+## 2026-10-04 — GTK4 — full-width custom navigation labels
+
+- **Shared surface:** GTK4 `NavigationLink` now propagates horizontal expansion
+  from a custom label through its native button wrapper.
+- **Impact:** full-width list rows keep their allocated width, so wrapped titles
+  no longer collapse to a few characters.
+- **Ping:** Hummingbird UI owner.
+- **Refs:** `GTKNavigation.swift`, `GTK4NavigationTitleTests.swift`.
+
 ## 2026-10-04 — GTK4 — sample-driven video presentation
 
 - **Shared surface:** GStreamer signals when a clock-eligible appsink sample is

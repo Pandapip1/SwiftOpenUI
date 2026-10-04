@@ -478,9 +478,11 @@ extension NavigationStack: GTKRenderable {
 extension NavigationLink: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
         let button: UnsafeMutablePointer<GtkWidget>
+        var childWantsHExpand = false
         if label.isEmpty {
             button = gtk_button_new()!
             let childWidget = widgetFromOpaque(gtkRenderView(labelView))
+            childWantsHExpand = gtk_widget_get_hexpand(childWidget) != 0
             let btnPtr = UnsafeMutableRawPointer(button).assumingMemoryBound(to: GtkButton.self)
             gtk_button_set_child(btnPtr, childWidget)
             applyCSSToWidget(button, properties: """
@@ -493,6 +495,13 @@ extension NavigationLink: GTKRenderable {
         } else {
             button = gtk_button_new_with_label(label)!
         }
+
+        // A custom navigation label is the complete row in list-style UIs.
+        // Preserve its flexible width through the native GtkButton wrapper;
+        // otherwise the button requests only its minimum width and wrapped
+        // titles collapse to a few characters even inside a full-width list.
+        gtk_widget_set_hexpand(button, childWantsHExpand ? 1 : 0)
+        gtk_widget_set_halign(button, childWantsHExpand ? GTK_ALIGN_FILL : GTK_ALIGN_START)
 
         // Capture context strongly at render time
         guard let context = getCurrentNavigationContext() else {
