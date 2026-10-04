@@ -23,7 +23,9 @@ final class GTK4PictureInPictureTests: XCTestCase {
             XCTAssertTrue(controller.isPictureInPictureActive)
             XCTAssertEqual(g_list_model_get_n_items(windows), before + 1)
 
-            controller.stopPictureInPicture()
+            let floating = g_list_model_get_item(windows, before)!
+            gtk_window_close(UnsafeMutableRawPointer(floating).assumingMemoryBound(to: GtkWindow.self))
+            g_object_unref(floating)
             XCTAssertFalse(controller.isPictureInPictureActive)
             XCTAssertEqual(g_list_model_get_n_items(windows), before)
         }

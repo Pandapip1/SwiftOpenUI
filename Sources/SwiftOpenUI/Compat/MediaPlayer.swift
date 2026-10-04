@@ -98,6 +98,11 @@ public protocol _AVPlayerDriver: AnyObject {
     var isPictureInPicturePossible: Bool { get }
     func startPictureInPicture()
     func stopPictureInPicture()
+    func setPictureInPictureActiveHandler(_ handler: (@MainActor (Bool) -> Void)?)
+}
+
+public extension _AVPlayerDriver {
+    func setPictureInPictureActiveHandler(_ handler: (@MainActor (Bool) -> Void)?) {}
 }
 
 @MainActor
@@ -137,6 +142,37 @@ public final class AVPlayerLayer: @unchecked Sendable {
 }
 
 @MainActor
+public protocol AVPictureInPictureControllerDelegate: AnyObject {
+    func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController)
+    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController)
+    func pictureInPictureControllerWillStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController)
+    func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController)
+    func pictureInPictureController(
+        _ pictureInPictureController: AVPictureInPictureController,
+        failedToStartPictureInPictureWithError error: any Error
+    )
+    func pictureInPictureController(
+        _ pictureInPictureController: AVPictureInPictureController,
+        restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
+    )
+}
+
+public extension AVPictureInPictureControllerDelegate {
+    func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {}
+    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {}
+    func pictureInPictureControllerWillStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {}
+    func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {}
+    func pictureInPictureController(
+        _ pictureInPictureController: AVPictureInPictureController,
+        failedToStartPictureInPictureWithError error: any Error
+    ) {}
+    func pictureInPictureController(
+        _ pictureInPictureController: AVPictureInPictureController,
+        restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
+    ) { completionHandler(false) }
+}
+
+@MainActor
 public final class AVPictureInPictureController: @unchecked Sendable {
     nonisolated(unsafe) private static var backendSupportsPictureInPicture = false
     public final class ContentSource: @unchecked Sendable {
@@ -144,6 +180,7 @@ public final class AVPictureInPictureController: @unchecked Sendable {
         public init(playerLayer: AVPlayerLayer) { self.playerLayer = playerLayer }
     }
     public var contentSource: ContentSource?
+    public weak var delegate: (any AVPictureInPictureControllerDelegate)?
     public private(set) var isPictureInPictureActive = false
     public var isPictureInPicturePossible: Bool {
         contentSource?.playerLayer?.player?._swiftOpenUIDriver?.isPictureInPicturePossible ?? false
@@ -157,19 +194,37 @@ public final class AVPictureInPictureController: @unchecked Sendable {
     public static func _swiftOpenUISetPictureInPictureSupported(_ supported: Bool) {
         backendSupportsPictureInPicture = supported
     }
-    public init(contentSource: ContentSource) { self.contentSource = contentSource }
+    public init(contentSource: ContentSource) {
+        self.contentSource = contentSource
+        contentSource.playerLayer?.player?._swiftOpenUIDriver?.setPictureInPictureActiveHandler { [weak self] active in
+            guard let self, self.isPictureInPictureActive != active else { return }
+            if active {
+                self.isPictureInPictureActive = true
+                self.delegate?.pictureInPictureControllerDidStartPictureInPicture(self)
+            } else {
+                self.delegate?.pictureInPictureControllerWillStopPictureInPicture(self)
+                self.isPictureInPictureActive = false
+                self.delegate?.pictureInPictureControllerDidStopPictureInPicture(self)
+            }
+        }
+    }
     public convenience init?(playerLayer: AVPlayerLayer) {
         guard Self.isPictureInPictureSupported() else { return nil }
         self.init(contentSource: ContentSource(playerLayer: playerLayer))
     }
     public func startPictureInPicture() {
         guard isPictureInPicturePossible, let driver = contentSource?.playerLayer?.player?._swiftOpenUIDriver else { return }
+        delegate?.pictureInPictureControllerWillStartPictureInPicture(self)
         driver.startPictureInPicture()
         isPictureInPictureActive = true
+        delegate?.pictureInPictureControllerDidStartPictureInPicture(self)
     }
     public func stopPictureInPicture() {
+        guard isPictureInPictureActive else { return }
+        delegate?.pictureInPictureControllerWillStopPictureInPicture(self)
         contentSource?.playerLayer?.player?._swiftOpenUIDriver?.stopPictureInPicture()
         isPictureInPictureActive = false
+        delegate?.pictureInPictureControllerDidStopPictureInPicture(self)
     }
 }
 #endif

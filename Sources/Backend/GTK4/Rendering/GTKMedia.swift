@@ -21,6 +21,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
     private var startSource: guint = 0
     private var pendingAutoplay = true
     private var pictureInPictureWindow: UnsafeMutablePointer<GtkWidget>?
+    private var pictureInPictureActiveHandler: (@MainActor (Bool) -> Void)?
     private var sourceVideoURL: URL?
     private var sourceAudioURL: URL?
     private var localVideoURL: URL?
@@ -179,6 +180,9 @@ final class GTKVideoDriver: _AVPlayerDriver {
     }
     var rate: Float { gst.map { swift_openui_gst_player_is_playing($0) != 0 ? 1 : 0 } ?? 0 }
     var isPictureInPicturePossible: Bool { player?.currentItem != nil }
+    func setPictureInPictureActiveHandler(_ handler: (@MainActor (Bool) -> Void)?) {
+        pictureInPictureActiveHandler = handler
+    }
 
     func startPictureInPicture() {
         guard pictureInPictureWindow == nil else { return }
@@ -189,6 +193,15 @@ final class GTKVideoDriver: _AVPlayerDriver {
         gtk_window_set_default_size(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), 480, 270)
         gtk_window_set_resizable(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), 1)
         gtk_window_set_child(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), videoWidget)
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        g_signal_connect_data(gpointer(window), "close-request", unsafeBitCast({ (_: gpointer?, data: gpointer?) -> gboolean in
+            guard let data else { return 0 }
+            MainActor.assumeIsolated {
+                Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue().stopPictureInPicture()
+            }
+            return 1
+        } as @convention(c) (gpointer?, gpointer?) -> gboolean, to: GCallback.self), context, nil,
+        GConnectFlags(rawValue: 0))
         gtk_window_present(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self))
     }
 
@@ -200,6 +213,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
         if gtk_widget_get_parent(videoWidget) != nil { gtk_widget_unparent(videoWidget) }
         gtk_box_append(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkBox.self), videoWidget)
         gtk_window_destroy(gtkWindow)
+        pictureInPictureActiveHandler?(false)
     }
 
     private func presentFrame() {
