@@ -23,6 +23,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
     private var pendingAutoplay = true
     private var playbackRate: Float = 1
     private var rateNeedsApplication = false
+    private var pendingRatePosition: Double?
     private var pictureInPictureWindow: UnsafeMutablePointer<GtkWidget>?
     private var pictureInPicturePlayButton: UnsafeMutablePointer<GtkWidget>?
     private var pictureInPictureTimeLabel: UnsafeMutablePointer<GtkWidget>?
@@ -122,6 +123,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
         }
         pendingSeek = nil
         acceptedSeek = nil
+        pendingRatePosition = nil
         rateNeedsApplication = true
         swift_openui_gst_player_stop(gst)
         swift_openui_gst_player_clear_headers(gst)
@@ -160,6 +162,8 @@ final class GTKVideoDriver: _AVPlayerDriver {
     }
     func setRate(_ rate: Float) {
         guard rate > 0 else { pause(); return }
+        let position = currentTime.seconds
+        if position.isFinite, position > 0 { pendingRatePosition = position }
         playbackRate = rate
         rateNeedsApplication = true
         pendingAutoplay = true
@@ -196,6 +200,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
         if let gst { swift_openui_gst_player_stop(gst) }
         pendingSeek = nil
         acceptedSeek = nil
+        pendingRatePosition = nil
     }
 
     private func cancelSeekFallback() {
@@ -484,8 +489,12 @@ final class GTKVideoDriver: _AVPlayerDriver {
 
     private func applyPlaybackRateIfReady() {
         guard rateNeedsApplication, let gst else { return }
-        if swift_openui_gst_player_set_rate(gst, Double(playbackRate)) != 0 {
+        let position = pendingRatePosition
+        let nanoseconds = position.map { gint64($0 * 1_000_000_000) } ?? -1
+        if swift_openui_gst_player_set_rate(gst, Double(playbackRate), nanoseconds) != 0 {
             rateNeedsApplication = false
+            pendingRatePosition = nil
+            if let position { acceptedSeek = position }
         }
     }
 }

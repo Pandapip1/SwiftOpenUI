@@ -304,10 +304,14 @@ static inline void swift_openui_gst_player_pause(SwiftOpenUIGStreamerPlayer *pla
 }
 
 static inline gboolean swift_openui_gst_player_set_rate(SwiftOpenUIGStreamerPlayer *player,
-                                                         gdouble rate) {
+                                                         gdouble rate,
+                                                         gint64 requested_position) {
     if (!player || rate <= 0) return FALSE;
-    gint64 position = 0;
-    if (!gst_element_query_position(player->pipeline, GST_FORMAT_TIME, &position)) position = 0;
+    gint64 position = requested_position;
+    if (position < 0 && !gst_element_query_position(player->pipeline, GST_FORMAT_TIME, &position)) {
+        return FALSE;
+    }
+    swift_openui_gst_player_clear_pending_sample(player);
     return gst_element_seek(player->pipeline, rate, GST_FORMAT_TIME,
         GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE,
         GST_SEEK_TYPE_SET, position, GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
