@@ -1818,7 +1818,7 @@ public func dispatchCommand(wParam: WPARAM) -> Bool {
 
 extension VStack: WinRenderable {
     public func winCreateWidget(in context: RenderContext) -> HWND? {
-        let spacing = resolveStackSpacing(spacing)
+        let spacing = spacing ?? 8
         registerStackClassIfNeeded(hInstance: context.hInstance)
 
         let container = CreateWindowExW(
@@ -1854,7 +1854,7 @@ extension VStack: WinRenderable {
 
         let info = StackLayoutInfo(
             direction: .vertical,
-            spacing: Int32(spacing),
+            spacing: Int32(spacing.rounded()),
             children: childHwnds,
             flexibleIndices: flexibleIndices,
             crossAlignment: crossAlign
@@ -1904,7 +1904,7 @@ extension VStack: WinRenderable {
 
 extension HStack: WinRenderable {
     public func winCreateWidget(in context: RenderContext) -> HWND? {
-        let spacing = resolveStackSpacing(spacing)
+        let spacing = spacing ?? 8
         registerStackClassIfNeeded(hInstance: context.hInstance)
 
         let container = CreateWindowExW(
@@ -1946,7 +1946,7 @@ extension HStack: WinRenderable {
 
         let info = StackLayoutInfo(
             direction: .horizontal,
-            spacing: Int32(spacing),
+            spacing: Int32(spacing.rounded()),
             children: childHwnds,
             flexibleIndices: flexibleIndices,
             crossAlignment: crossAlign
@@ -3712,7 +3712,7 @@ extension VStack: WinDescribable {
             typeName: String(describing: Self.self),
             props: .vStack(
                 Win32VStackDescriptor(
-                    spacing: resolveStackSpacing(spacing),
+                    spacing: spacing,
                     alignment: winHorizontalAlignmentDescriptor(alignment)
                 )
             ),
@@ -3728,7 +3728,7 @@ extension HStack: WinDescribable {
             typeName: String(describing: Self.self),
             props: .hStack(
                 Win32HStackDescriptor(
-                    spacing: resolveStackSpacing(spacing),
+                    spacing: spacing,
                     alignment: winVerticalAlignmentDescriptor(alignment)
                 )
             ),

@@ -138,12 +138,12 @@ public enum GTK4VerticalAlignmentDescriptor: String, Equatable {
 }
 
 public struct GTK4VStackDescriptor: Equatable {
-    public let spacing: Int
+    public let spacing: CGFloat?
     public let alignment: GTK4HorizontalAlignmentDescriptor
 }
 
 public struct GTK4HStackDescriptor: Equatable {
-    public let spacing: Int
+    public let spacing: CGFloat?
     public let alignment: GTK4VerticalAlignmentDescriptor
 }
 

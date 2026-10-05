@@ -1,4 +1,5 @@
 import SwiftOpenUI
+import Foundation
 
 // MARK: - Descriptor kinds and property types
 
@@ -79,12 +80,12 @@ public enum WebVerticalAlignmentDescriptor: String, Equatable {
 }
 
 public struct WebVStackDescriptor: Equatable {
-    public let spacing: Int
+    public let spacing: CGFloat?
     public let alignment: WebHorizontalAlignmentDescriptor
 }
 
 public struct WebHStackDescriptor: Equatable {
-    public let spacing: Int
+    public let spacing: CGFloat?
     public let alignment: WebVerticalAlignmentDescriptor
 }
 

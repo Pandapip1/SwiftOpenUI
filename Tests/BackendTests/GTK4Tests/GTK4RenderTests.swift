@@ -2067,7 +2067,7 @@ final class GTK4RenderTests: XCTestCase {
             secondOrigin.y,
             firstSize.height,
             accuracy: 0.01,
-            "Default VStack spacing must collapse to 0 to match macOS SwiftUI for text siblings."
+            "Default VStack spacing must collapse to 0 to match the established GTK behavior."
         )
     }
 

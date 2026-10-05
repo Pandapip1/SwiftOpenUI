@@ -20,8 +20,8 @@ private func gtkMarkLayoutHelper(_ widget: UnsafeMutablePointer<GtkWidget>) {
     gtk_widget_set_can_target(widget, 0)
 }
 
-private func gtkVStackSpacing(_ spacing: Int) -> Int {
-    spacing == stackDefaultSpacing ? 0 : resolveStackSpacing(spacing)
+private func gtkNativeSpacing(_ spacing: CGFloat?) -> Int {
+    Int((spacing ?? 8).rounded())
 }
 
 /// Convert a Double pixel dimension into an integer GTK size. GTK widgets
@@ -808,13 +808,13 @@ extension VStack: GTKRenderable, GTKDescribable {
         return GTK4DescriptorNode(
             kind: .vStack, typeName: "VStack",
             props: .vStack(GTK4VStackDescriptor(
-                spacing: gtkVStackSpacing(spacing),
+                spacing: spacing,
                 alignment: gtkHorizontalAlignmentDescriptor(alignment))),
             children: childDescs)
     }
 
     public func gtkCreateWidget() -> OpaquePointer {
-        let effectiveSpacing = gtkVStackSpacing(spacing)
+        let effectiveSpacing = Int((spacing ?? 0).rounded())
         let children = gtkRenderChildren(content).map(widgetFromOpaque)
         // A VStack of ordinary, non-overlapping vertical children is naturally a
         // GtkBox. The former GtkFixed-based "shared" path placed children at the
@@ -883,13 +883,13 @@ extension HStack: GTKRenderable, GTKDescribable {
         return GTK4DescriptorNode(
             kind: .hStack, typeName: "HStack",
             props: .hStack(GTK4HStackDescriptor(
-                spacing: resolveStackSpacing(spacing),
+                spacing: spacing,
                 alignment: gtkVerticalAlignmentDescriptor(alignment))),
             children: childDescs)
     }
 
     public func gtkCreateWidget() -> OpaquePointer {
-        let effectiveSpacing = resolveStackSpacing(spacing)
+        let effectiveSpacing = gtkNativeSpacing(spacing)
         let children = gtkRenderChildren(content).map(widgetFromOpaque)
         if gtkCanUseSharedHStackLayout(children) {
             return gtkRenderSharedHStack(children, spacing: effectiveSpacing, alignment: alignment)

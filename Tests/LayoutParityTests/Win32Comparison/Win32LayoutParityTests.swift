@@ -83,7 +83,7 @@ final class Win32LayoutParityTests: XCTestCase {
     /// The 7pt-per-item height difference accumulates across stacked items,
     /// causing y-position drifts that exceed the per-pair `textPosition`
     /// tolerance (10pt) when 2+ text items are stacked. Additionally,
-    /// `resolveStackSpacing(-1)` yields 8pt default spacing on Win32, while
+    /// A nil stack spacing yields the established 8pt fallback on Win32, while
     /// macOS SwiftUI uses 0pt default spacing between Text-to-Text pairs at
     /// the drawing-layer level. Together, `7pt height + 8pt spacing = 15pt`
     /// drift per item, exceeding tolerance. Fixing the adaptive spacing

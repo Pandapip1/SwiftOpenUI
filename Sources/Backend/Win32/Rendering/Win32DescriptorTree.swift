@@ -1,4 +1,5 @@
 import SwiftOpenUI
+import Foundation
 import WinSDK
 import CWin32
 
@@ -91,12 +92,12 @@ public enum Win32VerticalAlignmentDescriptor: String, Equatable {
 }
 
 public struct Win32VStackDescriptor: Equatable {
-    public let spacing: Int
+    public let spacing: CGFloat?
     public let alignment: Win32HorizontalAlignmentDescriptor
 }
 
 public struct Win32HStackDescriptor: Equatable {
-    public let spacing: Int
+    public let spacing: CGFloat?
     public let alignment: Win32VerticalAlignmentDescriptor
 }
 

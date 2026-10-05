@@ -300,7 +300,7 @@ private func androidCanUsePrecisionLayout(_ children: [RenderNode]) -> Bool {
 extension VStack: AndroidRenderable {
     public func androidCreateNode() -> RenderNode {
         let node = RenderNode(type: "vstack")
-        let spacingValue = resolveStackSpacing(spacing)
+        let spacingValue = spacing ?? 8
         node.props["spacing"] = "\(spacingValue)"
         node.props["alignment"] = "\(alignment)"
         node.children = androidRenderChildren(content)
@@ -317,7 +317,7 @@ extension VStack: AndroidRenderable {
 extension HStack: AndroidRenderable {
     public func androidCreateNode() -> RenderNode {
         let node = RenderNode(type: "hstack")
-        let spacingValue = resolveStackSpacing(spacing)
+        let spacingValue = spacing ?? 8
         node.props["spacing"] = "\(spacingValue)"
         node.props["alignment"] = "\(alignment)"
         node.children = androidRenderChildren(content)
