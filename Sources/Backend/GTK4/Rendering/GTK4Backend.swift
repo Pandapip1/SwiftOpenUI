@@ -51,6 +51,18 @@ func gtkFindTitlebar(in widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutabl
     return nil
 }
 
+/// A departing page can rebuild during its stack transition. Only the
+/// currently visible page may replace the window's navigation chrome.
+func gtkSetVisibleWindowTitlebar(_ widget: UnsafeMutablePointer<GtkWidget>, _ titlebar: UnsafeMutablePointer<GtkWidget>) {
+    var child = widget
+    while let parent = gtk_widget_get_parent(child) {
+        if String(cString: g_type_name(gtk_swift_get_widget_type(parent))) == "GtkStack",
+           gtk_stack_get_visible_child(OpaquePointer(parent)) != child { return }
+        child = parent
+    }
+    gtk_swift_set_root_window_titlebar(widget, titlebar)
+}
+
 /// Box for passing an activate closure through C user_data.
 private class AppActivateBox {
     let activate: (OpaquePointer) -> Void

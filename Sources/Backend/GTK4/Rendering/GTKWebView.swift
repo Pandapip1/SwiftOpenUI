@@ -11,29 +11,40 @@ import SwiftOpenUI
 private final class GTKWebPageBackend: _WebPageBackend {
     private(set) var widget: UnsafeMutablePointer<GtkWidget>!
     weak var page: WebPage?
+    private var signalHandlers: [gulong] = []
 
     init(page: WebPage) {
         self.page = page
     }
 
+    deinit {
+        if let widget {
+            for handler in signalHandlers { g_signal_handler_disconnect(gpointer(widget), handler) }
+            g_object_unref(gpointer(widget))
+        }
+    }
+
     func configure(persistentDataStore: Bool, userScripts: [WKUserScript]) {
         guard widget == nil else { return }
         widget = swift_openui_webkit_new(persistentDataStore ? 1 : 0)!
+        // WebPage outlives any individual SwiftUI host rebuild. Keep its
+        // native view alive while the old parent is removed/replaced.
+        g_object_ref_sink(gpointer(widget))
         let webView = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: WebKitWebView.self)
         gtk_widget_set_hexpand(widget, 1)
         gtk_widget_set_vexpand(widget, 1)
-        swift_openui_webkit_on_load_changed(webView, { view, event, context in
+        signalHandlers.append(swift_openui_webkit_on_load_changed(webView, { view, event, context in
             guard let context else { return }
             let backend = Unmanaged<GTKWebPageBackend>.fromOpaque(context).takeUnretainedValue()
             MainActor.assumeIsolated { backend.changed(view: view, event: event) }
-        }, Unmanaged.passUnretained(self).toOpaque())
+        }, Unmanaged.passUnretained(self).toOpaque()))
         let propertyChanged: SwiftOpenUIWebKitPropertyChanged = { view, _, context in
             guard let context else { return }
             let backend = Unmanaged<GTKWebPageBackend>.fromOpaque(context).takeUnretainedValue()
             MainActor.assumeIsolated { backend.updateProperties(view: view) }
         }
-        swift_openui_webkit_on_title_changed(webView, propertyChanged, Unmanaged.passUnretained(self).toOpaque())
-        swift_openui_webkit_on_progress_changed(webView, propertyChanged, Unmanaged.passUnretained(self).toOpaque())
+        signalHandlers.append(swift_openui_webkit_on_title_changed(webView, propertyChanged, Unmanaged.passUnretained(self).toOpaque()))
+        signalHandlers.append(swift_openui_webkit_on_progress_changed(webView, propertyChanged, Unmanaged.passUnretained(self).toOpaque()))
         for script in userScripts {
             let time: WebKitUserScriptInjectionTime = script.injectionTime == .atDocumentStart
                 ? WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START : WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_END

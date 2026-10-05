@@ -38,11 +38,24 @@ class GTKNavigationContext {
 
     /// Guard against re-entrant sync between path and stack.
     private var isSyncing = false
+    fileprivate var isAlive = true
+
+    func invalidate() { isAlive = false }
 
     init(stack: OpaquePointer, headerBar: OpaquePointer, backButton: UnsafeMutablePointer<GtkWidget>) {
         self.stack = stack
         self.headerBar = headerBar
         self.backButton = backButton
+    }
+
+    /// Bind dismissal to the destination being rendered. A saved async
+    /// callback must not pop a different screen after its owner has gone.
+    func dismissActionForNextEntry() -> DismissAction {
+        let name = "nav-\(nameCounter)"
+        return DismissAction { [weak self] in
+            guard let self, self.isAlive, self.entries.last?.name == name else { return }
+            self.pop()
+        }
     }
 
     /// Push a new view onto the navigation stack.
@@ -185,6 +198,13 @@ class GTKNavigationContext {
         let title = entries.last?.title ?? ""
         gtk_header_bar_set_title_widget(headerBar, gtk_label_new(title))
         gtk_widget_set_visible(backButton, entries.count > 1 ? 1 : 0)
+        // A nested NavigationStack may have installed its own window chrome.
+        // Restore the visible destination's titlebar when navigating back.
+        let visibleTitlebar = entries.last.flatMap { gtkFindTitlebar(in: $0.widget) }
+            ?? UnsafeMutableRawPointer(headerBar).assumingMemoryBound(to: GtkWidget.self)
+        gtkSetVisibleWindowTitlebar(
+            UnsafeMutableRawPointer(stack).assumingMemoryBound(to: GtkWidget.self), visibleTitlebar
+        )
     }
 }
 
@@ -199,9 +219,9 @@ struct GTKResolvedDestination {
 
 /// Registry of type-to-view factories for path-based navigation.
 class GTKNavigationDestinationRegistry {
-    private var factories: [ObjectIdentifier: (AnyHashable) -> GTKResolvedDestination] = [:]
+    private var factories: [ObjectIdentifier: (AnyHashable) -> GTKResolvedDestination?] = [:]
 
-    func register<V: Hashable>(for type: V.Type, factory: @escaping (V) -> GTKResolvedDestination) {
+    func register<V: Hashable>(for type: V.Type, factory: @escaping (V) -> GTKResolvedDestination?) {
         factories[ObjectIdentifier(type)] = { anyValue in
             factory(anyValue.base as! V)
         }
@@ -385,7 +405,8 @@ extension NavigationStack: GTKRenderable {
         let retained = Unmanaged.passRetained(context).toOpaque()
         let gobject = UnsafeMutableRawPointer(stack).assumingMemoryBound(to: GObject.self)
         g_object_set_data_full(gobject, "nav-context", retained, { userData in
-            Unmanaged<GTKNavigationContext>.fromOpaque(userData!).release()
+            let context = Unmanaged<GTKNavigationContext>.fromOpaque(userData!).takeRetainedValue()
+            context.invalidate()
         })
 
         // Connect back button
@@ -547,6 +568,7 @@ extension NavigationLink: GTKRenderable {
             setCurrentNavigationContext(context)
             let prevEnv = getCurrentEnvironment()
             var env = capturedEnv
+            env.dismiss = context.dismissActionForNextEntry()
             env[NavigateKey.self] = NavigateAction(
                 push: { [weak context] value in context?.pushValue(value) },
                 pop: { [weak context] in context?.pop() },
@@ -591,10 +613,12 @@ extension NavigationDestinationModifier: GTKRenderable {
             let destinationBuilder = destination
             // Capture render-time environment for the deferred factory callback.
             let capturedEnv = getCurrentEnvironment()
-            context.destinationRegistry.register(for: dataType) { value in
+            context.destinationRegistry.register(for: dataType) { [weak context] value in
+                guard let context, context.isAlive else { return nil }
                 setCurrentNavigationContext(context)
                 let prevEnv = getCurrentEnvironment()
                 var env = capturedEnv
+                env.dismiss = context.dismissActionForNextEntry()
                 env[NavigateKey.self] = NavigateAction(
                     push: { [weak context] value in context?.pushValue(value) },
                     pop: { [weak context] in context?.pop() },

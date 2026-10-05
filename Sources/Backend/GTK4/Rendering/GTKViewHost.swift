@@ -407,7 +407,7 @@ public class GTKViewHost: AnyViewHost, DependencyTrackingHost {
         // sibling ViewHosts (e.g. GestureDemo) would clear the NavigationStack's
         // header bar that lives in a different subtree.
         if let titlebar = findTitlebarInRebuiltTree(newChild) {
-            gtk_swift_set_root_window_titlebar(newChild, titlebar)
+            gtkSetVisibleWindowTitlebar(newChild, titlebar)
         }
 
         // Animate the transition: set old values, add CSS transition, then

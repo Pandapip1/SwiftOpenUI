@@ -11,6 +11,31 @@ final class GTK4WebViewTests: XCTestCase {
         if gtk_is_initialized() == 0 { _ = gtk_init_check() }
     }
 
+    func testPageRetainsNativeViewAcrossParentReplacement() async throws {
+        try await MainActor.run {
+            guard gtk_is_initialized() != 0 else { throw XCTSkip("no GTK") }
+            var configuration = WebPage.Configuration()
+            configuration.websiteDataStore = .nonPersistent()
+            let page = WebPage(configuration: configuration)
+            let original = widgetFromOpaque(WebView(page).gtkCreateWidget())
+            let window = gtk_window_new()!
+            gtk_window_set_child(windowPointer(window), original)
+            gtk_widget_set_visible(window, 1)
+            defer { gtk_window_destroy(windowPointer(window)) }
+
+            gtk_window_set_child(windowPointer(window), nil)
+            let rebuilt = widgetFromOpaque(WebView(page).gtkCreateWidget())
+            XCTAssertEqual(rebuilt, original)
+            gtk_window_set_child(windowPointer(window), rebuilt)
+            page.load(html: "<title>Still usable after reparenting</title>")
+            let deadline = Date().addingTimeInterval(10)
+            while page.title != "Still usable after reparenting", Date() < deadline {
+                _ = g_main_context_iteration(nil, 0)
+            }
+            XCTAssertEqual(page.title, "Still usable after reparenting")
+        }
+    }
+
     func testWebViewLoadsHTMLAndReportsNavigation() async throws {
         try await MainActor.run {
             guard gtk_is_initialized() != 0 else { throw XCTSkip("no GTK") }
