@@ -8,6 +8,11 @@ final class ModifierTests: XCTestCase {
         let title: String
     }
 
+    func testContinuousHoverHasSwiftUICompatibleOpaqueResult() {
+        let hovered: some View = Text("hover").onContinuousHover(coordinateSpace: .global) { _ in }
+        _ = hovered
+    }
+
     // MARK: - ViewModifier preserves content
 
     struct RedBackground: ViewModifier {

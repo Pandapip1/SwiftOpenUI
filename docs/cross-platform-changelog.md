@@ -21,6 +21,16 @@ backend.
 
 ---
 
+## 2026-10-05 — GTK4 — continuous hover events
+
+- **Shared surface:** added SwiftUI-compatible `HoverPhase`, `CoordinateSpace`,
+  and `View.onContinuousHover(coordinateSpace:perform:)`.
+- **Impact:** GTK4 reports active phases only for actual pointer motion and an
+  ended phase when the pointer leaves, allowing transient controls to remain
+  hidden while a pointer is stationary.
+- **Ping:** GTK4 and shared API integrators.
+- **Refs:** `GestureModifier.swift`, `GTKRenderer.swift`.
+
 ## 2026-10-04 — WebKit/GTK4 — SwiftUI WebView surface
 
 - **Shared surface:** added a `WebKit` product with `WebView(url:)`,

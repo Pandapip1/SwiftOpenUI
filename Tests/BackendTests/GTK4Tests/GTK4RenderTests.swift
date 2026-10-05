@@ -1944,6 +1944,84 @@ final class GTK4RenderTests: XCTestCase {
                         "onDrag view with .environment(model) should render a widget")
     }
 
+    func testContinuousHoverRendersWithEnvironmentBinding() throws {
+        try requireGTK()
+
+        let model = GTKDelayedEnvModel()
+        let widget = widgetFromOpaque(gtkRenderView(
+            GTKDelayedEnvContinuousHoverView().environment(model)
+        ))
+        XCTAssertNotNil(widget,
+                        "onContinuousHover view with .environment(model) should render a widget")
+    }
+
+    func testContinuousHoverEmitsEnterMotionAndLeavePhases() throws {
+        try requireGTK()
+        var phases: [HoverPhase] = []
+        let widget = widgetFromOpaque(gtkRenderView(
+            Text("Hover").onContinuousHover { phases.append($0) }
+        ))
+        let object = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
+        let stored = try XCTUnwrap(g_object_get_data(object, gtkSwiftContinuousHoverControllerMarker))
+        let controller = OpaquePointer(stored)
+
+        gtk_swift_emit_motion_enter(controller, 2, 3)
+        gtk_swift_emit_motion(controller, 5, 7)
+        gtk_swift_emit_motion_leave(controller)
+
+        XCTAssertEqual(phases, [.active(CGPoint(x: 2, y: 3)),
+                                .active(CGPoint(x: 5, y: 7)), .ended])
+    }
+
+    func testContinuousHoverResolvesGlobalAndNamedCoordinateSpaces() throws {
+        try requireGTK()
+        func controller(in widget: UnsafeMutablePointer<GtkWidget>) -> OpaquePointer? {
+            let object = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
+            if let stored = g_object_get_data(object, gtkSwiftContinuousHoverControllerMarker) {
+                return OpaquePointer(stored)
+            }
+            var child = gtk_widget_get_first_child(widget)
+            while let current = child {
+                if let found = controller(in: current) { return found }
+                child = gtk_widget_get_next_sibling(current)
+            }
+            return nil
+        }
+
+        var globalPoint: CGPoint?
+        let globalWidget = widgetFromOpaque(gtkRenderView(
+            Text("Global").onContinuousHover(coordinateSpace: .global) {
+                if case .active(let point) = $0 { globalPoint = point }
+            }
+        ))
+        let fixed = gtk_fixed_new()!
+        gtk_swift_fixed_put(fixed, globalWidget, 20, 30)
+        let window = gtk_window_new()!
+        gtk_window_set_child(windowPointer(window), fixed)
+        gtk_widget_set_visible(window, 1)
+        while g_main_context_iteration(nil, 0) != 0 {}
+        gtk_swift_emit_motion(try XCTUnwrap(controller(in: globalWidget)), 2, 3)
+        XCTAssertEqual(globalPoint, CGPoint(x: 22, y: 33))
+        gtk_window_destroy(windowPointer(window))
+
+        var namedPoint: CGPoint?
+        let namedWidget = widgetFromOpaque(gtkRenderView(
+            Text("Named")
+                .onContinuousHover(coordinateSpace: .named("area")) {
+                    if case .active(let point) = $0 { namedPoint = point }
+                }
+                .padding(10)
+                .coordinateSpace(name: "area")
+        ))
+        let namedWindow = gtk_window_new()!
+        gtk_window_set_child(windowPointer(namedWindow), namedWidget)
+        gtk_widget_set_visible(namedWindow, 1)
+        while g_main_context_iteration(nil, 0) != 0 {}
+        gtk_swift_emit_motion(try XCTUnwrap(controller(in: namedWidget)), 2, 3)
+        XCTAssertEqual(namedPoint, CGPoint(x: 12, y: 13))
+        gtk_window_destroy(windowPointer(namedWindow))
+    }
+
     func testDisclosureGroupRendersWithEnvironmentBinding() throws {
         try requireGTK()
 
@@ -2403,6 +2481,16 @@ private struct GTKDelayedEnvDragView: View {
 
     var body: some View {
         Text("Drag").onDrag(onChanged: { _ in model.count += 1 }, onEnded: { _ in model.count += 1 })
+    }
+}
+
+private struct GTKDelayedEnvContinuousHoverView: View {
+    @Environment(GTKDelayedEnvModel.self) var model
+
+    var body: some View {
+        Text("Hover").onContinuousHover { phase in
+            if case .active = phase { model.count += 1 }
+        }
     }
 }
 

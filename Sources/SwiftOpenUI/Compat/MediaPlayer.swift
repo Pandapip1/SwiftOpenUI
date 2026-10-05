@@ -66,6 +66,21 @@ public final class AVMediaSelectionGroup: @unchecked Sendable {
     }
 }
 
+public final class AVMediaSelection: @unchecked Sendable {
+    private let lock = NSLock()
+    private var selected: [ObjectIdentifier: AVMediaSelectionOption] = [:]
+    public init() {}
+    public func selectedMediaOption(in mediaSelectionGroup: AVMediaSelectionGroup) -> AVMediaSelectionOption? {
+        lock.lock(); defer { lock.unlock() }
+        return selected[ObjectIdentifier(mediaSelectionGroup)] ??
+            (mediaSelectionGroup.allowsEmptySelection ? nil : mediaSelectionGroup.options.first)
+    }
+    fileprivate func set(_ option: AVMediaSelectionOption?, in group: AVMediaSelectionGroup) {
+        lock.lock(); defer { lock.unlock() }
+        selected[ObjectIdentifier(group)] = option
+    }
+}
+
 public typealias CMPersistentTrackID = Int32
 public let kCMPersistentTrackID_Invalid: CMPersistentTrackID = 0
 
@@ -150,6 +165,7 @@ public final class AVPlayerItem: @unchecked Sendable {
     private var mediaSelectionHandler:
         (@Sendable (AVMediaSelectionOption?, AVMediaSelectionGroup) -> Void)?
     public let asset: AVAsset
+    public let currentMediaSelection = AVMediaSelection()
     public init(asset: AVAsset) { self.asset = asset }
     public convenience init(url: URL) { self.init(asset: AVURLAsset(url: url)) }
     @_spi(SwiftOpenUIBackend) public var _swiftOpenUISelectMediaOption:
@@ -171,6 +187,7 @@ public final class AVPlayerItem: @unchecked Sendable {
               mediaSelectionOption == nil
                 || mediaSelectionGroup.options.contains(where: { $0 === mediaSelectionOption }) else { return }
         _swiftOpenUISelectMediaOption?(mediaSelectionOption, mediaSelectionGroup)
+        currentMediaSelection.set(mediaSelectionOption, in: mediaSelectionGroup)
     }
 }
 

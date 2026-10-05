@@ -716,6 +716,31 @@ gtk_swift_allocate_child(GtkWidget *child, int x, int y,
     gtk_widget_allocate(child, width, height, baseline, t);
 }
 
+static inline GtkWidget *gtk_swift_widget_root(GtkWidget *widget) {
+    GtkRoot *root = gtk_widget_get_root(widget);
+    return root && GTK_IS_WIDGET(root) ? GTK_WIDGET(root) : widget;
+}
+
+static inline gboolean gtk_swift_widget_compute_point(GtkWidget *from, GtkWidget *to,
+                                                       double x, double y,
+                                                       double *result_x, double *result_y) {
+    graphene_point_t point = GRAPHENE_POINT_INIT((float)x, (float)y);
+    graphene_point_t result;
+    gboolean success = gtk_widget_compute_point(from, to, &point, &result);
+    if (success) { *result_x = result.x; *result_y = result.y; }
+    return success;
+}
+
+static inline void gtk_swift_emit_motion_enter(GtkEventController *controller, double x, double y) {
+    g_signal_emit_by_name(controller, "enter", x, y);
+}
+static inline void gtk_swift_emit_motion(GtkEventController *controller, double x, double y) {
+    g_signal_emit_by_name(controller, "motion", x, y);
+}
+static inline void gtk_swift_emit_motion_leave(GtkEventController *controller) {
+    g_signal_emit_by_name(controller, "leave");
+}
+
 // --- GtkPaned shims ---
 
 static inline void

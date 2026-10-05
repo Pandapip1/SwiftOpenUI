@@ -1,6 +1,6 @@
 import CGTK
 import CGTKBridge
-import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) import SwiftOpenUI
 import SwiftOpenUISymbols
 import Foundation
 
@@ -2876,6 +2876,130 @@ extension TextFieldStyleModifier: GTKRenderable {
 }
 
 // MARK: - Gesture GTK extensions
+
+private let gtkSwiftCoordinateSpaceMarker = "gtk-swift-coordinate-space"
+let gtkSwiftContinuousHoverControllerMarker = "gtk-swift-continuous-hover-controller"
+
+private final class NamedCoordinateSpaceBox {
+    let name: AnyHashable
+    init(_ name: AnyHashable) { self.name = name }
+}
+
+extension _CoordinateSpaceView: GTKRenderable, GTKDescribable {
+    public func gtkDescribeNode() -> GTK4DescriptorNode {
+        GTK4DescriptorNode(kind: .composite, typeName: "CoordinateSpaceView",
+                           children: [gtkDescribeView(content)])
+    }
+
+    public func gtkCreateWidget() -> OpaquePointer {
+        let child = widgetFromOpaque(gtkRenderView(content))
+        let wrapper = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        gtk_widget_set_hexpand(wrapper, gtk_widget_get_hexpand(child))
+        gtk_widget_set_vexpand(wrapper, gtk_widget_get_vexpand(child))
+        gtk_box_append(boxPointer(wrapper), child)
+        let box = Unmanaged.passRetained(NamedCoordinateSpaceBox(name))
+        g_object_set_data_full(UnsafeMutableRawPointer(wrapper).assumingMemoryBound(to: GObject.self),
+                               gtkSwiftCoordinateSpaceMarker, box.toOpaque(), { data in
+            if let data { Unmanaged<NamedCoordinateSpaceBox>.fromOpaque(data).release() }
+        })
+        return opaqueFromWidget(wrapper)
+    }
+}
+
+private func gtkHoverPoint(widget: UnsafeMutablePointer<GtkWidget>, x: Double, y: Double,
+                           coordinateSpace: CoordinateSpace) -> CGPoint {
+    let target: UnsafeMutablePointer<GtkWidget>?
+    switch coordinateSpace {
+    case .local: target = widget
+    case .global: target = gtk_swift_widget_root(widget)
+    case .named(let name):
+        var candidate: UnsafeMutablePointer<GtkWidget>? = widget
+        var match: UnsafeMutablePointer<GtkWidget>?
+        while let current = candidate {
+            let object = UnsafeMutableRawPointer(current).assumingMemoryBound(to: GObject.self)
+            if let data = g_object_get_data(object, gtkSwiftCoordinateSpaceMarker),
+               Unmanaged<NamedCoordinateSpaceBox>.fromOpaque(data).takeUnretainedValue().name == name {
+                match = current; break
+            }
+            candidate = gtk_widget_get_parent(current)
+        }
+        target = match ?? widget
+    }
+    var resultX = x, resultY = y
+    if let target { _ = gtk_swift_widget_compute_point(widget, target, x, y, &resultX, &resultY) }
+    return CGPoint(x: resultX, y: resultY)
+}
+
+extension _ContinuousHoverView: GTKRenderable, GTKDescribable {
+    public func gtkDescribeNode() -> GTK4DescriptorNode {
+        GTK4DescriptorNode(
+            kind: .composite,
+            typeName: "ContinuousHoverView",
+            children: [gtkDescribeView(content)]
+        )
+    }
+
+    public func gtkCreateWidget() -> OpaquePointer {
+        let widget = widgetFromOpaque(gtkRenderView(content))
+        gtkMarkInteractive(widget)
+        let controller = gtk_event_controller_motion_new()!
+        let boundAction = bindActionToCurrentEnvironment(action)
+
+        let motionBox = Unmanaged.passRetained(DoubleDoubleClosureBox { [coordinateSpace] x, y in
+            boundAction(.active(gtkHoverPoint(widget: widget, x: x, y: y,
+                                              coordinateSpace: coordinateSpace)))
+        }).toOpaque()
+        g_signal_connect_data(
+            gpointer(controller),
+            "motion",
+            unsafeBitCast({ (_: gpointer?, x: gdouble, y: gdouble, userData: gpointer?) in
+                guard let userData else { return }
+                Unmanaged<DoubleDoubleClosureBox>.fromOpaque(userData).takeUnretainedValue().closure(x, y)
+            } as @convention(c) (gpointer?, gdouble, gdouble, gpointer?) -> Void, to: GCallback.self),
+            motionBox,
+            { (userData: gpointer?, _: UnsafeMutablePointer<GClosure>?) in
+                guard let userData else { return }
+                Unmanaged<DoubleDoubleClosureBox>.fromOpaque(userData).release()
+            },
+            GConnectFlags(rawValue: 0)
+        )
+
+        let enterBox = Unmanaged.passRetained(DoubleDoubleClosureBox { [coordinateSpace] x, y in
+            boundAction(.active(gtkHoverPoint(widget: widget, x: x, y: y,
+                                              coordinateSpace: coordinateSpace)))
+        }).toOpaque()
+        g_signal_connect_data(gpointer(controller), "enter", unsafeBitCast({
+            (_: gpointer?, x: gdouble, y: gdouble, userData: gpointer?) in
+            guard let userData else { return }
+            Unmanaged<DoubleDoubleClosureBox>.fromOpaque(userData).takeUnretainedValue().closure(x, y)
+        } as @convention(c) (gpointer?, gdouble, gdouble, gpointer?) -> Void, to: GCallback.self), enterBox, {
+            data, _ in if let data { Unmanaged<DoubleDoubleClosureBox>.fromOpaque(data).release() }
+        }, GConnectFlags(rawValue: 0))
+
+        let leaveBox = Unmanaged.passRetained(ClosureBox {
+            boundAction(.ended)
+        }).toOpaque()
+        g_signal_connect_data(
+            gpointer(controller),
+            "leave",
+            unsafeBitCast({ (_: gpointer?, userData: gpointer?) in
+                guard let userData else { return }
+                Unmanaged<ClosureBox>.fromOpaque(userData).takeUnretainedValue().closure()
+            } as @convention(c) (gpointer?, gpointer?) -> Void, to: GCallback.self),
+            leaveBox,
+            { (userData: gpointer?, _: UnsafeMutablePointer<GClosure>?) in
+                guard let userData else { return }
+                Unmanaged<ClosureBox>.fromOpaque(userData).release()
+            },
+            GConnectFlags(rawValue: 0)
+        )
+
+        gtk_widget_add_controller(widget, controller)
+        g_object_set_data(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self),
+                          gtkSwiftContinuousHoverControllerMarker, UnsafeMutableRawPointer(controller))
+        return opaqueFromWidget(widget)
+    }
+}
 
 /// Box for tap gesture that carries the required tap count.
 private class TapClosureBox {
