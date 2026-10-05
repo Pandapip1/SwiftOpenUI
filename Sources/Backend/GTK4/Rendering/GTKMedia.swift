@@ -18,6 +18,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
     private weak var player: AVPlayer?
     private var gst: UnsafeMutablePointer<SwiftOpenUIGStreamerPlayer>?
     private var pendingSeek: Double?
+    private var acceptedSeek: Double?
     private var startSource: guint = 0
     private var pendingAutoplay = true
     private var playbackRate: Float = 1
@@ -109,6 +110,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
         sourceVideoHeaders = Self.headers(from: videoOptions)
         sourceAudioHeaders = Self.headers(from: audioOptions)
         pendingSeek = nil
+        acceptedSeek = nil
         rateNeedsApplication = true
         swift_openui_gst_player_stop(gst)
         swift_openui_gst_player_clear_headers(gst)
@@ -158,22 +160,31 @@ final class GTKVideoDriver: _AVPlayerDriver {
 
     func seek(to time: CMTime) {
         let seconds = time.seconds
+        acceptedSeek = nil
         guard let gst else { pendingSeek = seconds; return }
         guard durationSeconds > 0 else { pendingSeek = seconds; return }
         if swift_openui_gst_player_is_seekable(gst) != 0 {
-            _ = swift_openui_gst_player_seek(
+            let target = max(0, seconds)
+            if swift_openui_gst_player_seek(
                 gst, gint64(max(0, seconds) * 1_000_000_000), Double(playbackRate)
-            )
-        } else {
-            pendingSeek = seconds
-            downloadForSeekingIfNeeded()
+            ) != 0 {
+                // A flushing seek temporarily makes position queries return the
+                // old clock or zero. Keep AVPlayer's clock at the requested
+                // position until the pipeline produces a post-seek frame.
+                acceptedSeek = target
+                pendingSeek = nil
+                return
+            }
         }
+        pendingSeek = seconds
+        downloadForSeekingIfNeeded()
     }
 
     func stop() {
         cancelSeekFallback()
         if let gst { swift_openui_gst_player_stop(gst) }
         pendingSeek = nil
+        acceptedSeek = nil
     }
 
     private func cancelSeekFallback() {
@@ -265,8 +276,14 @@ final class GTKVideoDriver: _AVPlayerDriver {
     }
 
     var currentTime: CMTime {
-        CMTime(seconds: gst.map { Double(swift_openui_gst_player_position($0)) / 1_000_000_000 } ?? 0,
-               preferredTimescale: 600)
+        let observed = gst.map { Double(swift_openui_gst_player_position($0)) / 1_000_000_000 } ?? 0
+        if let target = pendingSeek {
+            return CMTime(seconds: max(0, target), preferredTimescale: 600)
+        }
+        if let target = acceptedSeek {
+            return CMTime(seconds: target, preferredTimescale: 600)
+        }
+        return CMTime(seconds: observed, preferredTimescale: 600)
     }
     var duration: CMTime { CMTime(seconds: durationSeconds, preferredTimescale: 600) }
     private var durationSeconds: Double {
@@ -395,6 +412,10 @@ final class GTKVideoDriver: _AVPlayerDriver {
         var height: gint = 0
         var stride: gint = 0
         if swift_openui_gst_player_pull_frame(gst, &data, &length, &width, &height, &stride) != 0, let data {
+            // A flushing seek discards every pre-seek sample. The first sample
+            // that can be pulled afterward therefore acknowledges the new
+            // segment without relying on transient position-query values.
+            acceptedSeek = nil
             gtk_swift_video_surface_set_pixels(videoWidget, data, length, width, height, stride)
             swift_openui_gst_player_free_frame(data)
         }
