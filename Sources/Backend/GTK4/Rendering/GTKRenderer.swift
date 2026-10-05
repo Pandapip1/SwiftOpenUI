@@ -3036,7 +3036,10 @@ extension TapGestureView: GTKRenderable, GTKDescribable {
         let box = Unmanaged.passRetained(TapClosureBox(count: count, action: boundAction)).toOpaque()
         g_signal_connect_data(
             gpointer(gesture),
-            "pressed",
+            // A SwiftUI tap completes only after release. Waiting for GTK's
+            // recognized release also lets a drag cancel this gesture and pass
+            // to an enclosing ScrollView instead of firing at touch-down.
+            "released",
             unsafeBitCast({ (_: gpointer?, nPress: gint, _: gdouble, _: gdouble, userData: gpointer?) in
                 let box = Unmanaged<TapClosureBox>.fromOpaque(userData!).takeUnretainedValue()
                 if Int(nPress) == box.requiredCount {
