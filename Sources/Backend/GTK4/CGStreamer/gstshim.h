@@ -288,6 +288,16 @@ static inline void swift_openui_gst_player_pause(SwiftOpenUIGStreamerPlayer *pla
     if (player) gst_element_set_state(player->pipeline, GST_STATE_PAUSED);
 }
 
+static inline gboolean swift_openui_gst_player_set_rate(SwiftOpenUIGStreamerPlayer *player,
+                                                         gdouble rate) {
+    if (!player || rate <= 0) return FALSE;
+    gint64 position = 0;
+    if (!gst_element_query_position(player->pipeline, GST_FORMAT_TIME, &position)) position = 0;
+    return gst_element_seek(player->pipeline, rate, GST_FORMAT_TIME,
+        GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE,
+        GST_SEEK_TYPE_SET, position, GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
+}
+
 static inline void swift_openui_gst_player_stop(SwiftOpenUIGStreamerPlayer *player) {
     if (player) {
         gst_element_set_state(player->pipeline, GST_STATE_NULL);
@@ -295,11 +305,14 @@ static inline void swift_openui_gst_player_stop(SwiftOpenUIGStreamerPlayer *play
     }
 }
 
-static inline gboolean swift_openui_gst_player_seek(SwiftOpenUIGStreamerPlayer *player, gint64 nanoseconds) {
-    if (!player) return FALSE;
+static inline gboolean swift_openui_gst_player_seek(SwiftOpenUIGStreamerPlayer *player,
+                                                     gint64 nanoseconds,
+                                                     gdouble rate) {
+    if (!player || rate <= 0) return FALSE;
     swift_openui_gst_player_clear_pending_sample(player);
-    return gst_element_seek_simple(player->pipeline, GST_FORMAT_TIME,
-        GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE, nanoseconds);
+    return gst_element_seek(player->pipeline, rate, GST_FORMAT_TIME,
+        GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE,
+        GST_SEEK_TYPE_SET, nanoseconds, GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
 }
 
 static inline gboolean swift_openui_gst_player_is_seekable(SwiftOpenUIGStreamerPlayer *player) {

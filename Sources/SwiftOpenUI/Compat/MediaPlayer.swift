@@ -95,6 +95,7 @@ public protocol _AVPlayerDriver: AnyObject {
     func replaceCurrentItem(with item: AVPlayerItem?)
     func play()
     func pause()
+    func setRate(_ rate: Float)
     func seek(to time: CMTime)
     var currentTime: CMTime { get }
     var duration: CMTime { get }
@@ -107,6 +108,7 @@ public protocol _AVPlayerDriver: AnyObject {
 
 public extension _AVPlayerDriver {
     func setPictureInPictureActiveHandler(_ handler: (@MainActor (Bool) -> Void)?) {}
+    func setRate(_ rate: Float) { rate > 0 ? play() : pause() }
 }
 
 @MainActor
@@ -117,6 +119,7 @@ public final class AVPlayer: @unchecked Sendable {
     @_spi(SwiftOpenUIBackend) public var _swiftOpenUIOnFailure: (@Sendable (String) -> Void)?
     private var pendingTime: CMTime?
     private var pendingRate: Float = 0
+    public var defaultRate: Float = 1
 
     nonisolated public init() {}
     nonisolated public convenience init(url: URL) { self.init(playerItem: AVPlayerItem(url: url)) }
@@ -124,11 +127,18 @@ public final class AVPlayer: @unchecked Sendable {
     public func replaceCurrentItem(with item: AVPlayerItem?) {
         currentItem = item; pendingTime = nil; _swiftOpenUIDriver?.replaceCurrentItem(with: item)
     }
-    public func play() { pendingRate = 1; _swiftOpenUIDriver?.play() }
+    public func play() { rate = defaultRate }
+    public func playImmediately(atRate rate: Float) { self.rate = rate }
     public func pause() { pendingRate = 0; _swiftOpenUIDriver?.pause() }
     public func seek(to time: CMTime) { pendingTime = time; _swiftOpenUIDriver?.seek(to: time) }
     public func currentTime() -> CMTime { _swiftOpenUIDriver?.currentTime ?? pendingTime ?? .zero }
-    public var rate: Float { _swiftOpenUIDriver?.rate ?? pendingRate }
+    public var rate: Float {
+        get { _swiftOpenUIDriver?.rate ?? pendingRate }
+        set {
+            pendingRate = newValue
+            _swiftOpenUIDriver?.setRate(newValue)
+        }
+    }
     @_spi(SwiftOpenUIBackend) public var _swiftOpenUIDuration: CMTime {
         _swiftOpenUIDriver?.duration ?? .zero
     }
@@ -136,7 +146,7 @@ public final class AVPlayer: @unchecked Sendable {
         _swiftOpenUIDriver = driver
         driver.replaceCurrentItem(with: currentItem)
         if let pendingTime { driver.seek(to: pendingTime) }
-        if pendingRate > 0 { driver.play() } else { driver.pause() }
+        driver.setRate(pendingRate)
     }
 }
 

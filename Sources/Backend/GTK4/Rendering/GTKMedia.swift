@@ -20,6 +20,8 @@ final class GTKVideoDriver: _AVPlayerDriver {
     private var pendingSeek: Double?
     private var startSource: guint = 0
     private var pendingAutoplay = true
+    private var playbackRate: Float = 1
+    private var rateNeedsApplication = false
     private var pictureInPictureWindow: UnsafeMutablePointer<GtkWidget>?
     private var pictureInPictureActiveHandler: (@MainActor (Bool) -> Void)?
     private var sourceVideoURL: URL?
@@ -101,6 +103,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
         sourceAudioURL = audioURL
         sourceVideoHeaders = Self.headers(from: videoOptions)
         pendingSeek = nil
+        rateNeedsApplication = true
         swift_openui_gst_player_stop(gst)
         swift_openui_gst_player_clear_headers(gst)
         for (name, value) in sourceVideoHeaders {
@@ -118,7 +121,12 @@ final class GTKVideoDriver: _AVPlayerDriver {
             let driver = Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue()
             driver.startSource = 0
             guard let gst = driver.gst else { return 0 }
-            if driver.pendingAutoplay { swift_openui_gst_player_play(gst) } else { swift_openui_gst_player_pause(gst) }
+            if driver.pendingAutoplay {
+                swift_openui_gst_player_play(gst)
+                driver.applyPlaybackRateIfReady()
+            } else {
+                swift_openui_gst_player_pause(gst)
+            }
             return 0
         }, context)
     }
@@ -131,13 +139,25 @@ final class GTKVideoDriver: _AVPlayerDriver {
         pendingAutoplay = false
         if startSource == 0, let gst { swift_openui_gst_player_pause(gst) }
     }
+    func setRate(_ rate: Float) {
+        guard rate > 0 else { pause(); return }
+        playbackRate = rate
+        rateNeedsApplication = true
+        pendingAutoplay = true
+        if startSource == 0, let gst {
+            swift_openui_gst_player_play(gst)
+            applyPlaybackRateIfReady()
+        }
+    }
 
     func seek(to time: CMTime) {
         let seconds = time.seconds
         guard let gst else { pendingSeek = seconds; return }
         guard durationSeconds > 0 else { pendingSeek = seconds; return }
         if swift_openui_gst_player_is_seekable(gst) != 0 {
-            _ = swift_openui_gst_player_seek(gst, gint64(max(0, seconds) * 1_000_000_000))
+            _ = swift_openui_gst_player_seek(
+                gst, gint64(max(0, seconds) * 1_000_000_000), Double(playbackRate)
+            )
         } else {
             pendingSeek = seconds
             downloadForSeekingIfNeeded()
@@ -191,7 +211,13 @@ final class GTKVideoDriver: _AVPlayerDriver {
             localVideoURL = localURL
             swift_openui_gst_player_stop(gst)
             swift_openui_gst_player_set_uris(gst, localURL.absoluteString, sourceAudioURL?.absoluteString)
-            if pendingAutoplay { swift_openui_gst_player_play(gst) } else { swift_openui_gst_player_pause(gst) }
+            if pendingAutoplay {
+                swift_openui_gst_player_play(gst)
+                rateNeedsApplication = true
+                applyPlaybackRateIfReady()
+            } else {
+                swift_openui_gst_player_pause(gst)
+            }
         }
     }
 
@@ -203,7 +229,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
     private var durationSeconds: Double {
         gst.map { Double(swift_openui_gst_player_duration($0)) / 1_000_000_000 } ?? 0
     }
-    var rate: Float { gst.map { swift_openui_gst_player_is_playing($0) != 0 ? 1 : 0 } ?? 0 }
+    var rate: Float { gst.map { swift_openui_gst_player_is_playing($0) != 0 ? playbackRate : 0 } ?? 0 }
     var isPictureInPicturePossible: Bool { player?.currentItem != nil }
     func setPictureInPictureActiveHandler(_ handler: (@MainActor (Bool) -> Void)?) {
         pictureInPictureActiveHandler = handler
@@ -246,6 +272,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
             pendingSeek = nil
             seek(to: CMTime(seconds: target, preferredTimescale: 600))
         }
+        applyPlaybackRateIfReady()
         guard let gst else { return }
         var data: UnsafeMutablePointer<UInt8>?
         var length: gsize = 0
@@ -257,6 +284,13 @@ final class GTKVideoDriver: _AVPlayerDriver {
             swift_openui_gst_player_free_frame(data)
         }
         if durationSeconds > 0, currentTime.seconds >= durationSeconds - 0.1, rate == 0 { player?._swiftOpenUIOnEnded?() }
+    }
+
+    private func applyPlaybackRateIfReady() {
+        guard rateNeedsApplication, let gst else { return }
+        if swift_openui_gst_player_set_rate(gst, Double(playbackRate)) != 0 {
+            rateNeedsApplication = false
+        }
     }
 }
 

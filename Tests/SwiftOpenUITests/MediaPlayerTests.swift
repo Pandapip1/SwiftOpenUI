@@ -14,6 +14,7 @@ final class AVPlayerCompatibilityTests: XCTestCase {
         func replaceCurrentItem(with item: AVPlayerItem?) { installedItem = item }
         func play() { rate = 1 }
         func pause() { rate = 0 }
+        func setRate(_ value: Float) { rate = value }
         func seek(to time: CMTime) { currentTime = time }
         var isPictureInPicturePossible: Bool { true }
         func startPictureInPicture() { pictureInPictureActive = true }
@@ -47,6 +48,12 @@ final class AVPlayerCompatibilityTests: XCTestCase {
         XCTAssertEqual(rate, 1)
         XCTAssertEqual(seconds, 12.5)
         XCTAssertEqual(player._swiftOpenUIDuration.seconds, 30)
+
+        player.defaultRate = 1.5
+        player.play()
+        XCTAssertEqual(driver.rate, 1.5)
+        player.playImmediately(atRate: 0.75)
+        XCTAssertEqual(player.rate, 0.75)
 
         let pip = AVPictureInPictureController(contentSource: .init(playerLayer: AVPlayerLayer(player: player)))
         XCTAssertTrue(pip.isPictureInPicturePossible)
