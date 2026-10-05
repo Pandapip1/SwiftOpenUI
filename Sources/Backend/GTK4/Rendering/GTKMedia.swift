@@ -23,6 +23,9 @@ final class GTKVideoDriver: _AVPlayerDriver {
     private var playbackRate: Float = 1
     private var rateNeedsApplication = false
     private var pictureInPictureWindow: UnsafeMutablePointer<GtkWidget>?
+    private var pictureInPicturePlayButton: UnsafeMutablePointer<GtkWidget>?
+    private var pictureInPictureTimeLabel: UnsafeMutablePointer<GtkWidget>?
+    private var pictureInPictureUpdateSource: guint = 0
     private var pictureInPictureActiveHandler: (@MainActor (Bool) -> Void)?
     private var sourceVideoURL: URL?
     private var sourceAudioURL: URL?
@@ -54,6 +57,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
         if let localVideoURL { try? FileManager.default.removeItem(at: localVideoURL) }
         if startSource != 0 { g_source_remove(startSource) }
         MainActor.assumeIsolated { stopPictureInPicture() }
+        if pictureInPictureUpdateSource != 0 { g_source_remove(pictureInPictureUpdateSource) }
         if let gst { swift_openui_gst_player_free(gst) }
         if gtk_widget_get_parent(videoWidget) != nil { gtk_widget_unparent(videoWidget) }
         g_object_unref(gpointer(videoWidget))
@@ -243,8 +247,51 @@ final class GTKVideoDriver: _AVPlayerDriver {
         gtk_window_set_title(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), "Picture in Picture")
         gtk_window_set_default_size(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), 480, 270)
         gtk_window_set_resizable(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), 1)
-        gtk_window_set_child(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), videoWidget)
+        let content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        gtk_widget_set_hexpand(videoWidget, 1)
+        gtk_widget_set_vexpand(videoWidget, 1)
+        gtk_box_append(UnsafeMutableRawPointer(content).assumingMemoryBound(to: GtkBox.self), videoWidget)
+        let controls = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8)!
+        gtk_widget_set_halign(controls, GTK_ALIGN_CENTER)
+        gtk_widget_set_margin_top(controls, 6)
+        gtk_widget_set_margin_bottom(controls, 6)
+        let backward = gtk_button_new_with_label("−10")!
+        let playPause = gtk_button_new_with_label(pendingAutoplay ? "Pause" : "Play")!
+        let forward = gtk_button_new_with_label("+10")!
+        let time = gtk_label_new(nil)!
+        pictureInPicturePlayButton = playPause
+        pictureInPictureTimeLabel = time
+        for child in [backward, playPause, forward, time] {
+            gtk_box_append(UnsafeMutableRawPointer(controls).assumingMemoryBound(to: GtkBox.self), child)
+        }
+        gtk_box_append(UnsafeMutableRawPointer(content).assumingMemoryBound(to: GtkBox.self), controls)
+        gtk_window_set_child(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), content)
         let context = Unmanaged.passUnretained(self).toOpaque()
+        g_signal_connect_data(gpointer(backward), "clicked", unsafeBitCast({ (_: gpointer?, data: gpointer?) in
+            guard let data else { return }
+            MainActor.assumeIsolated {
+                let driver = Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue()
+                driver.seek(to: CMTime(seconds: max(0, driver.currentTime.seconds - 10), preferredTimescale: 600))
+            }
+        } as @convention(c) (gpointer?, gpointer?) -> Void, to: GCallback.self), context, nil,
+        GConnectFlags(rawValue: 0))
+        g_signal_connect_data(gpointer(playPause), "clicked", unsafeBitCast({ (_: gpointer?, data: gpointer?) in
+            guard let data else { return }
+            MainActor.assumeIsolated {
+                let driver = Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue()
+                if driver.pendingAutoplay { driver.pause() } else { driver.setRate(driver.playbackRate) }
+                driver.updatePictureInPictureControls()
+            }
+        } as @convention(c) (gpointer?, gpointer?) -> Void, to: GCallback.self), context, nil,
+        GConnectFlags(rawValue: 0))
+        g_signal_connect_data(gpointer(forward), "clicked", unsafeBitCast({ (_: gpointer?, data: gpointer?) in
+            guard let data else { return }
+            MainActor.assumeIsolated {
+                let driver = Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue()
+                driver.seek(to: CMTime(seconds: driver.currentTime.seconds + 10, preferredTimescale: 600))
+            }
+        } as @convention(c) (gpointer?, gpointer?) -> Void, to: GCallback.self), context, nil,
+        GConnectFlags(rawValue: 0))
         g_signal_connect_data(gpointer(window), "close-request", unsafeBitCast({ (_: gpointer?, data: gpointer?) -> gboolean in
             guard let data else { return 0 }
             MainActor.assumeIsolated {
@@ -253,18 +300,47 @@ final class GTKVideoDriver: _AVPlayerDriver {
             return 1
         } as @convention(c) (gpointer?, gpointer?) -> gboolean, to: GCallback.self), context, nil,
         GConnectFlags(rawValue: 0))
+        updatePictureInPictureControls()
+        pictureInPictureUpdateSource = g_timeout_add(250, { data -> gboolean in
+            guard let data else { return 0 }
+            return MainActor.assumeIsolated {
+                let driver = Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue()
+                guard driver.pictureInPictureWindow != nil else { return 0 }
+                driver.updatePictureInPictureControls()
+                return 1
+            }
+        }, context)
         gtk_window_present(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self))
     }
 
     func stopPictureInPicture() {
         guard let window = pictureInPictureWindow else { return }
         pictureInPictureWindow = nil
+        if pictureInPictureUpdateSource != 0 {
+            g_source_remove(pictureInPictureUpdateSource)
+            pictureInPictureUpdateSource = 0
+        }
+        pictureInPicturePlayButton = nil
+        pictureInPictureTimeLabel = nil
         let gtkWindow = UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self)
-        gtk_window_set_child(gtkWindow, nil)
         if gtk_widget_get_parent(videoWidget) != nil { gtk_widget_unparent(videoWidget) }
+        gtk_window_set_child(gtkWindow, nil)
         gtk_box_append(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkBox.self), videoWidget)
         gtk_window_destroy(gtkWindow)
         pictureInPictureActiveHandler?(false)
+    }
+
+    private func updatePictureInPictureControls() {
+        if let button = pictureInPicturePlayButton {
+            gtk_button_set_label(UnsafeMutableRawPointer(button).assumingMemoryBound(to: GtkButton.self),
+                                 pendingAutoplay ? "Pause" : "Play")
+        }
+        if let label = pictureInPictureTimeLabel {
+            let current = max(0, Int(currentTime.seconds))
+            let total = max(0, Int(durationSeconds))
+            gtk_swift_label_set_text(label, String(format: "%d:%02d / %d:%02d",
+                                                   current / 60, current % 60, total / 60, total % 60))
+        }
     }
 
     private func presentFrame() {
