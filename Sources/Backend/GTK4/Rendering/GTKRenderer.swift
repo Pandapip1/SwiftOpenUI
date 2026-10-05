@@ -2199,27 +2199,84 @@ extension MultilineTextAlignmentView: GTKRenderable {
 // MARK: - fullScreenCover GTK extension
 
 private let gtkFullScreenCoverStateKey = "swift-fullscreen-cover-state"
+nonisolated(unsafe) private var gtkDisappearSuppressedRoots: [UnsafeMutablePointer<GtkWidget>] = []
+nonisolated(unsafe) private var gtkDisappearForcedRoots: [UnsafeMutablePointer<GtkWidget>] = []
+
+private func gtkWithoutDisappearCallbacks(
+    in root: UnsafeMutablePointer<GtkWidget>,
+    _ operation: () -> Void
+) {
+    gtkDisappearSuppressedRoots.append(root)
+    defer { gtkDisappearSuppressedRoots.removeLast() }
+    operation()
+}
+
+private func gtkDisappearIsSuppressed(for widget: UnsafeMutablePointer<GtkWidget>) -> Bool {
+    gtkDisappearSuppressedRoots.contains { root in
+        widget == root || gtk_widget_is_ancestor(widget, root) != 0
+    }
+}
+
+private func gtkWithDisappearCallbacks(
+    in root: UnsafeMutablePointer<GtkWidget>,
+    _ operation: () -> Void
+) {
+    gtkDisappearForcedRoots.append(root)
+    defer { gtkDisappearForcedRoots.removeLast() }
+    operation()
+}
+
+private func gtkDisappearIsForced(for widget: UnsafeMutablePointer<GtkWidget>) -> Bool {
+    gtkDisappearForcedRoots.contains { root in
+        widget == root || gtk_widget_is_ancestor(widget, root) != 0
+    }
+}
 
 private final class GTKFullScreenCoverState {
     let window: UnsafeMutablePointer<GtkWidget>
     let originalChild: UnsafeMutablePointer<GtkWidget>
+    let overlay: UnsafeMutablePointer<GtkWidget>
+    var currentCover: UnsafeMutablePointer<GtkWidget>?
 
     init(window: UnsafeMutablePointer<GtkWidget>,
          originalChild: UnsafeMutablePointer<GtkWidget>) {
         self.window = window
         self.originalChild = originalChild
+        self.overlay = gtk_overlay_new()!
         g_object_ref(gpointer(originalChild))
+
+        gtkWithoutDisappearCallbacks(in: originalChild) {
+            gtk_swift_window_set_child(window, nil)
+            gtk_overlay_set_child(OpaquePointer(overlay), originalChild)
+            gtk_swift_window_set_child(window, overlay)
+        }
     }
 
     func show(_ cover: UnsafeMutablePointer<GtkWidget>) {
-        gtk_swift_window_set_child(window, nil)
-        gtk_swift_window_set_child(window, cover)
+        if let currentCover {
+            gtkWithoutDisappearCallbacks(in: currentCover) {
+                gtk_overlay_remove_overlay(OpaquePointer(overlay), currentCover)
+            }
+        }
+        gtk_widget_set_hexpand(cover, 1)
+        gtk_widget_set_vexpand(cover, 1)
+        gtk_overlay_add_overlay(OpaquePointer(overlay), cover)
+        currentCover = cover
         gtk_swift_window_fullscreen(window)
     }
 
     func restore() {
-        gtk_swift_window_set_child(window, nil)
-        gtk_swift_window_set_child(window, originalChild)
+        if let currentCover {
+            gtkWithDisappearCallbacks(in: currentCover) {
+                gtk_overlay_remove_overlay(OpaquePointer(overlay), currentCover)
+            }
+            self.currentCover = nil
+        }
+        gtkWithoutDisappearCallbacks(in: originalChild) {
+            gtk_overlay_set_child(OpaquePointer(overlay), nil)
+            gtk_swift_window_set_child(window, nil)
+            gtk_swift_window_set_child(window, originalChild)
+        }
         gtk_swift_window_unfullscreen(window)
     }
 
@@ -3247,8 +3304,16 @@ extension OnDisappearView: GTKRenderable {
         g_signal_connect_data(
             gpointer(widget),
             "unmap",
-            unsafeBitCast({ (_: gpointer?, userData: gpointer?) in
+            unsafeBitCast({ (sender: gpointer?, userData: gpointer?) in
                 let box = Unmanaged<DisappearBox>.fromOpaque(userData!).takeUnretainedValue()
+                if let sender {
+                    let widget = sender.assumingMemoryBound(to: GtkWidget.self)
+                    if gtkDisappearIsForced(for: widget) {
+                        box.action()
+                        return
+                    }
+                    if gtkDisappearIsSuppressed(for: widget) { return }
+                }
                 // If the host container is still mapped, this is a rebuild — suppress.
                 if let container = box.hostContainer,
                    gtk_widget_get_mapped(container) != 0 {

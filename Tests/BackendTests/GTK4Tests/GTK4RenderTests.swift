@@ -13,6 +13,64 @@ final class GTK4RenderTests: XCTestCase {
         }
     }
 
+    func testFullscreenReparentDoesNotEmitDisappear() throws {
+        try requireGTK()
+
+        var presented = false
+        var disappearCount = 0
+        var coverDisappearCount = 0
+        let binding = Binding(get: { presented }, set: { presented = $0 })
+        let host = GTKViewHost(buildBody: {
+            gtkRenderView(
+                Text("Base")
+                    .onDisappear { disappearCount += 1 }
+                    .fullScreenCover(isPresented: binding) {
+                        Text("Cover").onDisappear { coverDisappearCount += 1 }
+                    }
+            )
+        })
+        let previousHost = GTKViewHost.getCurrentRebuilding()
+        GTKViewHost.setCurrentRebuilding(host)
+        let initial = host.buildBodyWithTracking()
+        GTKViewHost.setCurrentRebuilding(previousHost)
+        gtk_box_append(boxPointer(host.container), widgetFromOpaque(initial))
+
+        let window = gtk_window_new()!
+        gtk_window_set_child(windowPointer(window), host.container)
+        gtk_widget_set_visible(window, 1)
+        while g_main_context_iteration(nil, 0) != 0 {}
+
+        presented = true
+        host.rebuild()
+        while g_main_context_iteration(nil, 0) != 0 {}
+        XCTAssertEqual(disappearCount, 0,
+                       "presenting a full-screen cover must not make its source disappear")
+        XCTAssertEqual(coverDisappearCount, 0)
+
+        host.rebuild()
+        while g_main_context_iteration(nil, 0) != 0 {}
+        XCTAssertEqual(coverDisappearCount, 0,
+                       "rebuilding a presented cover must not dismiss its content")
+
+        presented = false
+        host.rebuild()
+        while g_main_context_iteration(nil, 0) != 0 {}
+        XCTAssertEqual(disappearCount, 0,
+                       "restoring the source after a full-screen cover is internal reparenting")
+        XCTAssertEqual(coverDisappearCount, 1,
+                       "dismissing a full-screen cover must make the cover disappear")
+
+        presented = true
+        host.rebuild()
+        while g_main_context_iteration(nil, 0) != 0 {}
+        gtk_window_destroy(windowPointer(window))
+        while g_main_context_iteration(nil, 0) != 0 {}
+        XCTAssertEqual(disappearCount, 1,
+                       "closing a covered window must still make its source disappear")
+        XCTAssertEqual(coverDisappearCount, 2,
+                       "closing a covered window must make its cover disappear")
+    }
+
     func testSystemImageUsesResolvedGlyphInsteadOfLigatureText() throws {
         try requireGTK()
 
