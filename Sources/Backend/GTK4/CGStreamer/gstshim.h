@@ -19,12 +19,39 @@ typedef struct {
     guint frame_source;
     gulong sample_handler;
     GMutex frame_source_mutex;
+    GHashTable *video_headers;
+    GHashTable *audio_headers;
 } SwiftOpenUIGStreamerPlayer;
 
 static inline GstFlowReturn swift_openui_gst_player_new_sample(GstAppSink *sink, gpointer data);
 
 static inline gboolean swift_openui_gst_uses_fake_audio(void) {
     return g_strcmp0(g_getenv("SWIFT_OPENUI_GST_FAKE_AUDIO"), "1") == 0;
+}
+
+static inline void swift_openui_gst_apply_headers(GstElement *source, GHashTable *headers) {
+    if (!source || !headers || g_hash_table_size(headers) == 0 ||
+        !g_object_class_find_property(G_OBJECT_GET_CLASS(source), "extra-headers")) return;
+    GstStructure *structure = gst_structure_new_empty("headers");
+    GHashTableIter iterator;
+    gpointer key, value;
+    g_hash_table_iter_init(&iterator, headers);
+    while (g_hash_table_iter_next(&iterator, &key, &value))
+        gst_structure_set(structure, (const gchar *)key, G_TYPE_STRING, (const gchar *)value, NULL);
+    g_object_set(source, "extra-headers", structure, NULL);
+    gst_structure_free(structure);
+}
+
+static inline void swift_openui_gst_video_source_setup(GstElement *element, GstElement *source,
+                                                        gpointer data) {
+    (void)element;
+    swift_openui_gst_apply_headers(source, ((SwiftOpenUIGStreamerPlayer *)data)->video_headers);
+}
+
+static inline void swift_openui_gst_audio_source_setup(GstElement *element, GstElement *source,
+                                                        gpointer data) {
+    (void)element;
+    swift_openui_gst_apply_headers(source, ((SwiftOpenUIGStreamerPlayer *)data)->audio_headers);
 }
 
 static inline void swift_openui_gst_player_connect_sink(SwiftOpenUIGStreamerPlayer *player,
@@ -78,16 +105,22 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
         g_once_init_leave(&initialized, 1);
     }
     SwiftOpenUIGStreamerPlayer *player = g_new0(SwiftOpenUIGStreamerPlayer, 1);
+    player->video_headers = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    player->audio_headers = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     g_mutex_init(&player->frame_source_mutex);
     player->playbin = gst_element_factory_make("playbin3", NULL);
     player->video_bin = gst_parse_bin_from_description(
         "videoconvert ! video/x-raw,format=RGBA ! appsink name=swiftappsink",
         TRUE, NULL);
+    if (player->playbin) gst_object_ref_sink(player->playbin);
+    if (player->video_bin) gst_object_ref_sink(player->video_bin);
     player->normal_appsink = player->video_bin ? gst_bin_get_by_name(GST_BIN(player->video_bin), "swiftappsink") : NULL;
     if (!player->playbin || !player->normal_appsink || !player->video_bin) {
         if (player->playbin) gst_object_unref(player->playbin);
         if (player->normal_appsink) gst_object_unref(player->normal_appsink);
         if (player->video_bin) gst_object_unref(player->video_bin);
+        g_hash_table_unref(player->video_headers);
+        g_hash_table_unref(player->audio_headers);
         g_mutex_clear(&player->frame_source_mutex);
         g_free(player);
         return NULL;
@@ -96,6 +129,7 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
     // polling loop drains decoded video as fast as the CPU can produce it,
     // racing several seconds ahead of clocked audio before stalling at EOS.
     player->pipeline = player->playbin;
+    g_signal_connect(player->playbin, "source-setup", G_CALLBACK(swift_openui_gst_video_source_setup), player);
     swift_openui_gst_player_connect_sink(player, player->normal_appsink);
     g_object_set(player->playbin, "video-sink", player->video_bin, NULL);
     // Keep automated and headless runs away from the user's real audio
@@ -134,8 +168,26 @@ static inline void swift_openui_gst_player_free(SwiftOpenUIGStreamerPlayer *play
     gst_object_unref(player->playbin);
     if (player->split_pipeline) gst_object_unref(player->split_pipeline);
     gst_object_unref(player->normal_appsink);
+    gst_object_unref(player->video_bin);
+    g_hash_table_unref(player->video_headers);
+    g_hash_table_unref(player->audio_headers);
     g_mutex_clear(&player->frame_source_mutex);
     g_free(player);
+}
+
+static inline void swift_openui_gst_player_clear_headers(SwiftOpenUIGStreamerPlayer *player) {
+    if (!player) return;
+    g_hash_table_remove_all(player->video_headers);
+    g_hash_table_remove_all(player->audio_headers);
+}
+
+static inline void swift_openui_gst_player_set_header(SwiftOpenUIGStreamerPlayer *player,
+                                                       gboolean audio,
+                                                       const char *name,
+                                                       const char *value) {
+    if (!player || !name || !value) return;
+    g_hash_table_replace(audio ? player->audio_headers : player->video_headers,
+                         g_strdup(name), g_strdup(value));
 }
 
 static inline void swift_openui_gst_player_set_frame_callback(
@@ -189,12 +241,25 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
         video, audio, audio_sink);
     GError *error = NULL;
     player->split_pipeline = gst_parse_launch(description, &error);
+    if (player->split_pipeline) gst_object_ref_sink(player->split_pipeline);
     g_free(description);
     g_free(video);
     g_free(audio);
     if (error) g_error_free(error);
     GstElement *sink = player->split_pipeline
         ? gst_bin_get_by_name(GST_BIN(player->split_pipeline), "swiftappsink") : NULL;
+    GstElement *video_source = player->split_pipeline
+        ? gst_bin_get_by_name(GST_BIN(player->split_pipeline), "video_source") : NULL;
+    GstElement *audio_source = player->split_pipeline
+        ? gst_bin_get_by_name(GST_BIN(player->split_pipeline), "audio_source") : NULL;
+    if (video_source) {
+        g_signal_connect(video_source, "source-setup", G_CALLBACK(swift_openui_gst_video_source_setup), player);
+        gst_object_unref(video_source);
+    }
+    if (audio_source) {
+        g_signal_connect(audio_source, "source-setup", G_CALLBACK(swift_openui_gst_audio_source_setup), player);
+        gst_object_unref(audio_source);
+    }
     if (!player->split_pipeline || !sink) {
         if (sink) gst_object_unref(sink);
         if (player->split_pipeline) {

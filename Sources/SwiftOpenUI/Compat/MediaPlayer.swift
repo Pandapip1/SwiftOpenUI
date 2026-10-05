@@ -44,16 +44,20 @@ public final class AVURLAsset: AVAsset, @unchecked Sendable {
     public init(url: URL, options: [String: Any]? = nil) {
         self.url = url; _swiftOpenUIOptions = options
         super.init()
-        _swiftOpenUITracks = [AVAssetTrack(mediaType: .video, sourceURL: url),
-                              AVAssetTrack(mediaType: .audio, sourceURL: url)]
+        _swiftOpenUITracks = [AVAssetTrack(mediaType: .video, sourceURL: url, sourceOptions: options),
+                              AVAssetTrack(mediaType: .audio, sourceURL: url, sourceOptions: options)]
     }
 }
 
 public final class AVAssetTrack: @unchecked Sendable {
     public let mediaType: AVMediaType
     @_spi(SwiftOpenUIBackend) public let _swiftOpenUISourceURL: URL
-    @_spi(SwiftOpenUIBackend) public init(mediaType: AVMediaType, sourceURL: URL) {
-        self.mediaType = mediaType; _swiftOpenUISourceURL = sourceURL
+    @_spi(SwiftOpenUIBackend) public let _swiftOpenUISourceOptions: [String: Any]?
+    @_spi(SwiftOpenUIBackend) public init(mediaType: AVMediaType, sourceURL: URL,
+                                          sourceOptions: [String: Any]? = nil) {
+        self.mediaType = mediaType
+        _swiftOpenUISourceURL = sourceURL
+        _swiftOpenUISourceOptions = sourceOptions
     }
 }
 

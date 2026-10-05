@@ -24,6 +24,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
     private var pictureInPictureActiveHandler: (@MainActor (Bool) -> Void)?
     private var sourceVideoURL: URL?
     private var sourceAudioURL: URL?
+    private var sourceVideoHeaders: [String: String] = [:]
     private var localVideoURL: URL?
     private var downloadTask: URLSessionDownloadTask?
 
@@ -61,17 +62,27 @@ final class GTKVideoDriver: _AVPlayerDriver {
         guard let item else { stop(); return }
         let videoURL: URL?
         let audioURL: URL?
+        let videoOptions: [String: Any]?
+        let audioOptions: [String: Any]?
         if let asset = item.asset as? AVURLAsset {
             videoURL = asset.url
             audioURL = nil
+            videoOptions = asset._swiftOpenUIOptions
+            audioOptions = nil
         } else if let asset = item.asset as? AVMutableComposition {
-            videoURL = asset._swiftOpenUICompositionTracks
-                .first(where: { $0.mediaType == .video })?._swiftOpenUISourceTrack?._swiftOpenUISourceURL
-            audioURL = asset._swiftOpenUICompositionTracks
-                .first(where: { $0.mediaType == .audio })?._swiftOpenUISourceTrack?._swiftOpenUISourceURL
+            let videoTrack = asset._swiftOpenUICompositionTracks
+                .first(where: { $0.mediaType == .video })?._swiftOpenUISourceTrack
+            let audioTrack = asset._swiftOpenUICompositionTracks
+                .first(where: { $0.mediaType == .audio })?._swiftOpenUISourceTrack
+            videoURL = videoTrack?._swiftOpenUISourceURL
+            audioURL = audioTrack?._swiftOpenUISourceURL
+            videoOptions = videoTrack?._swiftOpenUISourceOptions
+            audioOptions = audioTrack?._swiftOpenUISourceOptions
         } else {
             videoURL = nil
             audioURL = nil
+            videoOptions = nil
+            audioOptions = nil
         }
         guard let videoURL else {
             player?._swiftOpenUIOnFailure?("The player item has no video track")
@@ -88,8 +99,16 @@ final class GTKVideoDriver: _AVPlayerDriver {
         localVideoURL = nil
         sourceVideoURL = videoURL
         sourceAudioURL = audioURL
+        sourceVideoHeaders = Self.headers(from: videoOptions)
         pendingSeek = nil
         swift_openui_gst_player_stop(gst)
+        swift_openui_gst_player_clear_headers(gst)
+        for (name, value) in sourceVideoHeaders {
+            swift_openui_gst_player_set_header(gst, 0, name, value)
+        }
+        for (name, value) in Self.headers(from: audioOptions) {
+            swift_openui_gst_player_set_header(gst, 1, name, value)
+        }
         swift_openui_gst_player_set_uris(gst, videoURL.absoluteString, audioURL?.absoluteString)
         pendingAutoplay = false
         if startSource != 0 { g_source_remove(startSource) }
@@ -133,7 +152,9 @@ final class GTKVideoDriver: _AVPlayerDriver {
     private func downloadForSeekingIfNeeded() {
         guard downloadTask == nil, localVideoURL == nil, let sourceVideoURL,
               sourceVideoURL.scheme == "http" || sourceVideoURL.scheme == "https" else { return }
-        downloadTask = URLSession.shared.downloadTask(with: sourceVideoURL) { [weak self] temporaryURL, _, error in
+        var request = URLRequest(url: sourceVideoURL)
+        for (name, value) in sourceVideoHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        downloadTask = URLSession.shared.downloadTask(with: request) { [weak self] temporaryURL, _, error in
             guard let self else { return }
             var result: Result<URL, Error>
             do {
@@ -149,6 +170,10 @@ final class GTKVideoDriver: _AVPlayerDriver {
             Task { @MainActor [weak self] in self?.finishSeekDownload(result, sourceURL: sourceVideoURL) }
         }
         downloadTask?.resume()
+    }
+
+    private static func headers(from options: [String: Any]?) -> [String: String] {
+        options?["AVURLAssetHTTPHeaderFieldsKey"] as? [String: String] ?? [:]
     }
 
     private func finishSeekDownload(_ result: Result<URL, Error>, sourceURL: URL) {
