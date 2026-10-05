@@ -8,6 +8,11 @@ public struct DisabledView<Content: View>: View, PrimitiveView {
     public var body: Never { fatalError("DisabledView is a primitive view") }
 }
 
+extension DisabledView: _MenuContentWrapper {
+    var _menuContent: any View { content }
+    var _menuIsDisabled: Bool { isDisabled }
+}
+
 extension View {
     /// Adds a condition that controls whether users can interact with this view.
     ///

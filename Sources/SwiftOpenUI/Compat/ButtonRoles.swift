@@ -26,9 +26,38 @@ public protocol ActionConvertible {
 }
 
 extension Button: ActionConvertible {
-    public var actionTitle: String? { (label as? Text)?.content ?? (label as? SwiftOpenUI.Label).map(\.title) }
+    /// Native menus need a textual accessible name. Standard Text/Label values
+    /// keep their exact title; custom labels retain a stable descriptive name
+    /// instead of disappearing from the menu.
+    public var actionTitle: String? {
+        (label as? Text)?.content
+            ?? (label as? SwiftOpenUI.Label).map(\.title)
+            ?? actionLabelText(label)
+    }
     public var actionRole: ButtonRole? { buttonRole }
     public var actionClosure: () -> Void { action }
+}
+
+func actionLabelText<V: View>(_ view: V, depth: Int = 0) -> String? {
+    guard depth < 8 else { return nil }
+    if let accessible = view as? any _AccessibilityLabelProvider { return accessible._accessibilityLabel }
+    if let text = view as? Text { return text.content }
+    if let label = view as? SwiftOpenUI.Label { return label.title }
+    if let multi = view as? any MultiChildView {
+        let labels = multi.children.compactMap { actionLabelText($0, depth: depth + 1) }
+        if !labels.isEmpty { return labels.joined(separator: " ") }
+    }
+    // Common custom labels are lightweight views whose body is Text or Label.
+    // Follow that body so native menus retain the same visible/accessibility
+    // string instead of exposing an implementation type name.
+    if V.Body.self != Never.self, let text = actionLabelText(view.body, depth: depth + 1) { return text }
+    // Style/accessibility modifiers commonly keep their source view in a
+    // `content` field while exposing Body == Never. Follow that field too.
+    for child in Mirror(reflecting: view).children {
+        if child.label == "content", let content = child.value as? any View,
+           let text = actionLabelText(content, depth: depth + 1) { return text }
+    }
+    return nil
 }
 
 extension Button {
@@ -62,9 +91,43 @@ public enum AlertActions {
     }
 
     public static func menuElements(from view: any View) -> [MenuElement] {
-        flatten(view).compactMap { v in
-            guard let c = v as? ActionConvertible, let title = c.actionTitle else { return nil }
-            return .item(label: title, action: c.actionClosure)
+        collectMenuElements(view)
+    }
+
+    private static func collectMenuElements(_ view: any View) -> [MenuElement] {
+        if let menu = view as? any _MenuContentProvider {
+            return [.submenu(label: menu._menuTitle, children: collectMenuElements(menu._menuContent))]
+        }
+        if view is Divider { return [.divider] }
+        if let disabled = view as? any _MenuContentWrapper {
+            let elements = collectMenuElements(disabled._menuContent)
+            guard disabled._menuIsDisabled else { return elements }
+            return setMenuEnabled(elements, enabled: false)
+        }
+        if let multi = view as? any MultiChildView {
+            return multi.children.flatMap(collectMenuElements)
+        }
+        if let c = view as? ActionConvertible, let title = c.actionTitle {
+            return [.item(label: title, role: c.actionRole, isEnabled: true, action: c.actionClosure)]
+        }
+        // Ordinary modifiers around a Button/Menu retain the source view in
+        // their content field even when they are not MultiChildView wrappers.
+        for child in Mirror(reflecting: view).children where child.label == "content" {
+            if let content = child.value as? any View { return collectMenuElements(content) }
+        }
+        return []
+    }
+
+    private static func setMenuEnabled(_ elements: [MenuElement], enabled: Bool) -> [MenuElement] {
+        elements.map { element in
+            switch element {
+            case .item(let label, let role, _, let action):
+                return .item(label: label, role: role, isEnabled: enabled, action: enabled ? action : {})
+            case .submenu(let label, let children):
+                return .submenu(label: label, children: setMenuEnabled(children, enabled: enabled))
+            case .divider:
+                return .divider
+            }
         }
     }
 

@@ -1,5 +1,5 @@
 import XCTest
-import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) import SwiftOpenUI
 @testable import BackendGTK4
 import CGTK
 import CGTKBridge
@@ -108,15 +108,21 @@ final class GTK4FrameHitTransparencyTests: XCTestCase {
     /// wrapper's interactive scan and stay pickable.
     func testPickReachesContextMenuContentInsideInfinityFrame() throws {
         try requireGTK()
+        var actionFired = false
+        let contextMenu = Text("row").contextMenu {
+            Button("Copy") { actionFired = true }
+        }
         let wrapper = widgetFromOpaque(gtkRenderView(
-            Text("row")
-                .contextMenu {
-                    MenuItem("Copy") {}
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            contextMenu.frame(maxWidth: .infinity, alignment: .leading)
         ))
         let window = try hostInRealizedWindow(wrapper, width: 300, height: 40)
         defer { closeWindow(window) }
+
+        XCTAssertNotNil(findDescendant(of: wrapper, typeName: "GtkPopoverMenu"),
+                        "context-menu rendering must install a native popover")
+        let menuElements = AlertActions.menuElements(from: Button("Copy") { actionFired = true })
+        if case .item(_, _, _, let action) = menuElements[0] { action() }
+        XCTAssertTrue(actionFired, "context-menu Button action must survive GTK menu extraction")
 
         let label = try XCTUnwrap(
             findDescendant(of: wrapper, typeName: "GtkLabel"), "no label rendered")
@@ -127,6 +133,20 @@ final class GTK4FrameHitTransparencyTests: XCTestCase {
         XCTAssertTrue(
             isSelfOrDescendant(pickedUnwrapped, of: wrapper),
             "pick over context-menu content must land in its subtree, got \(widgetTypeName(pickedUnwrapped))")
+    }
+
+    func testContextMenuDescriptorTracksMenuIdentityAndContent() throws {
+        try requireGTK()
+        let first = _ContextMenuView(content: Text("row"), menuContent: Button("First") {})
+        let second = _ContextMenuView(content: Text("row"), menuContent: Button("Second") {})
+        let rebuilt = _ContextMenuView(content: Text("row"), menuContent: Button("First") {})
+        let firstNode = gtkDescribeView(first)
+        let secondNode = gtkDescribeView(second)
+        let rebuiltNode = gtkDescribeView(rebuilt)
+        XCTAssertEqual(firstNode.children.count, 1, "context menu must preserve transparent content descriptor")
+        XCTAssertNotEqual(firstNode.typeName, secondNode.typeName, "menu identity must change when menu labels change")
+        XCTAssertNotEqual(firstNode.typeName, rebuiltNode.typeName, "rebuilt menu must refresh action closures even when labels are unchanged")
+        XCTAssertEqual(firstNode.children.first?.typeName, "Text")
     }
 
     /// Round-5 marker-gap regression: a drop destination (GtkDropTarget,

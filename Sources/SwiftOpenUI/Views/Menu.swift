@@ -1,6 +1,6 @@
 /// An element within a Menu (item, divider, or submenu).
 public enum MenuElement {
-    case item(label: String, action: () -> Void)
+    case item(label: String, role: ButtonRole?, isEnabled: Bool, action: () -> Void)
     case divider
     case submenu(label: String, children: [MenuElement])
 }
@@ -14,6 +14,16 @@ public struct MenuItem {
         self.label = label
         self.action = action
     }
+}
+
+protocol _MenuContentProvider {
+    var _menuTitle: String { get }
+    var _menuContent: any View { get }
+}
+
+protocol _MenuContentWrapper {
+    var _menuContent: any View { get }
+    var _menuIsDisabled: Bool { get }
 }
 
 /// A menu divider/separator.
@@ -53,8 +63,8 @@ public struct SubMenu {
 /// - Web: minimal — renders the label trigger and the items into a
 ///   dropdown (full parity deferred).
 ///
-/// (Right-click/context menus use `.contextMenu { MenuItem(…) }` and the
-/// `MenuElement` model above — a separate mechanism from this control.)
+/// Context menus use the standard `.contextMenu { Button(...) }` view-builder
+/// API and are rendered by the platform backend.
 public struct Menu<Label: View, Content: View>: View, PrimitiveView {
     public typealias Body = Never
 
@@ -68,6 +78,16 @@ public struct Menu<Label: View, Content: View>: View, PrimitiveView {
     }
 
     public var body: Never { fatalError("Menu is a primitive view") }
+}
+
+extension Menu: _MenuContentProvider {
+    var _menuTitle: String {
+        if let text = label as? Text { return text.content }
+        if let label = label as? SwiftOpenUI.Label { return label.title }
+        return actionLabelText(label) ?? ""
+    }
+
+    var _menuContent: any View { content }
 }
 
 extension Menu where Label == Text {
@@ -85,7 +105,7 @@ public struct MenuBuilder {
     }
 
     public static func buildExpression(_ item: MenuItem) -> [MenuElement] {
-        [.item(label: item.label, action: item.action)]
+        [.item(label: item.label, role: nil, isEnabled: true, action: item.action)]
     }
 
     public static func buildExpression(_ divider: MenuDivider) -> [MenuElement] {

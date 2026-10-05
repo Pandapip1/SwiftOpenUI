@@ -28,6 +28,14 @@ public struct AccessibilityLabelView<Content: View>: View {
     public var body: some View { content }
 }
 
+protocol _AccessibilityLabelProvider {
+    var _accessibilityLabel: String { get }
+}
+
+extension AccessibilityLabelView: _AccessibilityLabelProvider {
+    var _accessibilityLabel: String { label }
+}
+
 extension View {
     /// Sets a label a screen reader uses to describe this view.
     public func accessibilityLabel(_ label: String) -> AccessibilityLabelView<Self> {

@@ -1,7 +1,7 @@
 import WinSDK
 import CWin32
 import CWin32Bridge
-import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) import SwiftOpenUI
 import SwiftOpenUISymbols
 import Foundation
 
@@ -6157,11 +6157,12 @@ func winPopulateMenu(_ targetMenu: HMENU,
                      actions: inout [UINT: () -> Void]) {
     for elem in elements {
         switch elem {
-        case .item(let label, let action):
+        case .item(let label, let role, let isEnabled, let action):
             let id = nextMenuID
             nextMenuID += 1
-            _ = label.withCString(encodedAs: UTF16.self) { wstr in
-                AppendMenuW(targetMenu, UINT(MF_STRING), UINT_PTR(id), wstr)
+            let displayLabel = role == .destructive ? "⚠ \(label)" : label
+            _ = displayLabel.withCString(encodedAs: UTF16.self) { wstr in
+                AppendMenuW(targetMenu, UINT(MF_STRING | (isEnabled ? 0 : MF_GRAYED)), UINT_PTR(id), wstr)
             }
             actions[id] = bindActionToCurrentEnvironment(action)
         case .divider:
@@ -8729,8 +8730,8 @@ private class ContextMenuState {
 private func bindContextMenuElements(_ elements: [MenuElement]) -> [MenuElement] {
     return elements.map { element in
         switch element {
-        case .item(let label, let action):
-            return .item(label: label, action: bindActionToCurrentEnvironment(action))
+        case .item(let label, let role, let isEnabled, let action):
+            return .item(label: label, role: role, isEnabled: isEnabled, action: bindActionToCurrentEnvironment(action))
         case .divider:
             return .divider
         case .submenu(let label, let children):
@@ -8739,7 +8740,7 @@ private func bindContextMenuElements(_ elements: [MenuElement]) -> [MenuElement]
     }
 }
 
-extension ContextMenuView: WinRenderable {
+extension _ContextMenuView: WinRenderable {
     public func winCreateWidget(in context: RenderContext) -> HWND? {
         guard let hwnd = winRenderView(content, in: context) else { return nil }
 
@@ -8802,12 +8803,13 @@ private func winBuildContextMenu(_ hmenu: HMENU, elements: [MenuElement],
                                   cmdID: inout UINT, actions: inout [UINT: () -> Void]) {
     for element in elements {
         switch element {
-        case .item(let label, let action):
+        case .item(let label, let role, let isEnabled, let action):
             let id = cmdID
             cmdID += 1
-            actions[id] = action
-            _ = label.withCString(encodedAs: UTF16.self) { wstr in
-                AppendMenuW(hmenu, UINT(MF_STRING), UINT_PTR(id), wstr)
+            if isEnabled { actions[id] = action }
+            let displayLabel = role == .destructive ? "⚠ \(label)" : label
+            _ = displayLabel.withCString(encodedAs: UTF16.self) { wstr in
+                AppendMenuW(hmenu, UINT(MF_STRING | (isEnabled ? 0 : MF_GRAYED)), UINT_PTR(id), wstr)
             }
         case .divider:
             AppendMenuW(hmenu, UINT(MF_SEPARATOR), 0, nil)

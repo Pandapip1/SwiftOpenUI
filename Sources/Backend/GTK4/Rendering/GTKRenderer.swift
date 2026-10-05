@@ -2729,7 +2729,27 @@ extension FixedSizeView: GTKRenderable {
 
 // MARK: - contextMenu GTK extension
 
-extension ContextMenuView: GTKRenderable {
+private func gtkContextMenuSignature(_ elements: [MenuElement]) -> String {
+    elements.map { element in
+        switch element {
+        case .divider: return "|"
+        case .item(let label, let role, let isEnabled, _):
+            let roleName = role == .destructive ? "destructive" : role == .cancel ? "cancel" : "default"
+            return "item:\(label):\(roleName):\(isEnabled)"
+        case .submenu(let label, let children):
+            return "menu:\(label){\(gtkContextMenuSignature(children))}"
+        }
+    }.joined(separator: ";")
+}
+
+extension _ContextMenuView: GTKRenderable, GTKDescribable {
+    public func gtkDescribeNode() -> GTK4DescriptorNode {
+        GTK4DescriptorNode(
+            kind: .composite,
+            typeName: "_ContextMenuView:\(_menuIdentity.uuidString):\(gtkContextMenuSignature(menuElements))",
+            children: [gtkDescribeAnyView(content)])
+    }
+
     public func gtkCreateWidget() -> OpaquePointer {
         let widget = widgetFromOpaque(gtkRenderView(content))
 
@@ -6898,7 +6918,7 @@ private func gtkAddMenuElement(_ element: MenuElement, to menu: gpointer,
                                 actionBox: MenuActionBox,
                                 actionIndex: inout Int) {
     switch element {
-    case .item(let label, let action):
+    case .item(let label, let role, let isEnabled, let action):
         let actionName = "action\(actionIndex)"
         actionIndex += 1
 
@@ -6920,7 +6940,9 @@ private func gtkAddMenuElement(_ element: MenuElement, to menu: gpointer,
         )
 
         gtk_swift_action_map_add_action(gpointer(actionGroup), gpointer(gAction))
-        gtk_swift_menu_append(menu, label, "menu.\(actionName)")
+        gtk_swift_action_set_enabled(gpointer(gAction), isEnabled ? 1 : 0)
+        let displayLabel = role == .destructive ? "⚠ \(label)" : label
+        gtk_swift_menu_append(menu, displayLabel, "menu.\(actionName)")
 
     case .submenu(let label, let children):
         let submenu = gtk_swift_menu_new()!

@@ -20,6 +20,8 @@ public class WebViewHost: AnyViewHost, DependencyTrackingHost {
     /// Retained JSClosure instances for event handlers and callbacks.
     /// Cleared at the start of each full rebuild.
     var retainedClosures: [JSClosure] = []
+    /// DOM listener cleanup registered by renderers for the current subtree.
+    var disposals: [() -> Void] = []
     /// Per-host slot table — isolates slot ownership so rebuilding
     /// one host does not invalidate slots for unrelated hosts.
     let slotTable = WebSlotTable()
@@ -131,11 +133,18 @@ public class WebViewHost: AnyViewHost, DependencyTrackingHost {
 
     /// Release old descriptor state and closures to free memory during new render.
     func clear() {
+        let pendingDisposals = disposals
+        disposals.removeAll()
+        pendingDisposals.forEach { $0() }
         lastRetainedDescriptor = nil
         retainedExecutor = nil
         retainedClosures.removeAll()
         slotTable.clear()
         // Removed: webClearFallbackClosures() — unsafe to clear root-level closures
+    }
+
+    func registerDisposal(_ action: @escaping () -> Void) {
+        disposals.append(action)
     }
 
     func rebuild() {
@@ -559,6 +568,9 @@ private func webCollectElementsByTagAndType(
 
 /// Render a stateful composite view wrapped in a WebViewHost.
 public func webRenderStatefulView<V: View>(_ view: V) -> JSValue {
+    // Root renders can create listeners before a WebViewHost exists. Drain
+    // those fallback disposals before starting the next owned render pass.
+    webClearFallbackClosures()
     let mutableView = view
 
     // Install mutation hooks on first use

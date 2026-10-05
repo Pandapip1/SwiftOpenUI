@@ -1,10 +1,11 @@
 import JavaScriptKit
-import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) import SwiftOpenUI
 
 // MARK: - JSClosure lifetime management
 
 /// Fallback for closures created outside any WebViewHost (e.g. at the root of the app).
 private var _webFallbackRetainedClosures: [JSClosure] = []
+private var _webFallbackDisposals: [() -> Void] = []
 
 /// Create a JSClosure and capture the current host context.
 /// When the closure executes, it restores the host context so any
@@ -34,7 +35,18 @@ func webRetainClosure(_ closure: JSClosure) {
 
 /// Clear the fallback closure bucket. Used after initial app render.
 func webClearFallbackClosures() {
+    let disposals = _webFallbackDisposals
+    _webFallbackDisposals.removeAll()
+    disposals.forEach { $0() }
     _webFallbackRetainedClosures.removeAll()
+}
+
+func webRegisterDisposal(_ action: @escaping () -> Void) {
+    if let host = WebViewHost.currentRebuilding {
+        host.registerDisposal(action)
+    } else {
+        _webFallbackDisposals.append(action)
+    }
 }
 
 /// Ensure global CSS for List row borders is present in the document.
@@ -975,7 +987,7 @@ extension FixedSizeView: WebRenderable {
 
 // MARK: - contextMenu Web extension
 
-extension ContextMenuView: WebRenderable {
+extension _ContextMenuView: WebRenderable {
     public func webCreateElement() -> JSValue {
         let child = webRenderView(content)
         let wrapper = document.createElement("div")
@@ -986,39 +998,7 @@ extension ContextMenuView: WebRenderable {
         let menu = document.createElement("div")
         menu.style = .string("display: none; position: fixed; background: #2a2a2a; color: white; border-radius: 6px; padding: 4px 0; min-width: 140px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 10000; font-size: 14px;")
 
-        for element in menuElements {
-            switch element {
-            case .item(let label, let action):
-                let item = document.createElement("div")
-                item.textContent = .string(label)
-                item.style = .string("padding: 6px 16px; cursor: pointer;")
-                let actionClosure = webMakeClosure { _ in
-                    menu.style.object?.display = .string("none")
-                    action()
-                    return .undefined
-                }
-                item.onclick = .object(actionClosure)
-                // Hover effect
-                let overClosure = webMakeClosure { _ in
-                    item.style.object?.background = .string("#3a3a3a")
-                    return .undefined
-                }
-                let outClosure = webMakeClosure { _ in
-                    item.style.object?.background = .string("transparent")
-                    return .undefined
-                }
-                _ = item.addEventListener("mouseenter", overClosure)
-                _ = item.addEventListener("mouseleave", outClosure)
-                _ = menu.appendChild(item)
-            case .divider:
-                let hr = document.createElement("hr")
-                hr.style = .string("border: none; border-top: 1px solid #444; margin: 4px 0;")
-                _ = menu.appendChild(hr)
-            case .submenu(_, _):
-                // Submenus deferred for contextMenu — render label only
-                break
-            }
-        }
+        webRenderMenuElements(menuElements, into: menu)
 
         _ = wrapper.appendChild(menu)
 
@@ -1041,6 +1021,13 @@ extension ContextMenuView: WebRenderable {
             return .undefined
         }
         _ = JSObject.global.document.addEventListener("click", dismissHandler)
+
+        // WebViewHost clears renderer-owned listeners before replacing the
+        // subtree, so document-level handlers do not outlive this menu.
+        webRegisterDisposal {
+            _ = JSObject.global.document.removeEventListener("click", dismissHandler)
+            _ = wrapper.removeEventListener("contextmenu", showHandler)
+        }
 
         return wrapper
     }
@@ -3547,12 +3534,18 @@ extension Menu: WebRenderable {
 private func webRenderMenuElements(_ elements: [MenuElement], into container: JSValue) {
     for element in elements {
         switch element {
-        case .item(let label, let action):
+        case .item(let label, let role, let isEnabled, let action):
             let item = document.createElement("button")
             item.textContent = .string(label)
-            item.style = "display: block; width: 100%; padding: 6px 16px; border: none; background: none; color: white; text-align: left; cursor: pointer; font-size: 13px;"
+            item.style = !isEnabled
+                ? "display: block; width: 100%; padding: 6px 16px; border: none; background: none; color: #777; text-align: left; cursor: default; font-size: 13px; opacity: 0.6;"
+                : role == .destructive
+                ? "display: block; width: 100%; padding: 6px 16px; border: none; background: none; color: #ff7777; text-align: left; cursor: pointer; font-size: 13px;"
+                : "display: block; width: 100%; padding: 6px 16px; border: none; background: none; color: white; text-align: left; cursor: pointer; font-size: 13px;"
+            if !isEnabled { item.disabled = .boolean(true) }
+            if role == .destructive { _ = item.setAttribute("aria-label", "Destructive: \(label)") }
             let handler = webMakeClosure { _ in
-                action()
+                if isEnabled { action() }
                 return .undefined
             }
             item.onclick = .object(handler)
@@ -3574,7 +3567,10 @@ private func webRenderMenuElements(_ elements: [MenuElement], into container: JS
             subMenu.style = "display: none; position: absolute; left: 100%; top: 0; min-width: 140px; background: #2a2a2a; border: 1px solid #444; border-radius: 4px; padding: 4px 0;"
             webRenderMenuElements(children, into: subMenu)
 
-            let subHandler = webMakeClosure { _ in
+            let subHandler = webMakeClosure { args in
+                // The document-level dismiss handler must not close the menu
+                // while a nested submenu is being opened or selected.
+                if let event = args.first?.object { event.stopPropagation() }
                 let current = subMenu.style.object?.display.string ?? "none"
                 subMenu.style.object?.display = .string(current == "none" ? "block" : "none")
                 return .undefined

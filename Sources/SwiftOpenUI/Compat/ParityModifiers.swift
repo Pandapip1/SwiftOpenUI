@@ -111,8 +111,8 @@ extension View {
         edge: HorizontalEdge = .trailing,
         allowsFullSwipe: Bool = true,
         @ViewBuilder content: () -> Actions
-    ) -> ContextMenuView<Self> {
-        ContextMenuView(content: self, menuElements: AlertActions.menuElements(from: content()))
+    ) -> some View {
+        _ContextMenuView(content: self, menuContent: content())
     }
 }
 
