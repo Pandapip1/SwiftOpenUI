@@ -81,10 +81,37 @@ public final class AVMediaSelection: @unchecked Sendable {
     }
 }
 
+/// A loadable property of an `AVAsset`.
+///
+/// This mirrors AVFoundation's async asset-loading surface so clients can use
+/// the same APIs on the non-Apple compatibility implementation.
+public class AVAsyncProperty<Root, Value>: @unchecked Sendable {
+    fileprivate let value: (Root) -> Value
+
+    public required init(_ value: @escaping (Root) -> Value) {
+        self.value = value
+    }
+}
+
+/// Types that load AVFoundation properties asynchronously.
+public protocol AVAsynchronousKeyValueLoading: AnyObject {
+}
+
+public extension AVAsynchronousKeyValueLoading {
+    func load<T>(
+        _ property: AVAsyncProperty<Self, T>,
+        isolation: isolated (any Actor)? = #isolation
+    ) async throws -> T
+    {
+        _ = isolation
+        return property.value(self)
+    }
+}
+
 public typealias CMPersistentTrackID = Int32
 public let kCMPersistentTrackID_Invalid: CMPersistentTrackID = 0
 
-open class AVAsset: @unchecked Sendable {
+open class AVAsset: AVAsynchronousKeyValueLoading, @unchecked Sendable {
     @_spi(SwiftOpenUIBackend) public var _swiftOpenUITracks: [AVAssetTrack] = []
     private let mediaSelectionLock = NSLock()
     private var mediaSelectionGroups: [AVMediaCharacteristic: AVMediaSelectionGroup] = [:]
@@ -94,10 +121,27 @@ open class AVAsset: @unchecked Sendable {
     open func loadTracks(withMediaType mediaType: AVMediaType) async throws -> [AVAssetTrack] {
         _swiftOpenUITracks.filter { $0.mediaType == mediaType }
     }
-    public var availableMediaCharacteristicsWithMediaSelectionOptions: [AVMediaCharacteristic] {
+
+    public func loadMediaSelectionGroup(for characteristic: AVMediaCharacteristic)
+        async throws -> AVMediaSelectionGroup? {
+        loadedMediaSelectionGroup(for: characteristic)
+    }
+
+    fileprivate func loadedMediaSelectionCharacteristics() -> [AVMediaCharacteristic] {
         mediaSelectionLock.lock()
         defer { mediaSelectionLock.unlock() }
         return [.visual, .audible, .legible].filter { mediaSelectionGroups[$0] != nil }
+    }
+
+    fileprivate func loadedMediaSelectionGroup(for characteristic: AVMediaCharacteristic)
+        -> AVMediaSelectionGroup? {
+        mediaSelectionLock.lock()
+        defer { mediaSelectionLock.unlock() }
+        return mediaSelectionGroups[characteristic]
+    }
+
+    public var availableMediaCharacteristicsWithMediaSelectionOptions: [AVMediaCharacteristic] {
+        loadedMediaSelectionCharacteristics()
     }
     public func mediaSelectionGroup(forMediaCharacteristic characteristic: AVMediaCharacteristic)
         -> AVMediaSelectionGroup? {
@@ -112,6 +156,12 @@ open class AVAsset: @unchecked Sendable {
         mediaSelectionLock.lock()
         mediaSelectionGroups = groups
         mediaSelectionLock.unlock()
+    }
+}
+
+public extension AVAsyncProperty where Root: AVAsset, Value == [AVMediaCharacteristic] {
+    static var availableMediaCharacteristicsWithMediaSelectionOptions: Self {
+        Self { $0.loadedMediaSelectionCharacteristics() }
     }
 }
 

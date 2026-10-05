@@ -3,6 +3,47 @@ import XCTest
 @_spi(SwiftOpenUIBackend) @testable import SwiftOpenUI
 
 final class AVPlayerCompatibilityTests: XCTestCase {
+    func testAssetLoadsMediaSelectionGroupsAsynchronously() async throws {
+        let asset = AVURLAsset(url: URL(string: "https://example.com/video.mp4")!)
+        let option = AVMediaSelectionOption(
+            mediaType: .audio,
+            displayName: "English",
+            locale: Locale(identifier: "en"),
+            index: 0,
+            characteristic: .audible
+        )
+        let group = AVMediaSelectionGroup(
+            options: [option],
+            allowsEmptySelection: false,
+            characteristic: .audible
+        )
+        asset._swiftOpenUISetMediaSelectionGroups([.audible: group])
+
+        let characteristics = try await asset.load(.availableMediaCharacteristicsWithMediaSelectionOptions)
+        let loadedGroup = try await asset.loadMediaSelectionGroup(for: .audible)
+
+        XCTAssertEqual(characteristics, [.audible])
+        XCTAssertTrue(loadedGroup === group)
+    }
+
+    func testAsyncPropertySupportsGenericLoadingOnAssetSubclasses() async throws {
+        let asset = AVURLAsset(url: URL(string: "https://example.com/video.mp4")!)
+        let group = AVMediaSelectionGroup(options: [], allowsEmptySelection: false, characteristic: .audible)
+        asset._swiftOpenUISetMediaSelectionGroups([.audible: group])
+
+        let characteristics = try await loadCharacteristics(from: asset)
+
+        XCTAssertEqual(characteristics, [.audible])
+    }
+
+    private func loadCharacteristics<Asset: AVAsset>(
+        from asset: Asset
+    ) async throws -> [AVMediaCharacteristic] {
+        let property: AVAsyncProperty<Asset, [AVMediaCharacteristic]> =
+            .availableMediaCharacteristicsWithMediaSelectionOptions
+        return try await asset.load(property)
+    }
+
     @MainActor
     private final class Driver: _AVPlayerDriver {
         var installedItem: AVPlayerItem?

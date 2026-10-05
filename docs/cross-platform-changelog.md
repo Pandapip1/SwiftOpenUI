@@ -21,6 +21,17 @@ backend.
 
 ---
 
+## 2026-10-05 — GTK4 — async AVAsset media-selection loading
+
+- **Shared surface:** added `AVAsset.load(_:)` for
+  `availableMediaCharacteristicsWithMediaSelectionOptions` and
+  `AVAsset.loadMediaSelectionGroup(for:)` to the non-Apple media compatibility
+  implementation.
+- **Impact:** shared media clients can use AVFoundation's current async
+  media-selection APIs on Linux instead of the deprecated synchronous surface.
+- **Ping:** GTK4 media integrators.
+- **Refs:** `MediaPlayer.swift`, `MediaPlayerTests.swift`.
+
 ## 2026-10-05 — GTK4 — continuous hover events
 
 - **Shared surface:** added SwiftUI-compatible `HoverPhase`, `CoordinateSpace`,
