@@ -25,6 +25,45 @@ public struct AVMediaType: RawRepresentable, Hashable, Sendable {
     public init(rawValue: String) { self.rawValue = rawValue }
     public static let video = AVMediaType(rawValue: "vide")
     public static let audio = AVMediaType(rawValue: "soun")
+    public static let subtitle = AVMediaType(rawValue: "sbtl")
+}
+
+public struct AVMediaCharacteristic: RawRepresentable, Hashable, Sendable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public static let visual = AVMediaCharacteristic(rawValue: "visual")
+    public static let audible = AVMediaCharacteristic(rawValue: "audible")
+    public static let legible = AVMediaCharacteristic(rawValue: "legible")
+}
+
+public final class AVMediaSelectionOption: @unchecked Sendable {
+    public let mediaType: AVMediaType
+    public let displayName: String
+    public let locale: Locale?
+    @_spi(SwiftOpenUIBackend) public let _swiftOpenUIIndex: Int
+    @_spi(SwiftOpenUIBackend) public let _swiftOpenUICharacteristic: AVMediaCharacteristic
+    @_spi(SwiftOpenUIBackend)
+    public init(mediaType: AVMediaType, displayName: String, locale: Locale?, index: Int,
+                characteristic: AVMediaCharacteristic) {
+        self.mediaType = mediaType
+        self.displayName = displayName
+        self.locale = locale
+        _swiftOpenUIIndex = index
+        _swiftOpenUICharacteristic = characteristic
+    }
+}
+
+public final class AVMediaSelectionGroup: @unchecked Sendable {
+    public let options: [AVMediaSelectionOption]
+    public let allowsEmptySelection: Bool
+    @_spi(SwiftOpenUIBackend) public let _swiftOpenUICharacteristic: AVMediaCharacteristic
+    @_spi(SwiftOpenUIBackend)
+    public init(options: [AVMediaSelectionOption], allowsEmptySelection: Bool,
+                characteristic: AVMediaCharacteristic) {
+        self.options = options
+        self.allowsEmptySelection = allowsEmptySelection
+        _swiftOpenUICharacteristic = characteristic
+    }
 }
 
 public typealias CMPersistentTrackID = Int32
@@ -32,9 +71,32 @@ public let kCMPersistentTrackID_Invalid: CMPersistentTrackID = 0
 
 open class AVAsset: @unchecked Sendable {
     @_spi(SwiftOpenUIBackend) public var _swiftOpenUITracks: [AVAssetTrack] = []
+    private let mediaSelectionLock = NSLock()
+    private var mediaSelectionGroups: [AVMediaCharacteristic: AVMediaSelectionGroup] = [:]
+    @_spi(SwiftOpenUIBackend) public var _swiftOpenUIRefreshMediaSelectionGroups:
+        (@MainActor () -> Void)?
     public init() {}
     open func loadTracks(withMediaType mediaType: AVMediaType) async throws -> [AVAssetTrack] {
         _swiftOpenUITracks.filter { $0.mediaType == mediaType }
+    }
+    public var availableMediaCharacteristicsWithMediaSelectionOptions: [AVMediaCharacteristic] {
+        mediaSelectionLock.lock()
+        defer { mediaSelectionLock.unlock() }
+        return [.visual, .audible, .legible].filter { mediaSelectionGroups[$0] != nil }
+    }
+    public func mediaSelectionGroup(forMediaCharacteristic characteristic: AVMediaCharacteristic)
+        -> AVMediaSelectionGroup? {
+        mediaSelectionLock.lock()
+        defer { mediaSelectionLock.unlock() }
+        return mediaSelectionGroups[characteristic]
+    }
+    @_spi(SwiftOpenUIBackend)
+    public func _swiftOpenUISetMediaSelectionGroups(
+        _ groups: [AVMediaCharacteristic: AVMediaSelectionGroup]
+    ) {
+        mediaSelectionLock.lock()
+        mediaSelectionGroups = groups
+        mediaSelectionLock.unlock()
     }
 }
 
@@ -84,9 +146,32 @@ public final class AVMutableComposition: AVAsset, @unchecked Sendable {
 }
 
 public final class AVPlayerItem: @unchecked Sendable {
+    private let mediaSelectionLock = NSLock()
+    private var mediaSelectionHandler:
+        (@Sendable (AVMediaSelectionOption?, AVMediaSelectionGroup) -> Void)?
     public let asset: AVAsset
     public init(asset: AVAsset) { self.asset = asset }
     public convenience init(url: URL) { self.init(asset: AVURLAsset(url: url)) }
+    @_spi(SwiftOpenUIBackend) public var _swiftOpenUISelectMediaOption:
+        (@Sendable (AVMediaSelectionOption?, AVMediaSelectionGroup) -> Void)? {
+        get {
+            mediaSelectionLock.lock()
+            defer { mediaSelectionLock.unlock() }
+            return mediaSelectionHandler
+        }
+        set {
+            mediaSelectionLock.lock()
+            mediaSelectionHandler = newValue
+            mediaSelectionLock.unlock()
+        }
+    }
+    public func select(_ mediaSelectionOption: AVMediaSelectionOption?,
+                       in mediaSelectionGroup: AVMediaSelectionGroup) {
+        guard (mediaSelectionOption != nil || mediaSelectionGroup.allowsEmptySelection),
+              mediaSelectionOption == nil
+                || mediaSelectionGroup.options.contains(where: { $0 === mediaSelectionOption }) else { return }
+        _swiftOpenUISelectMediaOption?(mediaSelectionOption, mediaSelectionGroup)
+    }
 }
 
 @_spi(SwiftOpenUIBackend)

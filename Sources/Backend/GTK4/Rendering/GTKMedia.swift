@@ -36,6 +36,8 @@ final class GTKVideoDriver: _AVPlayerDriver {
     private var localAudioURL: URL?
     private var downloadTask: URLSessionDownloadTask?
     private var sourceGeneration: UInt = 0
+    private weak var mediaSelectionAsset: AVAsset?
+    private var mediaSelectionGeneration: UInt = 0
 
     init(player: AVPlayer) {
         self.player = player
@@ -109,6 +111,15 @@ final class GTKVideoDriver: _AVPlayerDriver {
         sourceAudioURL = audioURL
         sourceVideoHeaders = Self.headers(from: videoOptions)
         sourceAudioHeaders = Self.headers(from: audioOptions)
+        mediaSelectionAsset = item.asset
+        mediaSelectionGeneration = 0
+        item.asset._swiftOpenUIRefreshMediaSelectionGroups = { [weak self, weak asset = item.asset] in
+            guard let self, let asset else { return }
+            self.refreshMediaSelectionGroups(on: asset)
+        }
+        item._swiftOpenUISelectMediaOption = { [weak self] option, group in
+            Task { @MainActor [weak self] in self?.selectMediaOption(option, in: group) }
+        }
         pendingSeek = nil
         acceptedSeek = nil
         rateNeedsApplication = true
@@ -231,6 +242,51 @@ final class GTKVideoDriver: _AVPlayerDriver {
 
     private static func headers(from options: [String: Any]?) -> [String: String] {
         options?["AVURLAssetHTTPHeaderFieldsKey"] as? [String: String] ?? [:]
+    }
+
+    private func mediaSelectionGroups() -> [AVMediaCharacteristic: AVMediaSelectionGroup] {
+        guard let gst else { return [:] }
+        var groups: [AVMediaCharacteristic: AVMediaSelectionGroup] = [:]
+        for (characteristic, kind, mediaType, baseName): (AVMediaCharacteristic, Int32, AVMediaType, String) in [
+            (.visual, 0, .video, "Video"), (.audible, 1, .audio, "Audio"),
+            (.legible, 2, .subtitle, "Subtitles")
+        ] {
+            let count = Int(swift_openui_gst_player_track_count(gst, kind))
+            guard count > 0 else { continue }
+            let options = (0..<count).map { index in
+                let rawLabel = swift_openui_gst_player_track_label(gst, kind, Int32(index))
+                let label = rawLabel.map { String(cString: $0) } ?? "\(baseName) \(index + 1)"
+                if let rawLabel { g_free(rawLabel) }
+                return AVMediaSelectionOption(mediaType: mediaType, displayName: label, locale: nil,
+                                              index: index, characteristic: characteristic)
+            }
+            groups[characteristic] = AVMediaSelectionGroup(
+                options: options, allowsEmptySelection: characteristic == .legible,
+                characteristic: characteristic
+            )
+        }
+        return groups
+    }
+
+    private func refreshMediaSelectionGroups(on asset: AVAsset) {
+        let groups = mediaSelectionGroups()
+        guard !groups.isEmpty else { return }
+        asset._swiftOpenUISetMediaSelectionGroups(groups)
+        if let gst {
+            mediaSelectionGeneration = swift_openui_gst_player_stream_collection_generation(gst)
+        }
+    }
+
+    private func selectMediaOption(_ option: AVMediaSelectionOption?, in group: AVMediaSelectionGroup) {
+        guard let gst else { return }
+        let kind: Int32
+        switch group._swiftOpenUICharacteristic {
+        case .visual: kind = 0
+        case .audible: kind = 1
+        case .legible: kind = 2
+        default: return
+        }
+        swift_openui_gst_player_select_track(gst, kind, Int32(option?._swiftOpenUIIndex ?? -1))
     }
 
     private func finishSeekDownload(_ result: Result<URL, Error>, sourceURL: URL, isAudio: Bool,
@@ -400,6 +456,10 @@ final class GTKVideoDriver: _AVPlayerDriver {
     }
 
     private func presentFrame() {
+        if let gst, let mediaSelectionAsset,
+           swift_openui_gst_player_stream_collection_generation(gst) != mediaSelectionGeneration {
+            refreshMediaSelectionGroups(on: mediaSelectionAsset)
+        }
         if let target = pendingSeek, durationSeconds > 0 {
             pendingSeek = nil
             seek(to: CMTime(seconds: target, preferredTimescale: 600))

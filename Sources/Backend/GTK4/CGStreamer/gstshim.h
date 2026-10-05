@@ -21,7 +21,13 @@ typedef struct {
     GMutex frame_source_mutex;
     GHashTable *video_headers;
     GHashTable *audio_headers;
+    GstStreamCollection *stream_collection;
+    gint selected_track_indices[3];
+    gint requested_track_indices[3];
+    guint64 stream_collection_generation;
 } SwiftOpenUIGStreamerPlayer;
+
+static inline void swift_openui_gst_player_apply_pending_track_selection(SwiftOpenUIGStreamerPlayer *player);
 
 static inline GstFlowReturn swift_openui_gst_player_new_sample(GstAppSink *sink, gpointer data);
 
@@ -105,6 +111,8 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
         g_once_init_leave(&initialized, 1);
     }
     SwiftOpenUIGStreamerPlayer *player = g_new0(SwiftOpenUIGStreamerPlayer, 1);
+    for (gint kind = 0; kind < 3; kind++) player->selected_track_indices[kind] = -1;
+    for (gint kind = 0; kind < 3; kind++) player->requested_track_indices[kind] = -2;
     player->video_headers = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     player->audio_headers = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     g_mutex_init(&player->frame_source_mutex);
@@ -167,6 +175,7 @@ static inline void swift_openui_gst_player_free(SwiftOpenUIGStreamerPlayer *play
     swift_openui_gst_player_clear_pending_sample(player);
     gst_object_unref(player->playbin);
     if (player->split_pipeline) gst_object_unref(player->split_pipeline);
+    if (player->stream_collection) gst_object_unref(player->stream_collection);
     gst_object_unref(player->normal_appsink);
     gst_object_unref(player->video_bin);
     g_hash_table_unref(player->video_headers);
@@ -212,6 +221,12 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
                                                      const char *video_uri,
                                                      const char *audio_uri) {
     if (!player || !video_uri) return;
+    if (player->stream_collection) {
+        gst_object_unref(player->stream_collection);
+        player->stream_collection = NULL;
+    }
+    for (gint kind = 0; kind < 3; kind++) player->selected_track_indices[kind] = -1;
+    for (gint kind = 0; kind < 3; kind++) player->requested_track_indices[kind] = -2;
     gst_element_set_state(player->pipeline, GST_STATE_NULL);
     swift_openui_gst_player_clear_pending_sample(player);
     swift_openui_gst_player_disconnect_sink(player);
@@ -336,6 +351,149 @@ static inline gint64 swift_openui_gst_player_position(SwiftOpenUIGStreamerPlayer
 static inline gint64 swift_openui_gst_player_duration(SwiftOpenUIGStreamerPlayer *player) {
     gint64 value = 0;
     return player && gst_element_query_duration(player->pipeline, GST_FORMAT_TIME, &value) ? value : 0;
+}
+
+static inline GstStreamType swift_openui_gst_track_type(gint kind) {
+    return kind == 0 ? GST_STREAM_TYPE_VIDEO : kind == 1 ? GST_STREAM_TYPE_AUDIO : GST_STREAM_TYPE_TEXT;
+}
+
+static inline void swift_openui_gst_player_refresh_stream_collection(SwiftOpenUIGStreamerPlayer *player) {
+    if (!player || player->pipeline != player->playbin) return;
+    GstBus *bus = gst_element_get_bus(player->pipeline);
+    if (!bus) return;
+    GstMessage *message;
+    while ((message = gst_bus_pop_filtered(
+        bus, GST_MESSAGE_STREAM_COLLECTION | GST_MESSAGE_STREAMS_SELECTED)) != NULL) {
+        if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_STREAM_COLLECTION) {
+            GstStreamCollection *collection = NULL;
+            gst_message_parse_stream_collection(message, &collection);
+            if (collection) {
+                if (player->stream_collection) gst_object_unref(player->stream_collection);
+                player->stream_collection = gst_object_ref(collection);
+                player->stream_collection_generation++;
+            }
+        } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_STREAMS_SELECTED
+                   && player->stream_collection) {
+            for (gint kind = 0; kind < 3; kind++) player->selected_track_indices[kind] = -1;
+            guint selected_count = gst_message_streams_selected_get_size(message);
+            for (guint selected_index = 0; selected_index < selected_count; selected_index++) {
+                GstStream *selected = gst_message_streams_selected_get_stream(message, selected_index);
+                if (!selected) continue;
+                GstStreamType selected_type = gst_stream_get_stream_type(selected);
+                const gchar *selected_id = gst_stream_get_stream_id(selected);
+                for (gint kind = 0; kind < 3; kind++) {
+                    GstStreamType type = swift_openui_gst_track_type(kind);
+                    if (!(selected_type & type)) continue;
+                    gint match = 0;
+                    guint size = gst_stream_collection_get_size(player->stream_collection);
+                    for (guint i = 0; i < size; i++) {
+                        GstStream *candidate = gst_stream_collection_get_stream(player->stream_collection, i);
+                        if (!candidate || !(gst_stream_get_stream_type(candidate) & type)) continue;
+                        if (g_strcmp0(gst_stream_get_stream_id(candidate), selected_id) == 0) {
+                            player->selected_track_indices[kind] = match;
+                            break;
+                        }
+                        match++;
+                    }
+                }
+            }
+        }
+        gst_message_unref(message);
+    }
+    gst_object_unref(bus);
+    swift_openui_gst_player_apply_pending_track_selection(player);
+}
+
+static inline guint64 swift_openui_gst_player_stream_collection_generation(
+    SwiftOpenUIGStreamerPlayer *player) {
+    swift_openui_gst_player_refresh_stream_collection(player);
+    return player ? player->stream_collection_generation : 0;
+}
+
+static inline gint swift_openui_gst_player_track_count(SwiftOpenUIGStreamerPlayer *player,
+                                                        gint kind) {
+    if (!player || player->pipeline != player->playbin) return 0;
+    swift_openui_gst_player_refresh_stream_collection(player);
+    if (!player->stream_collection) return 0;
+    gint count = 0;
+    GstStreamType type = swift_openui_gst_track_type(kind);
+    guint size = gst_stream_collection_get_size(player->stream_collection);
+    for (guint i = 0; i < size; i++) {
+        GstStream *stream = gst_stream_collection_get_stream(player->stream_collection, i);
+        if (stream && (gst_stream_get_stream_type(stream) & type)) count++;
+    }
+    return count;
+}
+
+static inline GstStream *swift_openui_gst_player_track(SwiftOpenUIGStreamerPlayer *player,
+                                                        gint kind, gint index) {
+    if (!player || !player->stream_collection || index < 0) return NULL;
+    GstStreamType type = swift_openui_gst_track_type(kind);
+    guint size = gst_stream_collection_get_size(player->stream_collection);
+    gint match = 0;
+    for (guint i = 0; i < size; i++) {
+        GstStream *stream = gst_stream_collection_get_stream(player->stream_collection, i);
+        if (stream && (gst_stream_get_stream_type(stream) & type)) {
+            if (match == index) return stream;
+            match++;
+        }
+    }
+    return NULL;
+}
+
+static inline gchar *swift_openui_gst_player_track_label(SwiftOpenUIGStreamerPlayer *player,
+                                                          gint kind, gint index) {
+    swift_openui_gst_player_refresh_stream_collection(player);
+    GstStream *stream = swift_openui_gst_player_track(player, kind, index);
+    if (!stream) return NULL;
+    GstTagList *tags = gst_stream_get_tags(stream);
+    if (!tags) return NULL;
+    gchar *title = NULL;
+    gchar *language = NULL;
+    gst_tag_list_get_string(tags, GST_TAG_TITLE, &title);
+    gst_tag_list_get_string(tags, GST_TAG_LANGUAGE_CODE, &language);
+    gchar *result = title ? g_strdup(title) : language ? g_strdup(language) : NULL;
+    g_free(title);
+    g_free(language);
+    gst_tag_list_unref(tags);
+    return result;
+}
+
+static inline void swift_openui_gst_player_apply_pending_track_selection(
+    SwiftOpenUIGStreamerPlayer *player) {
+    if (!player || !player->stream_collection) return;
+    gboolean has_request = FALSE;
+    for (gint kind = 0; kind < 3; kind++) {
+        if (player->requested_track_indices[kind] != -2) has_request = TRUE;
+    }
+    if (!has_request) return;
+    for (gint kind = 0; kind < 2; kind++) {
+        if (player->selected_track_indices[kind] < 0
+            && swift_openui_gst_player_track(player, kind, 0)) return;
+    }
+    GList *ids = NULL;
+    for (gint candidate_kind = 0; candidate_kind < 3; candidate_kind++) {
+        gint requested = player->requested_track_indices[candidate_kind];
+        gint candidate_index = requested == -2
+            ? player->selected_track_indices[candidate_kind] : requested;
+        GstStream *stream = swift_openui_gst_player_track(player, candidate_kind, candidate_index);
+        if (stream) ids = g_list_append(ids, g_strdup(gst_stream_get_stream_id(stream)));
+    }
+    if (ids && gst_element_send_event(player->pipeline, gst_event_new_select_streams(ids))) {
+        for (gint kind = 0; kind < 3; kind++) {
+            if (player->requested_track_indices[kind] != -2) {
+                player->selected_track_indices[kind] = player->requested_track_indices[kind];
+                player->requested_track_indices[kind] = -2;
+            }
+        }
+    }
+}
+
+static inline void swift_openui_gst_player_select_track(SwiftOpenUIGStreamerPlayer *player,
+                                                         gint kind, gint index) {
+    if (!player || kind < 0 || kind > 2 || player->pipeline != player->playbin) return;
+    player->requested_track_indices[kind] = index;
+    swift_openui_gst_player_refresh_stream_collection(player);
 }
 
 static inline gboolean swift_openui_gst_player_is_playing(SwiftOpenUIGStreamerPlayer *player) {
