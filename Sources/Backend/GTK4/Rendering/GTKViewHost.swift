@@ -329,10 +329,24 @@ public class GTKViewHost: AnyViewHost, DependencyTrackingHost {
             oldRotation = getWidgetDouble(oldChild, key: "gtk-swift-rotation")
         }
 
-        // Remove old children
-        while gtk_swift_is_widget(container) != 0, let child = gtk_widget_get_first_child(container) {
-            gtk_box_remove(boxPointer(container), child)
+        // Keep the old subtree mapped until its replacement is ready. GTK
+        // repicks pointer focus when the old target unmaps, but does not repick
+        // when a new child appears underneath an already-hovered ancestor.
+        // An empty interval here makes the next stationary click hit the host.
+        var oldChildren: [UnsafeMutablePointer<GtkWidget>] = []
+        var oldAllocation = GtkAllocation()
+        var oldBaseline: Int32 = -1
+        var oldChild = gtk_widget_get_first_child(container)
+        while let child = oldChild {
+            if oldChildren.isEmpty {
+                gtk_widget_get_allocation(child, &oldAllocation)
+                oldBaseline = gtk_widget_get_allocated_baseline(child)
+            }
+            g_object_ref(gpointer(child))
+            oldChildren.append(child)
+            oldChild = gtk_widget_get_next_sibling(child)
         }
+        defer { oldChildren.forEach { g_object_unref(gpointer($0)) } }
 
         // Set up rebuild context
         let previousHost = GTKViewHost.getCurrentRebuilding()
@@ -368,7 +382,25 @@ public class GTKViewHost: AnyViewHost, DependencyTrackingHost {
         if childVexpand {
             gtk_widget_set_valign(newChild, GTK_ALIGN_FILL)
         }
-        gtk_box_append(boxPointer(container), newChild)
+        if gtk_widget_get_parent(newChild) != container {
+            gtk_box_append(boxPointer(container), newChild)
+        }
+        // Give GTK a pickable replacement before unmapping the old target.
+        // The box's next layout pass will apply its normal measured allocation.
+        if gtk_widget_get_mapped(container) != 0,
+           oldAllocation.width > 0, oldAllocation.height > 0 {
+            if gtk_widget_get_request_mode(newChild) == GTK_SIZE_REQUEST_WIDTH_FOR_HEIGHT {
+                gtk_widget_measure(newChild, GTK_ORIENTATION_VERTICAL, -1, nil, nil, nil, nil)
+                gtk_widget_measure(newChild, GTK_ORIENTATION_HORIZONTAL, oldAllocation.height, nil, nil, nil, nil)
+            } else {
+                gtk_widget_measure(newChild, GTK_ORIENTATION_HORIZONTAL, -1, nil, nil, nil, nil)
+                gtk_widget_measure(newChild, GTK_ORIENTATION_VERTICAL, oldAllocation.width, nil, nil, nil, nil)
+            }
+            gtk_widget_size_allocate(newChild, &oldAllocation, oldBaseline)
+        }
+        for child in oldChildren where child != newChild && gtk_widget_get_parent(child) == container {
+            gtk_box_remove(boxPointer(container), child)
+        }
 
         // If this subtree contains a NavigationStack titlebar, refresh it on the window.
         // We intentionally do NOT clear (pass nil) when no titlebar is found, because
