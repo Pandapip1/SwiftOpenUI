@@ -155,6 +155,7 @@ public enum SFSymbolCompatibility {
         "clock":                  "schedule",
         "ellipsis":               "more_horiz",
         "ellipsis.circle":        "more_horiz",
+        "ellipsis.circle.fill":   "more_horiz",
         "eye":                    "visibility",
         "eye.slash":              "visibility_off",
         "heart":                  "favorite_border",

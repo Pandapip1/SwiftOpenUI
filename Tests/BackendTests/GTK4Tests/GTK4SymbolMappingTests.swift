@@ -12,7 +12,7 @@ import SwiftOpenUISymbols
 final class GTK4SymbolMappingTests: XCTestCase {
     func testPilotCatalogSymbolsResolve() {
         for sfName in ["building.2", "building.2.fill", "books.vertical", "books.vertical.fill",
-                       "tag.fill", "lock.fill"] {
+                       "ellipsis.circle.fill", "tag.fill", "lock.fill"] {
             let material = SFSymbolCompatibility.materialName(for: sfName)
             XCTAssertNotNil(material, "\(sfName) has no Material mapping")
             if let material {
