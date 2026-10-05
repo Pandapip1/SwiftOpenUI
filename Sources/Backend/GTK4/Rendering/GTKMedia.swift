@@ -364,6 +364,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
         gtk_window_set_title(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), "Picture in Picture")
         gtk_window_set_default_size(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), 480, 270)
         gtk_window_set_resizable(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), 1)
+        gtk_window_set_decorated(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), 0)
         let content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
         gtk_widget_set_hexpand(videoWidget, 1)
         gtk_widget_set_vexpand(videoWidget, 1)
@@ -376,13 +377,22 @@ final class GTKVideoDriver: _AVPlayerDriver {
         let playPause = gtk_button_new_with_label(pendingAutoplay ? "Pause" : "Play")!
         let forward = gtk_button_new_with_label("+10")!
         let time = gtk_label_new(nil)!
+        let close = gtk_button_new_with_label("×")!
         pictureInPicturePlayButton = playPause
         pictureInPictureTimeLabel = time
-        for child in [backward, playPause, forward, time] {
+        for child in [backward, playPause, forward, time, close] {
             gtk_box_append(UnsafeMutableRawPointer(controls).assumingMemoryBound(to: GtkBox.self), child)
         }
         gtk_box_append(UnsafeMutableRawPointer(content).assumingMemoryBound(to: GtkBox.self), controls)
-        gtk_window_set_child(UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self), content)
+        let windowHandle = gtk_window_handle_new()!
+        gtk_window_handle_set_child(
+            OpaquePointer(windowHandle),
+            content
+        )
+        gtk_window_set_child(
+            UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self),
+            windowHandle
+        )
         let context = Unmanaged.passUnretained(self).toOpaque()
         g_signal_connect_data(gpointer(backward), "clicked", unsafeBitCast({ (_: gpointer?, data: gpointer?) in
             guard let data else { return }
@@ -406,6 +416,13 @@ final class GTKVideoDriver: _AVPlayerDriver {
             MainActor.assumeIsolated {
                 let driver = Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue()
                 driver.seek(to: CMTime(seconds: driver.currentTime.seconds + 10, preferredTimescale: 600))
+            }
+        } as @convention(c) (gpointer?, gpointer?) -> Void, to: GCallback.self), context, nil,
+        GConnectFlags(rawValue: 0))
+        g_signal_connect_data(gpointer(close), "clicked", unsafeBitCast({ (_: gpointer?, data: gpointer?) in
+            guard let data else { return }
+            MainActor.assumeIsolated {
+                Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue().stopPictureInPicture()
             }
         } as @convention(c) (gpointer?, gpointer?) -> Void, to: GCallback.self), context, nil,
         GConnectFlags(rawValue: 0))

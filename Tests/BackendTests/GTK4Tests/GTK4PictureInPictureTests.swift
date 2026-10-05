@@ -25,12 +25,16 @@ final class GTK4PictureInPictureTests: XCTestCase {
 
             let floating = g_list_model_get_item(windows, before)!
             let floatingWindow = UnsafeMutableRawPointer(floating).assumingMemoryBound(to: GtkWindow.self)
-            let content = try XCTUnwrap(gtk_window_get_child(floatingWindow))
+            XCTAssertEqual(gtk_window_get_decorated(floatingWindow), 0)
+            let windowHandle = try XCTUnwrap(gtk_window_get_child(floatingWindow))
+            let content = try XCTUnwrap(gtk_window_handle_get_child(OpaquePointer(windowHandle)))
             let video = try XCTUnwrap(gtk_widget_get_first_child(content))
             let controls = try XCTUnwrap(gtk_widget_get_next_sibling(video))
             let backward = try XCTUnwrap(gtk_widget_get_first_child(controls))
             let playPause = try XCTUnwrap(gtk_widget_get_next_sibling(backward))
             let forward = try XCTUnwrap(gtk_widget_get_next_sibling(playPause))
+            let time = try XCTUnwrap(gtk_widget_get_next_sibling(forward))
+            let close = try XCTUnwrap(gtk_widget_get_next_sibling(time))
             XCTAssertEqual(String(cString: gtk_button_get_label(
                 UnsafeMutableRawPointer(backward).assumingMemoryBound(to: GtkButton.self)
             )), "−10")
@@ -40,6 +44,9 @@ final class GTK4PictureInPictureTests: XCTestCase {
             XCTAssertEqual(String(cString: gtk_button_get_label(
                 UnsafeMutableRawPointer(forward).assumingMemoryBound(to: GtkButton.self)
             )), "+10")
+            XCTAssertEqual(String(cString: gtk_button_get_label(
+                UnsafeMutableRawPointer(close).assumingMemoryBound(to: GtkButton.self)
+            )), "×")
             gtk_window_close(floatingWindow)
             g_object_unref(floating)
             XCTAssertFalse(controller.isPictureInPictureActive)
