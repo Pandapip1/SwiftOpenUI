@@ -30,8 +30,11 @@ final class GTKVideoDriver: _AVPlayerDriver {
     private var sourceVideoURL: URL?
     private var sourceAudioURL: URL?
     private var sourceVideoHeaders: [String: String] = [:]
+    private var sourceAudioHeaders: [String: String] = [:]
     private var localVideoURL: URL?
+    private var localAudioURL: URL?
     private var downloadTask: URLSessionDownloadTask?
+    private var sourceGeneration: UInt = 0
 
     init(player: AVPlayer) {
         self.player = player
@@ -55,6 +58,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
     deinit {
         downloadTask?.cancel()
         if let localVideoURL { try? FileManager.default.removeItem(at: localVideoURL) }
+        if let localAudioURL { try? FileManager.default.removeItem(at: localAudioURL) }
         if startSource != 0 { g_source_remove(startSource) }
         MainActor.assumeIsolated { stopPictureInPicture() }
         if pictureInPictureUpdateSource != 0 { g_source_remove(pictureInPictureUpdateSource) }
@@ -66,6 +70,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
 
     func replaceCurrentItem(with item: AVPlayerItem?) {
         guard let item else { stop(); return }
+        cancelSeekFallback()
         let videoURL: URL?
         let audioURL: URL?
         let videoOptions: [String: Any]?
@@ -99,13 +104,10 @@ final class GTKVideoDriver: _AVPlayerDriver {
             player?._swiftOpenUIOnFailure?("GStreamer playbin3 is unavailable")
             return
         }
-        downloadTask?.cancel()
-        downloadTask = nil
-        if let localVideoURL { try? FileManager.default.removeItem(at: localVideoURL) }
-        localVideoURL = nil
         sourceVideoURL = videoURL
         sourceAudioURL = audioURL
         sourceVideoHeaders = Self.headers(from: videoOptions)
+        sourceAudioHeaders = Self.headers(from: audioOptions)
         pendingSeek = nil
         rateNeedsApplication = true
         swift_openui_gst_player_stop(gst)
@@ -113,7 +115,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
         for (name, value) in sourceVideoHeaders {
             swift_openui_gst_player_set_header(gst, 0, name, value)
         }
-        for (name, value) in Self.headers(from: audioOptions) {
+        for (name, value) in sourceAudioHeaders {
             swift_openui_gst_player_set_header(gst, 1, name, value)
         }
         swift_openui_gst_player_set_uris(gst, videoURL.absoluteString, audioURL?.absoluteString)
@@ -169,29 +171,49 @@ final class GTKVideoDriver: _AVPlayerDriver {
     }
 
     func stop() {
+        cancelSeekFallback()
         if let gst { swift_openui_gst_player_stop(gst) }
         pendingSeek = nil
+    }
+
+    private func cancelSeekFallback() {
+        sourceGeneration &+= 1
+        downloadTask?.cancel()
+        downloadTask = nil
+        if let localVideoURL { try? FileManager.default.removeItem(at: localVideoURL) }
+        if let localAudioURL { try? FileManager.default.removeItem(at: localAudioURL) }
+        localVideoURL = nil
+        localAudioURL = nil
     }
 
     private func downloadForSeekingIfNeeded() {
         guard downloadTask == nil, localVideoURL == nil, let sourceVideoURL,
               sourceVideoURL.scheme == "http" || sourceVideoURL.scheme == "https" else { return }
-        var request = URLRequest(url: sourceVideoURL)
-        for (name, value) in sourceVideoHeaders { request.setValue(value, forHTTPHeaderField: name) }
+        downloadSeekSource(sourceVideoURL, headers: sourceVideoHeaders, isAudio: false,
+                           generation: sourceGeneration)
+    }
+
+    private func downloadSeekSource(_ sourceURL: URL, headers: [String: String], isAudio: Bool,
+                                    generation: UInt) {
+        var request = URLRequest(url: sourceURL)
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         downloadTask = URLSession.shared.downloadTask(with: request) { [weak self] temporaryURL, _, error in
             guard let self else { return }
             var result: Result<URL, Error>
             do {
                 if let error { throw error }
                 guard let temporaryURL else { throw URLError(.cannotCreateFile) }
-                let extensionName = sourceVideoURL.pathExtension
+                let extensionName = sourceURL.pathExtension
                 let destination = FileManager.default.temporaryDirectory
                     .appendingPathComponent("swift-openui-\(UUID().uuidString)")
                     .appendingPathExtension(extensionName)
                 try FileManager.default.moveItem(at: temporaryURL, to: destination)
                 result = .success(destination)
             } catch { result = .failure(error) }
-            Task { @MainActor [weak self] in self?.finishSeekDownload(result, sourceURL: sourceVideoURL) }
+            Task { @MainActor [weak self] in
+                self?.finishSeekDownload(result, sourceURL: sourceURL, isAudio: isAudio,
+                                         generation: generation)
+            }
         }
         downloadTask?.resume()
     }
@@ -200,21 +222,38 @@ final class GTKVideoDriver: _AVPlayerDriver {
         options?["AVURLAssetHTTPHeaderFieldsKey"] as? [String: String] ?? [:]
     }
 
-    private func finishSeekDownload(_ result: Result<URL, Error>, sourceURL: URL) {
+    private func finishSeekDownload(_ result: Result<URL, Error>, sourceURL: URL, isAudio: Bool,
+                                    generation: UInt) {
+        guard generation == sourceGeneration else {
+            if case .success(let url) = result { try? FileManager.default.removeItem(at: url) }
+            return
+        }
         downloadTask = nil
-        guard sourceVideoURL == sourceURL else {
+        let expectedURL = isAudio ? sourceAudioURL : sourceVideoURL
+        guard expectedURL == sourceURL else {
             if case .success(let url) = result { try? FileManager.default.removeItem(at: url) }
             return
         }
         switch result {
         case .failure(let error):
             pendingSeek = nil
+            if let localVideoURL { try? FileManager.default.removeItem(at: localVideoURL); self.localVideoURL = nil }
+            if let localAudioURL { try? FileManager.default.removeItem(at: localAudioURL); self.localAudioURL = nil }
             player?._swiftOpenUIOnFailure?("Could not buffer this video for seeking: \(error.localizedDescription)")
         case .success(let localURL):
             guard let gst else { try? FileManager.default.removeItem(at: localURL); return }
-            localVideoURL = localURL
+            if isAudio { localAudioURL = localURL } else { localVideoURL = localURL }
+            if !isAudio, let sourceAudioURL,
+               sourceAudioURL.scheme == "http" || sourceAudioURL.scheme == "https" {
+                downloadSeekSource(sourceAudioURL, headers: sourceAudioHeaders, isAudio: true,
+                                   generation: generation)
+                return
+            }
+            guard let localVideoURL else { return }
             swift_openui_gst_player_stop(gst)
-            swift_openui_gst_player_set_uris(gst, localURL.absoluteString, sourceAudioURL?.absoluteString)
+            swift_openui_gst_player_set_uris(
+                gst, localVideoURL.absoluteString, (localAudioURL ?? sourceAudioURL)?.absoluteString
+            )
             if pendingAutoplay {
                 swift_openui_gst_player_play(gst)
                 rateNeedsApplication = true
