@@ -55,14 +55,22 @@ var targets: [Target] = [
 // - Backend libraries on their native platforms
 var exampleDeps: [Target.Dependency] = ["SwiftOpenUI", "MacExampleSupport"]
 
-// GTK4 backend (Linux)
-#if os(Linux)
+// WebKit abstraction — platform-independent; the GTK backend wires up the concrete
+// implementation on Linux, and Apple platforms use the system WebKit framework instead.
+// Declared unconditionally so SwiftPM can resolve it on all hosts (including macOS,
+// where Hummingbird references it via a .when(platforms: nonApple) condition in its
+// test target — the resolver validates product existence regardless of the condition).
 targets += [
     .target(
         name: "WebKit",
         dependencies: ["SwiftOpenUI"],
         path: "Sources/WebKit"
     ),
+]
+
+// GTK4 backend (Linux)
+#if os(Linux)
+targets += [
     .systemLibrary(
         name: "CWebKitGTK",
         path: "Sources/Backend/GTK4/CWebKitGTK",
@@ -165,6 +173,15 @@ exampleDeps.append("BackendWin32")
 // Android backend — temporarily in root for cross-compilation testing
 #if os(macOS)
 targets += [
+    // Stub so SwiftPM can resolve BackendGTK4 on macOS at resolution time.
+    // The real target (with GTK system-library deps) only compiles on Linux.
+    // HummingbirdKitTests conditionally depends on BackendGTK4 with
+    // .when(platforms: [.linux]), so this stub is never linked on macOS.
+    .target(
+        name: "BackendGTK4",
+        dependencies: [],
+        path: "Sources/Backend/GTK4/Stubs"
+    ),
     .target(
         name: "BackendAndroid",
         dependencies: ["SwiftOpenUI"],
@@ -431,6 +448,8 @@ let package = Package(
         p.append(.library(name: "SwiftOpenUISymbols", targets: ["SwiftOpenUISymbols"]))
         #endif
         #if os(macOS)
+        p.append(.library(name: "WebKit", targets: ["WebKit"]))
+        p.append(.library(name: "BackendGTK4", targets: ["BackendGTK4"]))
         p.append(.library(name: "BackendAndroid", type: .dynamic, targets: ["BackendAndroid"]))
         #endif
         return p
