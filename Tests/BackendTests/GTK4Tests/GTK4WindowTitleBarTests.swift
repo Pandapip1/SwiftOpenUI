@@ -19,7 +19,9 @@ final class GTK4WindowTitleBarTests: XCTestCase {
                     NavigationStack { Text("Library content").navigationTitle("Library") }
                 }
             }
-            .windowTitleBar { Text("Browser tabs") }
+            .toolbar {
+                ToolbarItem(placement: .principal) { Text("Browser tabs") }
+            }
         }
     }
 
@@ -61,8 +63,8 @@ final class GTK4WindowTitleBarTests: XCTestCase {
         let slotHost = try XCTUnwrap(findNestedTitlebarSlotHost(in: root))
         let slotHostObject = UnsafeMutableRawPointer(slotHost).assumingMemoryBound(to: GObject.self)
         g_object_set_data(slotHostObject, "gtk-swift-nested-titlebar-slot", nil)
-        // Re-evaluate from the modifier's old content root, as a rebuilt
-        // outer view does after the conditional `windowTitleBar` is removed.
+        // Re-evaluate from the toolbar's content root, as a rebuilt outer
+        // view does after its root toolbar is removed.
         gtkSetVisibleWindowTitlebar(slotHost, nestedHeader)
         pump()
         XCTAssertEqual(gtk_window_get_titlebar(windowPointer), nestedHeader)

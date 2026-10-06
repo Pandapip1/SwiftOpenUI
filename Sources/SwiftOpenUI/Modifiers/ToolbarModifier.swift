@@ -3,6 +3,9 @@ public enum ToolbarItemPlacement: Equatable, Hashable {
     case leading
     case trailing
     case primaryAction
+    /// The toolbar's centered/title region.  On desktop platforms this is
+    /// the native header's flexible middle area.
+    case principal
 }
 
 /// Visibility state for a toolbar container.
@@ -109,6 +112,24 @@ public struct ToolbarItem<Content: View>: View {
     public var body: Never { fatalError("ToolbarItem is a primitive view") }
 }
 
+/// A group of related toolbar controls that share a placement.
+///
+/// This mirrors SwiftUI's `ToolbarItemGroup`: its contents are presented as
+/// one native toolbar group, which lets a platform preserve its own spacing
+/// and focus behavior between the controls.
+public struct ToolbarItemGroup<Content: View> {
+    public let placement: ToolbarItemPlacement
+    public let content: Content
+
+    public init(
+        placement: ToolbarItemPlacement = .automatic,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.placement = placement
+        self.content = content()
+    }
+}
+
 /// Type-erased toolbar item.
 public struct AnyToolbarItem {
     public let placement: ToolbarItemPlacement
@@ -117,6 +138,21 @@ public struct AnyToolbarItem {
     public init<Content: View>(_ item: ToolbarItem<Content>) {
         self.placement = item.placement
         self.wrapped = item.content
+    }
+
+    init<Content: View>(placement: ToolbarItemPlacement, wrapped: Content) {
+        self.placement = placement
+        self.wrapped = wrapped
+    }
+}
+
+extension ToolbarContentBuilder {
+    public static func buildExpression<Content: View>(
+        _ expression: ToolbarItemGroup<Content>
+    ) -> ToolbarContent {
+        ToolbarContent(items: [
+            AnyToolbarItem(placement: expression.placement, wrapped: expression.content)
+        ])
     }
 }
 

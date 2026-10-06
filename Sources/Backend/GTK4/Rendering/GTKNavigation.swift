@@ -86,6 +86,8 @@ class GTKNavigationContext {
             switch item.placement {
             case .leading:
                 gtk_header_bar_pack_start(headerBar, itemWidget)
+            case .principal:
+                gtk_header_bar_pack_start(headerBar, itemWidget)
             case .primaryAction, .trailing:
                 gtk_header_bar_pack_end(headerBar, itemWidget)
             }
@@ -130,6 +132,7 @@ class GTKNavigationContext {
                 if rootIsVisible {
                     switch item.placement {
                     case .leading: gtk_header_bar_pack_start(headerBar, itemWidget)
+                    case .principal: gtk_header_bar_pack_start(headerBar, itemWidget)
                     case .primaryAction, .trailing: gtk_header_bar_pack_end(headerBar, itemWidget)
                     }
                 }
@@ -174,6 +177,8 @@ class GTKNavigationContext {
         for item in previous.toolbarWidgets {
             switch item.placement {
             case .leading:
+                gtk_header_bar_pack_start(headerBar, item.widget)
+            case .principal:
                 gtk_header_bar_pack_start(headerBar, item.widget)
             case .primaryAction, .trailing:
                 gtk_header_bar_pack_end(headerBar, item.widget)
@@ -588,6 +593,8 @@ extension NavigationStack: GTKRenderable {
             switch item.placement {
             case .leading:
                 gtk_header_bar_pack_start(headerBarOp, itemWidget)
+            case .principal:
+                gtk_header_bar_pack_start(headerBarOp, itemWidget)
             case .primaryAction, .trailing:
                 gtk_header_bar_pack_end(headerBarOp, itemWidget)
             }
@@ -832,6 +839,8 @@ private func gtkInstallToolbar<V: View>(from view: V, on widget: UnsafeMutablePo
         let itemWidget = widgetFromOpaque(gtkRenderAnyView(item.wrapped))
         switch item.placement {
         case .leading:
+            gtk_header_bar_pack_start(headerBarOp, itemWidget)
+        case .principal:
             gtk_header_bar_pack_start(headerBarOp, itemWidget)
         case .primaryAction, .trailing:
             gtk_header_bar_pack_end(headerBarOp, itemWidget)

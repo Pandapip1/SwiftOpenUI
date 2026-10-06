@@ -45,7 +45,6 @@ extension ToolbarItemPlacement {
     public static var destructiveAction: ToolbarItemPlacement { .trailing }
     public static var automatic: ToolbarItemPlacement { .primaryAction }
     public static var bottomBar: ToolbarItemPlacement { .primaryAction }
-    public static var principal: ToolbarItemPlacement { .leading }
     public static var status: ToolbarItemPlacement { .leading }
 }
 

@@ -4701,6 +4701,22 @@ extension Slider: GTKRenderable, GTKDescribable {
 
 // MARK: - ScrollView GTK extension
 
+/// A private layout signal used only at the scroll-container boundary. A
+/// horizontal ScrollView normally suppresses its child's expansion so the
+/// child's natural width can create overflow. A SwiftUI frame with
+/// `maxWidth: .infinity` deliberately asks for the other behavior: fill the
+/// viewport while it fits, while retaining its minimum width as the overflow
+/// threshold.
+private protocol GTKScrollAxisExpansion {
+    var gtkExpandsInHorizontalScrollView: Bool { get }
+}
+
+extension FrameView: GTKScrollAxisExpansion {
+    fileprivate var gtkExpandsInHorizontalScrollView: Bool {
+        maxWidth == .infinity
+    }
+}
+
 extension ScrollView: GTKRenderable, GTKDescribable {
     public func gtkDescribeNode() -> GTK4DescriptorNode {
         // Transparent wrapper: describe content so child Canvas nodes
@@ -4748,7 +4764,9 @@ extension ScrollView: GTKRenderable, GTKDescribable {
             gtk_widget_set_vexpand(child, 0)
         }
         if axes.contains(.horizontal) {
-            gtk_widget_set_hexpand(child, 0)
+            let fillsViewport = (content as? any GTKScrollAxisExpansion)?
+                .gtkExpandsInHorizontalScrollView ?? false
+            gtk_widget_set_hexpand(child, fillsViewport ? 1 : 0)
         }
         gtk_scrolled_window_set_child(scrolledOp, child)
 
@@ -5213,7 +5231,7 @@ extension TabView: GTKRenderable {
             if let titlebar = gtkFindTitlebar(in: page.container) {
                 // Not gtk_swift_set_root_window_titlebar directly: an
                 // ancestor outside this TabView may already claim the
-                // window's titlebar for itself (see windowTitleBar(_:)),
+                // window's titlebar for itself (the root toolbar owns it),
                 // same reasoning as a nested NavigationStack's own push/pop
                 // must not steal it back. gtkSetVisibleWindowTitlebar
                 // carries that check.
@@ -7027,9 +7045,70 @@ extension ToolbarItem: GTKRenderable {
 
 extension ToolbarView: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
-        // Render the content; toolbar items are extracted by NavigationStack
-        // via the ToolbarProvider protocol during header bar construction.
-        gtkRenderView(content)
+        // NavigationStack owns its own toolbar lifecycle. At a window root,
+        // however, the toolbar is the native titlebar: making that decision
+        // here keeps it backend-private and lets applications use SwiftUI's
+        // ordinary `.toolbar` API on every platform.
+        let contentWidget = widgetFromOpaque(gtkRenderView(content))
+        guard getCurrentNavigationContext() == nil else {
+            return opaqueFromWidget(contentWidget)
+        }
+
+        let (items, hidden) = gtkApplyToolbarConfiguration(
+            items: toolbarItems,
+            configuration: toolbarConfiguration
+        )
+        guard !hidden, !items.isEmpty else {
+            return opaqueFromWidget(contentWidget)
+        }
+
+        let headerBar = gtk_header_bar_new()!
+        let headerBarOp = OpaquePointer(headerBar)
+        var hasPrincipal = false
+
+        for item in items {
+            let itemWidget = widgetFromOpaque(gtkRenderAnyView(item.wrapped))
+            switch item.placement {
+            case .principal:
+                // GtkHeaderBar allocates its title widget from the flexible
+                // center region. Expanding it makes a tab strip distribute
+                // its tabs across the usable width rather than measuring as
+                // an intrinsic chip row.
+                guard !hasPrincipal else { continue }
+                hasPrincipal = true
+                gtk_widget_set_hexpand(itemWidget, 1)
+                gtk_widget_set_halign(itemWidget, GTK_ALIGN_FILL)
+                gtk_header_bar_set_title_widget(headerBarOp, itemWidget)
+            case .leading:
+                gtk_header_bar_pack_start(headerBarOp, itemWidget)
+            case .primaryAction, .trailing:
+                gtk_header_bar_pack_end(headerBarOp, itemWidget)
+            }
+        }
+        if !hasPrincipal {
+            gtk_header_bar_set_title_widget(headerBarOp, gtk_label_new(""))
+        }
+
+        // A nested NavigationStack may still need to show its title/back
+        // row. The backend's navigation code recognizes this private marker
+        // and installs that row below the root native header instead of
+        // replacing it.
+        let nestedSlot = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        let nestedSlotObject = UnsafeMutableRawPointer(nestedSlot).assumingMemoryBound(to: GObject.self)
+        g_object_set_data(nestedSlotObject, "gtk-swift-is-nested-titlebar-slot", gpointer(nestedSlot))
+
+        let titlebarBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        gtk_box_append(boxPointer(titlebarBox), headerBar)
+        gtk_box_append(boxPointer(titlebarBox), nestedSlot)
+
+        g_object_ref(gpointer(titlebarBox))
+        let contentObject = UnsafeMutableRawPointer(contentWidget).assumingMemoryBound(to: GObject.self)
+        g_object_set_data_full(contentObject, "gtk-swift-window-titlebar", titlebarBox, { userData in
+            g_object_unref(userData)
+        })
+        g_object_set_data(contentObject, "gtk-swift-nested-titlebar-slot", gpointer(nestedSlot))
+
+        return opaqueFromWidget(contentWidget)
     }
 }
 
