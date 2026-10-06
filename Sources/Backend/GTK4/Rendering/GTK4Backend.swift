@@ -58,9 +58,53 @@ func gtkSetVisibleWindowTitlebar(_ widget: UnsafeMutablePointer<GtkWidget>, _ ti
     while let parent = gtk_widget_get_parent(child) {
         if String(cString: g_type_name(gtk_swift_get_widget_type(parent))) == "GtkStack",
            gtk_stack_get_visible_child(OpaquePointer(parent)) != child { return }
+        // An ancestor already claimed the window's titlebar for itself at
+        // render time (gtkFindTitlebar's outer-wins search finds it first —
+        // see `windowTitleBar(_:)`). A NavigationStack nested underneath,
+        // e.g. inside one of the app's own pinned-tab sections, must not
+        // then steal it back on every push/pop; only the outermost claim
+        // drives window-level chrome.
+        if gtkWidgetClaimsWindowTitlebar(parent) { return }
         child = parent
     }
     gtk_swift_set_root_window_titlebar(widget, titlebar)
+}
+
+private func gtkWidgetClaimsWindowTitlebar(_ widget: UnsafeMutablePointer<GtkWidget>) -> Bool {
+    let gobject = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
+    return g_object_get_data(gobject, "gtk-swift-window-titlebar") != nil
+}
+
+extension WindowTitleBarModifier: GTKRenderable {
+    public func gtkCreateWidget() -> OpaquePointer {
+        // GtkHeaderBar draws the window's own minimize/close/maximize
+        // buttons by default once installed as the titlebar (`show-title-
+        // buttons`), same as every native GTK app's chrome.
+        let headerBar = gtk_header_bar_new()!
+        let titleWidget = widgetFromOpaque(gtkRenderView(titleBar))
+        // Not set-title-widget: a title widget is a center-aligned label
+        // stand-in GTK shrinks to make room for window controls, not a
+        // hexpand-able region — exactly the squeeze a tab strip needs to
+        // not have. Packed like an ordinary header-bar item, it keeps the
+        // width the content itself asks for.
+        gtk_widget_set_hexpand(titleWidget, 1)
+        gtk_header_bar_pack_start(OpaquePointer(headerBar), titleWidget)
+
+        let contentWidget = widgetFromOpaque(gtkRenderView(content))
+
+        // Tag the content root exactly like NavigationStack tags its own
+        // GtkStack, so gtkFindTitlebar's outer-wins search picks this up
+        // (this view sits above any nested NavigationStack in the tree)
+        // and gtkSetVisibleWindowTitlebar's ancestor walk recognizes it as
+        // an existing claim nested navigation must not override.
+        g_object_ref(gpointer(headerBar))
+        let gobject = UnsafeMutableRawPointer(contentWidget).assumingMemoryBound(to: GObject.self)
+        g_object_set_data_full(gobject, "gtk-swift-window-titlebar", headerBar, { userData in
+            g_object_unref(userData)
+        })
+
+        return opaqueFromWidget(contentWidget)
+    }
 }
 
 /// Box for passing an activate closure through C user_data.
