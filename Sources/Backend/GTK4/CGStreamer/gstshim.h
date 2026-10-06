@@ -13,6 +13,10 @@ typedef struct {
     GObject *normal_paintable;
     GObject *split_paintable;
     GObject *active_paintable;
+    GstPad *paintable_sink_pad;
+    gulong segment_probe;
+    guint32 seek_seqnum;
+    gint segment_seqnum;
     gboolean prefer_paintable;
     GstElement *split_pipeline;
     GstElement *pipeline;
@@ -85,6 +89,14 @@ static inline void swift_openui_gst_player_connect_sink(SwiftOpenUIGStreamerPlay
 }
 
 static inline void swift_openui_gst_player_disconnect_sink(SwiftOpenUIGStreamerPlayer *player) {
+    if (player->paintable_sink_pad) {
+        gst_pad_remove_probe(player->paintable_sink_pad, player->segment_probe);
+        gst_object_unref(player->paintable_sink_pad);
+        player->paintable_sink_pad = NULL;
+        player->segment_probe = 0;
+    }
+    player->seek_seqnum = GST_SEQNUM_INVALID;
+    g_atomic_int_set(&player->segment_seqnum, GST_SEQNUM_INVALID);
     if (player->sample_handler != 0) {
         if (player->appsink) g_signal_handler_disconnect(player->appsink, player->sample_handler);
         else if (player->active_paintable) g_signal_handler_disconnect(player->active_paintable, player->sample_handler);
@@ -125,12 +137,39 @@ static inline void swift_openui_gst_player_paintable_changed(GObject *paintable,
     swift_openui_gst_player_schedule_frame(data);
 }
 
+static inline GstPadProbeReturn swift_openui_gst_player_segment(GstPad *pad,
+                                                                GstPadProbeInfo *info,
+                                                                gpointer data) {
+    (void)pad;
+    SwiftOpenUIGStreamerPlayer *player = data;
+    GstEvent *event = GST_PAD_PROBE_INFO_EVENT(info);
+    if (GST_EVENT_TYPE(event) == GST_EVENT_SEGMENT)
+        g_atomic_int_set(&player->segment_seqnum, gst_event_get_seqnum(event));
+    return GST_PAD_PROBE_OK;
+}
+
 static inline void swift_openui_gst_player_connect_paintable(SwiftOpenUIGStreamerPlayer *player,
-                                                               GObject *paintable) {
+                                                               GObject *paintable,
+                                                               GstElement *video_bin) {
     player->appsink = NULL;
     player->active_paintable = paintable;
     player->sample_handler = g_signal_connect(paintable, "invalidate-contents",
         G_CALLBACK(swift_openui_gst_player_paintable_changed), player);
+    GstElement *sink = NULL;
+    g_object_get(video_bin, "sink", &sink, NULL);
+    player->paintable_sink_pad = gst_element_get_static_pad(sink, "sink");
+    gst_object_unref(sink);
+    player->segment_probe = gst_pad_add_probe(player->paintable_sink_pad,
+        GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, swift_openui_gst_player_segment, player, NULL);
+}
+
+static inline gboolean swift_openui_gst_player_native_seek_completed(SwiftOpenUIGStreamerPlayer *player) {
+    if (!player || !player->active_paintable || player->seek_seqnum == GST_SEQNUM_INVALID
+        || (guint32)g_atomic_int_get(&player->segment_seqnum) != player->seek_seqnum) return FALSE;
+    // SEGMENT arrives before its first buffer. Wait for preroll as well, so
+    // position queries no longer reflect the previous segment. Queued GTK
+    // invalidations and old ASYNC_DONE messages alone cannot acknowledge a seek.
+    return gst_element_get_state(player->pipeline, NULL, NULL, 0) == GST_STATE_CHANGE_SUCCESS;
 }
 
 // Follows gtk4paintablesink's upstream GL integration: glsinkbin negotiates
@@ -207,7 +246,7 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new_with_paint
     // racing several seconds ahead of clocked audio before stalling at EOS.
     player->pipeline = player->playbin;
     g_signal_connect(player->playbin, "source-setup", G_CALLBACK(swift_openui_gst_video_source_setup), player);
-    if (player->normal_paintable) swift_openui_gst_player_connect_paintable(player, player->normal_paintable);
+    if (player->normal_paintable) swift_openui_gst_player_connect_paintable(player, player->normal_paintable, player->video_bin);
     else swift_openui_gst_player_connect_sink(player, player->normal_appsink);
     g_object_set(player->playbin, "video-sink", player->video_bin, NULL);
     // Keep automated and headless runs away from the user's real audio
@@ -345,7 +384,7 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
     }
     if (!audio_uri) {
         player->pipeline = player->playbin;
-        if (player->normal_paintable) swift_openui_gst_player_connect_paintable(player, player->normal_paintable);
+        if (player->normal_paintable) swift_openui_gst_player_connect_paintable(player, player->normal_paintable, player->video_bin);
         else swift_openui_gst_player_connect_sink(player, player->normal_appsink);
         g_object_set(player->playbin, "uri", video_uri, NULL);
         swift_openui_gst_player_watch_bus(player);
@@ -411,14 +450,14 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
             player->split_pipeline = NULL;
         }
         player->pipeline = player->playbin;
-        if (player->normal_paintable) swift_openui_gst_player_connect_paintable(player, player->normal_paintable);
+        if (player->normal_paintable) swift_openui_gst_player_connect_paintable(player, player->normal_paintable, player->video_bin);
         else swift_openui_gst_player_connect_sink(player, player->normal_appsink);
         g_object_set(player->playbin, "uri", video_uri, NULL);
         swift_openui_gst_player_watch_bus(player);
         return;
     }
     player->pipeline = player->split_pipeline;
-    if (player->split_paintable) swift_openui_gst_player_connect_paintable(player, player->split_paintable);
+    if (player->split_paintable) swift_openui_gst_player_connect_paintable(player, player->split_paintable, native_video);
     else swift_openui_gst_player_connect_sink(player, sink);
     if (sink) gst_object_unref(sink);
     swift_openui_gst_player_watch_bus(player);
@@ -466,9 +505,14 @@ static inline gboolean swift_openui_gst_player_set_rate(SwiftOpenUIGStreamerPlay
     }
     player->ended = FALSE;
     swift_openui_gst_player_clear_pending_sample(player);
-    return gst_element_seek(player->pipeline, rate, GST_FORMAT_TIME,
+    GstEvent *event = gst_event_new_seek(rate, GST_FORMAT_TIME,
         GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE,
         GST_SEEK_TYPE_SET, position, GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
+    guint32 previous = player->seek_seqnum;
+    player->seek_seqnum = gst_event_get_seqnum(event);
+    gboolean accepted = gst_element_send_event(player->pipeline, event);
+    if (!accepted) player->seek_seqnum = previous;
+    return accepted;
 }
 
 static inline void swift_openui_gst_player_stop(SwiftOpenUIGStreamerPlayer *player) {
@@ -483,12 +527,7 @@ static inline void swift_openui_gst_player_stop(SwiftOpenUIGStreamerPlayer *play
 static inline gboolean swift_openui_gst_player_seek(SwiftOpenUIGStreamerPlayer *player,
                                                      gint64 nanoseconds,
                                                      gdouble rate) {
-    if (!player || rate <= 0) return FALSE;
-    player->ended = FALSE;
-    swift_openui_gst_player_clear_pending_sample(player);
-    return gst_element_seek(player->pipeline, rate, GST_FORMAT_TIME,
-        GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE,
-        GST_SEEK_TYPE_SET, nanoseconds, GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
+    return swift_openui_gst_player_set_rate(player, rate, nanoseconds);
 }
 
 static inline gboolean swift_openui_gst_player_is_seekable(SwiftOpenUIGStreamerPlayer *player) {

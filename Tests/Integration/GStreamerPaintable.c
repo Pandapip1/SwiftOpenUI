@@ -3,9 +3,17 @@
 #include <epoxy/gl.h>
 #include "gstshim.h"
 
-typedef struct { guint frames, ends; gboolean failed; } Probe;
-static void frame(gpointer data) { ((Probe *)data)->frames++; }
+typedef struct { guint frames, ends; SwiftOpenUIGStreamerPlayer *player; gboolean seek_acknowledged; } Probe;
+static void frame(gpointer data) {
+    Probe *probe = data;
+    probe->frames++;
+    if (swift_openui_gst_player_native_seek_completed(probe->player)) probe->seek_acknowledged = TRUE;
+}
 static void event(gpointer data) { ((Probe *)data)->ends++; }
+static GstPadProbeReturn hold_buffer(GstPad *pad, GstPadProbeInfo *info, gpointer data) {
+    (void)pad; (void)info; (void)data;
+    return GST_PAD_PROBE_OK; // BLOCK probe holds the first post-seek buffer until removed.
+}
 
 int main(int argc, char **argv) {
     g_assert_cmpint(argc, ==, 2);
@@ -55,7 +63,7 @@ int main(int argc, char **argv) {
     gst_bin_add_many(GST_BIN(p->pipeline), source, p->video_bin, NULL);
     g_assert_true(gst_element_link(source, p->video_bin));
     swift_openui_gst_player_watch_bus(p);
-    Probe probe = {0};
+    Probe probe = { .player = p };
     swift_openui_gst_player_set_frame_callback(p, frame, &probe);
     swift_openui_gst_player_set_event_callback(p, event, &probe);
     // Allow first-use GL shader/context setup to preroll before timing playback.
@@ -65,6 +73,30 @@ int main(int argc, char **argv) {
         while (g_main_context_iteration(NULL, FALSE));
         g_usleep(1000);
     }
+    // Queue a paintable notification from the old segment, then flush-seek
+    // while preventing the replacement frame from completing sink preroll.
+    gulong hold = gst_pad_add_probe(p->paintable_sink_pad,
+        GST_PAD_PROBE_TYPE_BLOCK | GST_PAD_PROBE_TYPE_BUFFER, hold_buffer, NULL, NULL);
+    guint before_seek = probe.frames;
+    g_signal_emit_by_name(p->active_paintable, "invalidate-contents");
+    g_assert_true(swift_openui_gst_player_seek(p, GST_SECOND / 2, 1.0));
+    gint64 seek_deadline = g_get_monotonic_time() + 100000;
+    while (g_get_monotonic_time() < seek_deadline) {
+        while (g_main_context_iteration(NULL, FALSE));
+        g_usleep(1000);
+    }
+    g_assert_cmpuint(probe.frames, >, before_seek);
+    g_assert_false(probe.seek_acknowledged);
+    g_assert_false(swift_openui_gst_player_native_seek_completed(p));
+    gst_pad_remove_probe(p->paintable_sink_pad, hold);
+    seek_deadline = g_get_monotonic_time() + G_USEC_PER_SEC;
+    while (!swift_openui_gst_player_native_seek_completed(p) && g_get_monotonic_time() < seek_deadline) {
+        while (g_main_context_iteration(NULL, FALSE));
+        g_usleep(1000);
+    }
+    g_assert_true(swift_openui_gst_player_native_seek_completed(p));
+    g_assert_cmpint(swift_openui_gst_player_position(p), >=, GST_SECOND / 2);
+    g_print("native seek: queued pre-seek invalidation ignored until matching segment prerolls\n");
     swift_openui_gst_player_play(p);
     gint64 deadline = g_get_monotonic_time() + 5 * G_USEC_PER_SEC;
     while (!probe.ends && g_get_monotonic_time() < deadline) {

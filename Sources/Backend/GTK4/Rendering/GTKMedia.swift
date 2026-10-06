@@ -345,6 +345,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
     }
 
     var currentTime: CMTime {
+        acknowledgeNativeSeekIfReady()
         let observed = gst.map { Double(swift_openui_gst_player_position($0)) / 1_000_000_000 } ?? 0
         if let target = pendingSeek {
             return CMTime(seconds: max(0, target), preferredTimescale: 600)
@@ -490,6 +491,13 @@ final class GTKVideoDriver: _AVPlayerDriver {
         gtk_swift_video_surface_set_paintable(videoWidget, paintable)
     }
 
+    private func acknowledgeNativeSeekIfReady() {
+        if acceptedSeek != nil, let gst,
+           swift_openui_gst_player_native_seek_completed(gst) != 0 {
+            acceptedSeek = nil
+        }
+    }
+
     private func presentFrame() {
         if let gst, let mediaSelectionAsset,
            swift_openui_gst_player_stream_collection_generation(gst) != mediaSelectionGeneration {
@@ -502,9 +510,9 @@ final class GTKVideoDriver: _AVPlayerDriver {
         applyPlaybackRateIfReady()
         guard let gst else { return }
         if swift_openui_gst_player_paintable(gst) != nil {
-            // Native paintable invalidation acknowledges the post-seek frame.
-            // The sink presents it without pulling CPU pixels through Swift.
-            acceptedSeek = nil
+            // A queued invalidation may belong to the previous segment. Only
+            // the matching seek segment plus completed preroll acknowledges it.
+            acknowledgeNativeSeekIfReady()
             return
         }
         var data: UnsafeMutablePointer<UInt8>?
