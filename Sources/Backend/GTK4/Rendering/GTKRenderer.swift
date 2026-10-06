@@ -4721,13 +4721,26 @@ extension ScrollView: GTKRenderable, GTKDescribable {
         let vPolicy: GtkPolicyType = axes.contains(.vertical) ? GTK_POLICY_AUTOMATIC : GTK_POLICY_NEVER
         gtk_scrolled_window_set_policy(scrolledOp, hPolicy, vPolicy)
 
-        // Prevent GTK from allocating the child's full natural size
-        // in the scroll direction — otherwise scrolling never activates.
+        // Prevent GTK from allocating the child's full natural size in the
+        // scroll direction — otherwise scrolling never activates. The
+        // *cross* axis is the opposite: GtkScrolledWindow's own default
+        // (propagate-natural-{width,height}: FALSE) leaves it computing
+        // that size itself via a two-pass measurement that can disagree
+        // with the child's actual minimum at the final allocated size —
+        // GTK then asserts the allocation is too small for what it now
+        // claims the child needs. A horizontal-only strip (this feature's
+        // own tab strip, for one) has no vertical scrolling to protect, so
+        // let it size to the child's real natural height instead; same the
+        // other way for a vertical-only scroll view's width.
         if axes.contains(.horizontal) {
             gtk_scrolled_window_set_propagate_natural_width(scrolledOp, 0)
+        } else {
+            gtk_scrolled_window_set_propagate_natural_width(scrolledOp, 1)
         }
         if axes.contains(.vertical) {
             gtk_scrolled_window_set_propagate_natural_height(scrolledOp, 0)
+        } else {
+            gtk_scrolled_window_set_propagate_natural_height(scrolledOp, 1)
         }
 
         let child = widgetFromOpaque(gtkRenderView(content))
