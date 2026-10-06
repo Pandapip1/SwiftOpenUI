@@ -77,6 +77,42 @@ int main(void) {
     swift_openui_gst_player_set_frame_callback(p, frame, &probe);
     swift_openui_gst_player_set_event_callback(p, event, &probe);
     swift_openui_gst_player_play(p);
+    gint64 first_deadline = g_get_monotonic_time() + G_USEC_PER_SEC;
+    while (probe.frames < 3 && g_get_monotonic_time() < first_deadline) {
+        while (g_main_context_iteration(NULL, FALSE));
+        g_usleep(1000);
+    }
+    g_assert_cmpuint(probe.frames, >=, 3);
+    gst_element_post_message(p->pipeline, gst_message_new_buffering(GST_OBJECT(p->pipeline), 25));
+    while (g_main_context_iteration(NULL, FALSE));
+    g_assert_cmpint(swift_openui_gst_player_buffering_percent(p), ==, 25);
+    g_assert_true(swift_openui_gst_player_is_playing(p));
+    GstState state;
+    gst_element_get_state(p->pipeline, &state, NULL, GST_SECOND);
+    g_assert_cmpint(state, ==, GST_STATE_PAUSED);
+    gint64 paused_position = swift_openui_gst_player_position(p);
+    gint64 pause_deadline = g_get_monotonic_time() + 200000;
+    while (g_get_monotonic_time() < pause_deadline) {
+        while (g_main_context_iteration(NULL, FALSE));
+        g_usleep(1000);
+    }
+    g_assert_cmpint(llabs(swift_openui_gst_player_position(p) - paused_position), <, 50 * GST_MSECOND);
+    g_assert_cmpuint(probe.last_pixel, ==, 255);
+    g_assert_cmpuint(probe.events, ==, 0);
+    gst_element_post_message(p->pipeline, gst_message_new_buffering(GST_OBJECT(p->pipeline), 100));
+    while (g_main_context_iteration(NULL, FALSE));
+    gst_element_get_state(p->pipeline, &state, NULL, GST_SECOND);
+    g_assert_cmpint(state, ==, GST_STATE_PLAYING);
+    gst_element_post_message(p->pipeline, gst_message_new_buffering(GST_OBJECT(p->pipeline), 25));
+    while (g_main_context_iteration(NULL, FALSE));
+    // Buffer recovery must not override a pause the user requested meanwhile.
+    swift_openui_gst_player_pause(p);
+    gst_element_post_message(p->pipeline, gst_message_new_buffering(GST_OBJECT(p->pipeline), 100));
+    while (g_main_context_iteration(NULL, FALSE));
+    g_assert_false(swift_openui_gst_player_is_playing(p));
+    gst_element_get_state(p->pipeline, &state, NULL, GST_SECOND);
+    g_assert_cmpint(state, ==, GST_STATE_PAUSED);
+    swift_openui_gst_player_play(p);
     pump_until(&probe, 1, 4 * G_USEC_PER_SEC);
     frame(&probe); // Present a coalesced final frame on EOS, just as GTK does.
     g_assert_true(swift_openui_gst_player_has_ended(p));
@@ -86,7 +122,7 @@ int main(void) {
     g_assert_cmpint(probe.last_frame - probe.first_frame, <, 1500000);
     g_assert_cmpint(g_atomic_int_get(&probe.audio_buffers), ==, 48);
     g_assert_cmpuint(probe.last_pixel, ==, 255);
-    g_print("cadence: %u frames / %.3f s; audio: %d buffers; EOS: once; final frame: white\n",
+    g_print("cadence: %u frames / %.3f s; audio: %d buffers; EOS: once; final frame: white; buffering: clock paused and user pause respected\n",
         probe.frames, (probe.last_frame - probe.first_frame) / 1e6, probe.audio_buffers);
 
     // Source errors before the first frame must reach the event callback,
@@ -107,5 +143,37 @@ int main(void) {
     g_assert_cmpuint(probe.events, >, 1);
     swift_openui_gst_player_free(p);
     g_print("pre-frame source error: delivered despite collection polling\n");
+
+    p = swift_openui_gst_player_new();
+    probe = (Probe){ .player = p };
+    g_source_remove(p->bus_source); p->bus_source = 0;
+    swift_openui_gst_player_disconnect_sink(p);
+    p->split_pipeline = gst_parse_launch(
+        "videotestsrc is-live=true pattern=white ! "
+        "video/x-raw,format=RGBA,width=64,height=36,framerate=24/1 ! appsink name=video", NULL);
+    gst_object_ref_sink(p->split_pipeline); p->pipeline = p->split_pipeline;
+    sink = gst_bin_get_by_name(GST_BIN(p->pipeline), "video");
+    swift_openui_gst_player_connect_sink(p, sink); gst_object_unref(sink);
+    swift_openui_gst_player_watch_bus(p);
+    swift_openui_gst_player_set_frame_callback(p, frame, &probe);
+    swift_openui_gst_player_play(p);
+    first_deadline = g_get_monotonic_time() + G_USEC_PER_SEC;
+    while (probe.frames < 3 && g_get_monotonic_time() < first_deadline) {
+        while (g_main_context_iteration(NULL, FALSE));
+        g_usleep(1000);
+    }
+    gst_element_post_message(p->pipeline, gst_message_new_buffering(GST_OBJECT(p->pipeline), 25));
+    while (g_main_context_iteration(NULL, FALSE));
+    guint before_live = probe.frames;
+    pause_deadline = g_get_monotonic_time() + 200000;
+    while (g_get_monotonic_time() < pause_deadline) {
+        while (g_main_context_iteration(NULL, FALSE));
+        g_usleep(1000);
+    }
+    g_assert_true(p->is_live);
+    g_assert_cmpuint(probe.frames, >, before_live);
+    g_assert_true(swift_openui_gst_player_is_playing(p));
+    swift_openui_gst_player_free(p);
+    g_print("live buffering notification: playback continues\n");
     return 0;
 }

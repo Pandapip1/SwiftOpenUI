@@ -25,6 +25,16 @@ GStreamer's `glsinkbin`. GTK renderer selection remains with GTK/the host;
 `GSK_RENDERER=gl` is useful when verifying the GL texture path. Explicitly
 selecting Cairo or software GL cannot demonstrate hardware acceleration.
 
+## Network buffering
+
+The bus watch handles non-live BUFFERING notifications by pausing the pipeline
+clock and retaining the current frame until the buffer reaches 100%. Recovery
+resumes only when playback is still requested; a user pause remains a pause.
+Live sources continue playing. Errors and EOS are delivered independently of
+frame arrival, so a network error cannot disappear behind a stalled video
+callback or be mistaken for ordinary completion. This follows GStreamer's
+[buffering protocol](https://gstreamer.freedesktop.org/documentation/application-development/advanced/buffering.html).
+
 ## Verification
 
 Run on an isolated display, with an isolated writable `XDG_CACHE_HOME`.

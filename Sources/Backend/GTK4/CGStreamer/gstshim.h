@@ -27,6 +27,9 @@ typedef struct {
     gchar *error_message;
     gboolean ended;
     gboolean failed;
+    gboolean is_live;
+    gint buffering_percent;
+    GstState target_state;
     gulong sample_handler;
     GMutex frame_source_mutex;
     GHashTable *video_headers;
@@ -178,6 +181,8 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new_with_paint
     player->audio_headers = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     g_mutex_init(&player->frame_source_mutex);
     player->prefer_paintable = prefer_paintable;
+    player->target_state = GST_STATE_NULL;
+    player->buffering_percent = 100;
     player->playbin = gst_element_factory_make("playbin3", NULL);
     if (prefer_paintable) player->video_bin = swift_openui_gst_player_make_gl_sink(&player->normal_paintable);
     if (!player->video_bin) player->video_bin = gst_parse_bin_from_description(
@@ -321,6 +326,9 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
     g_clear_pointer(&player->error_message, g_free);
     player->ended = FALSE;
     player->failed = FALSE;
+    player->is_live = FALSE;
+    player->buffering_percent = 100;
+    player->target_state = GST_STATE_NULL;
     if (player->stream_collection) {
         gst_object_unref(player->stream_collection);
         player->stream_collection = NULL;
@@ -420,12 +428,32 @@ static inline void swift_openui_gst_player_set_subtitle_uri(SwiftOpenUIGStreamer
     if (player && player->playbin) g_object_set(player->playbin, "suburi", uri, NULL);
 }
 
+static inline void swift_openui_gst_player_change_state(SwiftOpenUIGStreamerPlayer *player,
+                                                           GstState state) {
+    GstStateChangeReturn result = gst_element_set_state(player->pipeline, state);
+    if (result == GST_STATE_CHANGE_NO_PREROLL) {
+        player->is_live = TRUE;
+        // Live sources must keep running; pausing cannot fill a live buffer.
+        if (state == GST_STATE_PAUSED && player->target_state == GST_STATE_PLAYING)
+            gst_element_set_state(player->pipeline, GST_STATE_PLAYING);
+    }
+}
+
 static inline void swift_openui_gst_player_play(SwiftOpenUIGStreamerPlayer *player) {
-    if (player) gst_element_set_state(player->pipeline, GST_STATE_PLAYING);
+    if (!player) return;
+    player->target_state = GST_STATE_PLAYING;
+    swift_openui_gst_player_change_state(player,
+        !player->is_live && player->buffering_percent < 100 ? GST_STATE_PAUSED : GST_STATE_PLAYING);
 }
 
 static inline void swift_openui_gst_player_pause(SwiftOpenUIGStreamerPlayer *player) {
-    if (player) gst_element_set_state(player->pipeline, GST_STATE_PAUSED);
+    if (!player) return;
+    player->target_state = GST_STATE_PAUSED;
+    swift_openui_gst_player_change_state(player, GST_STATE_PAUSED);
+}
+
+static inline gint swift_openui_gst_player_buffering_percent(SwiftOpenUIGStreamerPlayer *player) {
+    return player ? player->buffering_percent : 100;
 }
 
 static inline gboolean swift_openui_gst_player_set_rate(SwiftOpenUIGStreamerPlayer *player,
@@ -445,6 +473,8 @@ static inline gboolean swift_openui_gst_player_set_rate(SwiftOpenUIGStreamerPlay
 
 static inline void swift_openui_gst_player_stop(SwiftOpenUIGStreamerPlayer *player) {
     if (player) {
+        player->target_state = GST_STATE_NULL;
+        player->buffering_percent = 100;
         gst_element_set_state(player->pipeline, GST_STATE_NULL);
         swift_openui_gst_player_clear_pending_sample(player);
     }
@@ -528,7 +558,21 @@ static inline gboolean swift_openui_gst_player_bus_message(GstBus *bus, GstMessa
             }
         }
     }
-    if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
+    if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_BUFFERING) {
+        gint percent = 100;
+        gst_message_parse_buffering(message, &percent);
+        gboolean was_buffering = player->buffering_percent < 100;
+        player->buffering_percent = percent;
+        if (!player->is_live && !player->failed && !player->ended
+            && player->target_state == GST_STATE_PLAYING) {
+            // Pause the clock without clearing the sink/paintable. Otherwise
+            // recovery tries to catch up against time spent waiting for data.
+            if (percent < 100 && !was_buffering)
+                swift_openui_gst_player_change_state(player, GST_STATE_PAUSED);
+            else if (percent == 100 && was_buffering)
+                swift_openui_gst_player_change_state(player, GST_STATE_PLAYING);
+        }
+    } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
         GError *error = NULL;
         gst_message_parse_error(message, &error, NULL);
         g_free(player->error_message);
@@ -651,7 +695,12 @@ static inline void swift_openui_gst_player_select_track(SwiftOpenUIGStreamerPlay
 
 static inline gboolean swift_openui_gst_player_is_playing(SwiftOpenUIGStreamerPlayer *player) {
     GstState state = GST_STATE_NULL;
-    return player && !player->ended && !player->failed && gst_element_get_state(player->pipeline, &state, NULL, 0) != GST_STATE_CHANGE_FAILURE && state == GST_STATE_PLAYING;
+    if (!player || player->ended || player->failed) return FALSE;
+    // AVPlayer's requested playback rate remains nonzero while waiting for data.
+    if (!player->is_live && player->buffering_percent < 100 && player->target_state == GST_STATE_PLAYING)
+        return TRUE;
+    return gst_element_get_state(player->pipeline, &state, NULL, 0) != GST_STATE_CHANGE_FAILURE
+        && state == GST_STATE_PLAYING;
 }
 
 // Returns a newly allocated RGBA frame. The caller owns *data and must g_free it.
