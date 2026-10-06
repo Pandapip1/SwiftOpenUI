@@ -177,4 +177,19 @@ extension View {
     ) -> DragGestureView<Self> {
         DragGestureView(content: self, minimumDistance: minimumDistance, onChanged: handler, onEnded: nil)
     }
+
+    /// Defines the view's hit-testing shape, most commonly so a view with no
+    /// visible fill (`Color.clear`, an empty `Rectangle`) still receives taps
+    /// across its full frame rather than only where something is painted.
+    ///
+    /// Every current backend already hit-tests gestures against a view's
+    /// full allocated frame regardless of what it paints, so there is no
+    /// transparent-background gap for `shape` to patch here — this is a
+    /// no-op passthrough kept only so call sites written against SwiftUI's
+    /// real API compile unchanged. If a backend ever hit-tests by painted
+    /// content instead, give this its own `_ContentShapeView` and read
+    /// `shape`/`eoFill` there.
+    public func contentShape<S: Shape>(_ shape: S, eoFill: Bool = false) -> Self {
+        self
+    }
 }
