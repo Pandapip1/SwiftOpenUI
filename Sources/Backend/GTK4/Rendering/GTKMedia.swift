@@ -57,6 +57,12 @@ final class GTKVideoDriver: _AVPlayerDriver {
                 Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue().presentFrame()
             }
         }, context) }
+        if let gst { swift_openui_gst_player_set_event_callback(gst, { data in
+            guard let data else { return }
+            MainActor.assumeIsolated {
+                Unmanaged<GTKVideoDriver>.fromOpaque(data).takeUnretainedValue().handlePlaybackEvent()
+            }
+        }, context) }
     }
 
     deinit {
@@ -501,7 +507,19 @@ final class GTKVideoDriver: _AVPlayerDriver {
             gtk_swift_video_surface_set_pixels(videoWidget, data, length, width, height, stride)
             swift_openui_gst_player_free_frame(data)
         }
-        if durationSeconds > 0, currentTime.seconds >= durationSeconds - 0.1, rate == 0 { player?._swiftOpenUIOnEnded?() }
+    }
+
+    private func handlePlaybackEvent() {
+        guard let gst else { return }
+        if let message = swift_openui_gst_player_take_error(gst) {
+            let description = String(cString: message)
+            g_free(message)
+            player?._swiftOpenUIOnFailure?(description)
+        } else if swift_openui_gst_player_has_ended(gst) != 0 {
+            // Preserve the final paintable, including any coalesced last frame.
+            presentFrame()
+            player?._swiftOpenUIOnEnded?()
+        }
     }
 
     private func applyPlaybackRateIfReady() {

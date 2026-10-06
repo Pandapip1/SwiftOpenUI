@@ -17,6 +17,12 @@ typedef struct {
     SwiftOpenUIGStreamerFrameCallback frame_callback;
     gpointer frame_callback_data;
     guint frame_source;
+    guint bus_source;
+    SwiftOpenUIGStreamerFrameCallback event_callback;
+    gpointer event_callback_data;
+    gchar *error_message;
+    gboolean ended;
+    gboolean failed;
     gulong sample_handler;
     GMutex frame_source_mutex;
     GHashTable *video_headers;
@@ -28,6 +34,8 @@ typedef struct {
 } SwiftOpenUIGStreamerPlayer;
 
 static inline void swift_openui_gst_player_apply_pending_track_selection(SwiftOpenUIGStreamerPlayer *player);
+
+static inline void swift_openui_gst_player_watch_bus(SwiftOpenUIGStreamerPlayer *player);
 
 static inline GstFlowReturn swift_openui_gst_player_new_sample(GstAppSink *sink, gpointer data);
 
@@ -64,7 +72,7 @@ static inline void swift_openui_gst_player_connect_sink(SwiftOpenUIGStreamerPlay
                                                          GstElement *appsink) {
     player->appsink = appsink;
     g_object_set(appsink, "sync", TRUE, "max-buffers", 2, "drop", TRUE,
-        "emit-signals", TRUE, NULL);
+        "emit-signals", TRUE, "wait-on-eos", FALSE, NULL);
     player->sample_handler = g_signal_connect(appsink, "new-sample",
         G_CALLBACK(swift_openui_gst_player_new_sample), player);
 }
@@ -145,6 +153,7 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
     if (swift_openui_gst_uses_fake_audio()) {
         GstElement *fake_audio_sink = gst_element_factory_make("fakesink", NULL);
         if (fake_audio_sink) {
+            gst_object_ref_sink(fake_audio_sink);
             g_object_set(fake_audio_sink, "sync", TRUE, NULL);
             g_object_set(player->playbin, "audio-sink", fake_audio_sink, NULL);
             gst_object_unref(fake_audio_sink);
@@ -157,11 +166,14 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
     g_object_get(player->playbin, "flags", &flags, NULL);
     flags |= (1 << 7); // GST_PLAY_FLAG_DOWNLOAD
     g_object_set(player->playbin, "flags", flags, NULL);
+    swift_openui_gst_player_watch_bus(player);
     return player;
 }
 
 static inline void swift_openui_gst_player_free(SwiftOpenUIGStreamerPlayer *player) {
     if (!player) return;
+    if (player->bus_source) g_source_remove(player->bus_source);
+    g_free(player->error_message);
     g_mutex_lock(&player->frame_source_mutex);
     player->frame_callback = NULL;
     player->frame_callback_data = NULL;
@@ -210,6 +222,26 @@ static inline void swift_openui_gst_player_set_frame_callback(
     g_mutex_unlock(&player->frame_source_mutex);
 }
 
+// Bus events must be delivered independently of video frames: an error can
+// happen before preroll, and EOS arrives after the final new-sample signal.
+static inline void swift_openui_gst_player_set_event_callback(
+    SwiftOpenUIGStreamerPlayer *player, SwiftOpenUIGStreamerFrameCallback callback, gpointer data) {
+    if (!player) return;
+    player->event_callback = callback;
+    player->event_callback_data = data;
+}
+
+static inline gchar *swift_openui_gst_player_take_error(SwiftOpenUIGStreamerPlayer *player) {
+    if (!player) return NULL;
+    gchar *message = player->error_message;
+    player->error_message = NULL;
+    return message;
+}
+
+static inline gboolean swift_openui_gst_player_has_ended(SwiftOpenUIGStreamerPlayer *player) {
+    return player && player->ended;
+}
+
 static inline void swift_openui_gst_player_set_uri(SwiftOpenUIGStreamerPlayer *player, const char *uri) {
     if (player && player->playbin) {
         swift_openui_gst_player_clear_pending_sample(player);
@@ -221,6 +253,10 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
                                                      const char *video_uri,
                                                      const char *audio_uri) {
     if (!player || !video_uri) return;
+    if (player->bus_source) { g_source_remove(player->bus_source); player->bus_source = 0; }
+    g_clear_pointer(&player->error_message, g_free);
+    player->ended = FALSE;
+    player->failed = FALSE;
     if (player->stream_collection) {
         gst_object_unref(player->stream_collection);
         player->stream_collection = NULL;
@@ -238,6 +274,7 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
         player->pipeline = player->playbin;
         swift_openui_gst_player_connect_sink(player, player->normal_appsink);
         g_object_set(player->playbin, "uri", video_uri, NULL);
+        swift_openui_gst_player_watch_bus(player);
         return;
     }
 
@@ -284,11 +321,13 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
         player->pipeline = player->playbin;
         swift_openui_gst_player_connect_sink(player, player->normal_appsink);
         g_object_set(player->playbin, "uri", video_uri, NULL);
+        swift_openui_gst_player_watch_bus(player);
         return;
     }
     player->pipeline = player->split_pipeline;
     swift_openui_gst_player_connect_sink(player, sink);
     gst_object_unref(sink);
+    swift_openui_gst_player_watch_bus(player);
 }
 
 static inline void swift_openui_gst_player_set_subtitle_uri(SwiftOpenUIGStreamerPlayer *player, const char *uri) {
@@ -311,6 +350,7 @@ static inline gboolean swift_openui_gst_player_set_rate(SwiftOpenUIGStreamerPlay
     if (position < 0 && !gst_element_query_position(player->pipeline, GST_FORMAT_TIME, &position)) {
         return FALSE;
     }
+    player->ended = FALSE;
     swift_openui_gst_player_clear_pending_sample(player);
     return gst_element_seek(player->pipeline, rate, GST_FORMAT_TIME,
         GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE,
@@ -328,6 +368,7 @@ static inline gboolean swift_openui_gst_player_seek(SwiftOpenUIGStreamerPlayer *
                                                      gint64 nanoseconds,
                                                      gdouble rate) {
     if (!player || rate <= 0) return FALSE;
+    player->ended = FALSE;
     swift_openui_gst_player_clear_pending_sample(player);
     return gst_element_seek(player->pipeline, rate, GST_FORMAT_TIME,
         GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE,
@@ -361,50 +402,72 @@ static inline GstStreamType swift_openui_gst_track_type(gint kind) {
     return kind == 0 ? GST_STREAM_TYPE_VIDEO : kind == 1 ? GST_STREAM_TYPE_AUDIO : GST_STREAM_TYPE_TEXT;
 }
 
-static inline void swift_openui_gst_player_refresh_stream_collection(SwiftOpenUIGStreamerPlayer *player) {
-    if (!player || player->pipeline != player->playbin) return;
-    GstBus *bus = gst_element_get_bus(player->pipeline);
-    if (!bus) return;
-    GstMessage *message;
-    while ((message = gst_bus_pop_filtered(
-        bus, GST_MESSAGE_STREAM_COLLECTION | GST_MESSAGE_STREAMS_SELECTED)) != NULL) {
-        if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_STREAM_COLLECTION) {
-            GstStreamCollection *collection = NULL;
-            gst_message_parse_stream_collection(message, &collection);
-            if (collection) {
-                if (player->stream_collection) gst_object_unref(player->stream_collection);
-                player->stream_collection = gst_object_ref(collection);
-                player->stream_collection_generation++;
-            }
-        } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_STREAMS_SELECTED
-                   && player->stream_collection) {
-            for (gint kind = 0; kind < 3; kind++) player->selected_track_indices[kind] = -1;
-            guint selected_count = gst_message_streams_selected_get_size(message);
-            for (guint selected_index = 0; selected_index < selected_count; selected_index++) {
-                GstStream *selected = gst_message_streams_selected_get_stream(message, selected_index);
-                if (!selected) continue;
-                GstStreamType selected_type = gst_stream_get_stream_type(selected);
-                const gchar *selected_id = gst_stream_get_stream_id(selected);
-                for (gint kind = 0; kind < 3; kind++) {
-                    GstStreamType type = swift_openui_gst_track_type(kind);
-                    if (!(selected_type & type)) continue;
-                    gint match = 0;
-                    guint size = gst_stream_collection_get_size(player->stream_collection);
-                    for (guint i = 0; i < size; i++) {
-                        GstStream *candidate = gst_stream_collection_get_stream(player->stream_collection, i);
-                        if (!candidate || !(gst_stream_get_stream_type(candidate) & type)) continue;
-                        if (g_strcmp0(gst_stream_get_stream_id(candidate), selected_id) == 0) {
-                            player->selected_track_indices[kind] = match;
-                            break;
-                        }
-                        match++;
+static inline gboolean swift_openui_gst_player_bus_message(GstBus *bus, GstMessage *message,
+                                                            gpointer data) {
+    (void)bus;
+    SwiftOpenUIGStreamerPlayer *player = data;
+    // Unlike gst_bus_pop_filtered, a single bus watch never discards errors,
+    // EOS or state changes while looking for stream-selection messages.
+    if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_STREAM_COLLECTION) {
+        GstStreamCollection *collection = NULL;
+        gst_message_parse_stream_collection(message, &collection);
+        if (collection) {
+            if (player->stream_collection) gst_object_unref(player->stream_collection);
+            player->stream_collection = collection;
+            player->stream_collection_generation++;
+        }
+    } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_STREAMS_SELECTED
+               && player->stream_collection) {
+        for (gint kind = 0; kind < 3; kind++) player->selected_track_indices[kind] = -1;
+        guint selected_count = gst_message_streams_selected_get_size(message);
+        for (guint selected_index = 0; selected_index < selected_count; selected_index++) {
+            GstStream *selected = gst_message_streams_selected_get_stream(message, selected_index);
+            if (!selected) continue;
+            GstStreamType selected_type = gst_stream_get_stream_type(selected);
+            const gchar *selected_id = gst_stream_get_stream_id(selected);
+            for (gint kind = 0; kind < 3; kind++) {
+                GstStreamType type = swift_openui_gst_track_type(kind);
+                if (!(selected_type & type)) continue;
+                gint match = 0;
+                guint size = gst_stream_collection_get_size(player->stream_collection);
+                for (guint i = 0; i < size; i++) {
+                    GstStream *candidate = gst_stream_collection_get_stream(player->stream_collection, i);
+                    if (!candidate || !(gst_stream_get_stream_type(candidate) & type)) continue;
+                    if (g_strcmp0(gst_stream_get_stream_id(candidate), selected_id) == 0) {
+                        player->selected_track_indices[kind] = match;
+                        break;
                     }
+                    match++;
                 }
             }
         }
-        gst_message_unref(message);
     }
-    gst_object_unref(bus);
+    if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
+        GError *error = NULL;
+        gst_message_parse_error(message, &error, NULL);
+        g_free(player->error_message);
+        player->error_message = g_strdup(error ? error->message : "Media playback failed");
+        if (error) g_error_free(error);
+        player->failed = TRUE;
+    } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_EOS) {
+        player->ended = TRUE;
+    }
+    swift_openui_gst_player_apply_pending_track_selection(player);
+    if ((GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR || GST_MESSAGE_TYPE(message) == GST_MESSAGE_EOS)
+        && player->event_callback) player->event_callback(player->event_callback_data);
+    return G_SOURCE_CONTINUE;
+}
+
+static inline void swift_openui_gst_player_watch_bus(SwiftOpenUIGStreamerPlayer *player) {
+    if (player->bus_source) g_source_remove(player->bus_source);
+    GstBus *bus = gst_element_get_bus(player->pipeline);
+    player->bus_source = bus ? gst_bus_add_watch(bus, swift_openui_gst_player_bus_message, player) : 0;
+    if (bus) gst_object_unref(bus);
+}
+
+static inline void swift_openui_gst_player_refresh_stream_collection(SwiftOpenUIGStreamerPlayer *player) {
+    // The main-context bus watch owns collection updates. Getters must not pop
+    // filtered messages, which used to silently throw away errors and EOS.
     swift_openui_gst_player_apply_pending_track_selection(player);
 }
 
@@ -502,7 +565,7 @@ static inline void swift_openui_gst_player_select_track(SwiftOpenUIGStreamerPlay
 
 static inline gboolean swift_openui_gst_player_is_playing(SwiftOpenUIGStreamerPlayer *player) {
     GstState state = GST_STATE_NULL;
-    return player && gst_element_get_state(player->pipeline, &state, NULL, 0) != GST_STATE_CHANGE_FAILURE && state == GST_STATE_PLAYING;
+    return player && !player->ended && !player->failed && gst_element_get_state(player->pipeline, &state, NULL, 0) != GST_STATE_CHANGE_FAILURE && state == GST_STATE_PLAYING;
 }
 
 // Returns a newly allocated RGBA frame. The caller owns *data and must g_free it.
