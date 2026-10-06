@@ -82,6 +82,73 @@ final class GTK4NavigationStatePersistenceTests: XCTestCase {
         }
     }
 
+    /// The actual shape of the bug: a plain `NavigationStack { }` with no
+    /// `path:` binding at all — what `NavigationLink(value:)` is normally
+    /// used with, and what Library's own `NavigationStack` uses. The push
+    /// happens imperatively (a click), not by anything observing a bound
+    /// path, so replaying `pathBinding.wrappedValue` on reconstruction
+    /// (the path-bound case's fallback) isn't available to save it.
+    struct LinkPushAncestorReads: View {
+        let library: Library
+
+        var body: some View {
+            VStack {
+                Text("writes=\(library.writes)")
+                LinkPushNav()
+            }
+        }
+    }
+
+    struct LinkPushNav: View {
+        var body: some View {
+            NavigationStack {
+                NavigationLink("Open", value: "detail")
+                    .navigationDestination(for: String.self) { value in
+                        Text("pushed \(value)")
+                    }
+            }
+        }
+    }
+
+    func testNavigationLinkPushSurvivesAnAncestorRebuildWithNoPathBinding() throws {
+        guard gtk_is_initialized() != 0 else { throw XCTSkip("no GTK") }
+
+        let library = Library()
+        let widget = widgetFromOpaque(gtkRenderView(LinkPushAncestorReads(library: library)))
+        let window = gtk_window_new()!
+        gtk_window_set_default_size(windowPointer(window), 600, 400)
+        gtk_window_set_child(windowPointer(window), widget)
+        gtk_widget_set_visible(window, 1)
+        // A bounds-and-exit-when-idle pump isn't enough here: the button
+        // needs a real frame-clock tick to finish realizing/mapping before
+        // `gtk_widget_activate` (via `clickButton`) will actually fire its
+        // "clicked" handler, same as the dismiss tests' own `pump()`.
+        func pump() {
+            let deadline = Date().addingTimeInterval(0.4)
+            while Date() < deadline {
+                while g_main_context_pending(nil) != 0 { _ = g_main_context_iteration(nil, 0) }
+                Thread.sleep(forTimeInterval: 0.005)
+            }
+        }
+        pump()
+
+        clickButton(titled: "Open", in: widget)
+        pump()
+        XCTAssertTrue(labelTexts(in: widget).contains { $0.hasPrefix("pushed") },
+                      "precondition: the pushed view should be on screen, got \(labelTexts(in: widget))")
+
+        // Library's own root body reads `playbackQueue.items.count` for its
+        // "Queue (N)" row directly — an ancestor of the NavigationStack, not
+        // the NavigationStack itself, and nothing to do with navigation.
+        library.writes += 1
+        pump()
+
+        let after = labelTexts(in: widget)
+        gtk_window_destroy(windowPointer(window))
+        XCTAssertTrue(after.contains { $0.hasPrefix("pushed") },
+                      "an ancestor rebuild popped a NavigationLink push with no path binding: \(after)")
+    }
+
     func testNavigationSurvivesAnAncestorRebuild() throws {
         guard gtk_is_initialized() != 0 else { throw XCTSkip("no GTK") }
 

@@ -11,6 +11,15 @@ private class WidgetRef {
     init(_ widget: UnsafeMutablePointer<GtkWidget>) { self.widget = widget }
 }
 
+/// Look up the `GTKNavigationContext` a `NavigationStack`'s `GtkStack`
+/// widget was tagged with at creation (see `g_object_set_data_full(...,
+/// "nav-context", ...)`), without touching its retain count.
+private func gtkNavigationContext(of widget: OpaquePointer) -> GTKNavigationContext? {
+    let gobject = UnsafeMutableRawPointer(widgetFromOpaque(widget)).assumingMemoryBound(to: GObject.self)
+    guard let raw = g_object_get_data(gobject, "nav-context") else { return nil }
+    return Unmanaged<GTKNavigationContext>.fromOpaque(raw).takeUnretainedValue()
+}
+
 // MARK: - Navigation context (GTK-specific)
 
 /// Entry in the navigation stack.
@@ -90,6 +99,51 @@ class GTKNavigationContext {
         gtk_stack_set_transition_type(stack, GTK_STACK_TRANSITION_TYPE_SLIDE_LEFT)
         gtk_stack_set_visible_child_name(stack, name)
         updateHeaderBar()
+    }
+
+    /// Replace the root page's content in place, keeping every pushed entry
+    /// untouched. Used when the owning `NavigationStack` is reused across a
+    /// rebuild of its hosting view (see `navigationContextCache`): the root
+    /// content needs to reflect whatever just changed, but anything the user
+    /// has already pushed must survive exactly as it was.
+    func replaceRoot(title: String, toolbarItems: [AnyToolbarItem], toolbarHidden: Bool, widget: UnsafeMutablePointer<GtkWidget>) {
+        guard !entries.isEmpty else { return }
+        let old = entries[0]
+        let rootIsVisible = entries.count == 1
+
+        // The root's stashed toolbar widgets are only live in the header bar
+        // while root is the visible entry; otherwise they're just retained
+        // references waiting for a pop that will reinstall them.
+        if rootIsVisible {
+            removeCurrentToolbarWidgets()
+        } else {
+            for item in old.toolbarWidgets { g_object_unref(gpointer(item.widget)) }
+        }
+
+        if gtk_swift_is_widget(old.widget) != 0 { gtk_stack_remove(stack, old.widget) }
+        gtk_stack_add_named(stack, widget, "nav-root")
+
+        var entry = GTKNavigationEntry(title: title, name: "nav-root", widget: widget)
+        if !toolbarHidden {
+            for item in toolbarItems {
+                let itemWidget = widgetFromOpaque(gtkRenderAnyView(item.wrapped))
+                if rootIsVisible {
+                    switch item.placement {
+                    case .leading: gtk_header_bar_pack_start(headerBar, itemWidget)
+                    case .primaryAction, .trailing: gtk_header_bar_pack_end(headerBar, itemWidget)
+                    }
+                }
+                g_object_ref(gpointer(itemWidget))
+                entry.toolbarWidgets.append((widget: itemWidget, placement: item.placement))
+            }
+        }
+        entries[0] = entry
+
+        if rootIsVisible {
+            gtk_stack_set_transition_type(stack, GTK_STACK_TRANSITION_TYPE_NONE)
+            gtk_stack_set_visible_child_name(stack, "nav-root")
+            updateHeaderBar()
+        }
     }
 
     /// Push a hashable value, resolving destination via the registry.
@@ -379,6 +433,87 @@ func gtkApplyToolbarConfiguration(
 
 extension NavigationStack: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
+        // Reuse a live navigation context across a rebuild of this
+        // NavigationStack's own hosting view, keyed positionally the same
+        // way @State is reconciled (see `navigationContextCache`). Without
+        // this, any rebuild of the host — even one triggered by something
+        // the root content reads that has nothing to do with navigation,
+        // like a badge count — rebuilds `content` from scratch here and
+        // starts over at a fresh, entry-less context, discarding whatever
+        // the user had pushed and any in-progress state (e.g. mid-playback)
+        // on those pushed screens.
+        //
+        // Restricted to the no-path-binding form. A bound `NavigationPath`
+        // is the source of truth and can change out from under us by a
+        // route neither push nor pop goes through (the owner's own code
+        // mutating `path` directly); the fresh-construction path below
+        // already handles that by replaying the binding's current value
+        // from scratch every time. Reconciling a bound path against a
+        // reused context's entries — matching by the pushed value, not
+        // just by position — is unimplemented; until it is, path-bound
+        // stacks keep the replay behavior they're already covered by.
+        if pathBinding == nil, let host = GTKViewHost.getCurrentRebuilding() {
+            let key = host.nextNavigationContextKey()
+            if let existing = host.navigationContextCache[key], existing.isAlive {
+                existing.pathBinding = pathBinding
+                setCurrentNavigationContext(existing)
+                var env = getCurrentEnvironment()
+                env[NavigateKey.self] = NavigateAction(
+                    push: { [weak existing] value in existing?.pushValue(value) },
+                    pop: { [weak existing] in existing?.pop() },
+                    popToRoot: { [weak existing] in existing?.popToRoot() }
+                )
+                let prevEnv = getCurrentEnvironment()
+                setCurrentEnvironment(env)
+                let title = gtkExtractTitle(from: content)
+                let rootWidget = widgetFromOpaque(gtkRenderView(content))
+                setCurrentEnvironment(prevEnv)
+                setCurrentNavigationContext(nil)
+
+                let rawToolbarItems = gtkExtractToolbarItems(from: content)
+                let toolbarConfig = gtkExtractToolbarConfiguration(from: content)
+                let (toolbarItems, toolbarHidden) = gtkApplyToolbarConfiguration(items: rawToolbarItems, configuration: toolbarConfig)
+                existing.replaceRoot(title: title, toolbarItems: toolbarItems, toolbarHidden: toolbarHidden, widget: rootWidget)
+
+                // This reused stack is still parented to whatever wrapped it
+                // last render (a VStack's box, say) — ordinary stateless
+                // views like that one get rebuilt fresh each pass with no
+                // reuse of their own, so the *new* wrapper is a different
+                // widget that will try to adopt this child next. GTK allows
+                // only one parent at a time and asserts otherwise.
+                //
+                // Unparenting drops the old parent's only reference, so ref
+                // it first to survive to the re-parent the caller is about
+                // to do synchronously right after this call returns. Drop
+                // that temporary ref on the next idle turn, safely after.
+                let stackWidget = widgetFromOpaque(existing.stack)
+                if gtk_widget_get_parent(stackWidget) != nil {
+                    g_object_ref(gpointer(stackWidget))
+                    gtk_widget_unparent(stackWidget)
+                    g_idle_add({ userData -> gboolean in
+                        Unmanaged<ClosureBox>.fromOpaque(userData!).takeRetainedValue().closure()
+                        return 0 // G_SOURCE_REMOVE
+                    }, Unmanaged.passRetained(ClosureBox { [stackWidget] in
+                        g_object_unref(gpointer(stackWidget))
+                    }).toOpaque())
+                }
+
+                return existing.stack
+            }
+            let widget = gtkCreateFreshNavigationContext()
+            if let context = gtkNavigationContext(of: widget) {
+                host.navigationContextCache[key] = context
+            }
+            return widget
+        }
+        return gtkCreateFreshNavigationContext()
+    }
+
+    /// Build a brand-new `GTKNavigationContext`, `GtkStack` and header bar
+    /// from scratch — the original, unconditional construction path, used
+    /// the first time this `NavigationStack` renders and whenever there is
+    /// no rebuilding host to cache against.
+    private func gtkCreateFreshNavigationContext() -> OpaquePointer {
         // Create header bar
         let headerBar = gtk_header_bar_new()!
         let headerBarOp = OpaquePointer(headerBar)

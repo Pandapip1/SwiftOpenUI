@@ -68,6 +68,25 @@ public class GTKViewHost: AnyViewHost, DependencyTrackingHost {
         return "\(childStatefulCounter):\(type)"
     }
 
+    /// Positional cache of nested `NavigationStack`s' live navigation state
+    /// (the `GtkStack` of pushed pages, header bar, and `GTKNavigationContext`).
+    /// `NavigationStack.gtkCreateWidget()` otherwise builds all of this from
+    /// scratch every time it runs — including on a rebuild of this host that
+    /// has nothing to do with navigation (e.g. a sibling observable this
+    /// body also reads, such as a badge count). Without reconciliation, that
+    /// kind of rebuild silently discards whatever the user had pushed and
+    /// resets the stack to its root, mid-navigation. Keyed the same way as
+    /// `childStateCache` — positional identity within one body pass.
+    var navigationContextCache: [String: GTKNavigationContext] = [:]
+    private var navigationContextCounter = 0
+
+    /// Next positional key for a `NavigationStack` encountered during the
+    /// current body pass. The counter resets alongside `childStatefulCounter`.
+    func nextNavigationContextKey() -> String {
+        defer { navigationContextCounter += 1 }
+        return "\(navigationContextCounter):NavigationStack"
+    }
+
     /// Objects read by body via `@Environment(Type.self)` during the
     /// last successful render. Re-pushed into the environment before
     /// each rebuild so body's lookups find the same objects even when
@@ -196,6 +215,7 @@ public class GTKViewHost: AnyViewHost, DependencyTrackingHost {
     func buildBodyWithTracking() -> OpaquePointer {
         // Positional keys for nested stateful children restart each pass.
         childStatefulCounter = 0
+        navigationContextCounter = 0
 
         // Track `@Environment(Type.self)` reads so we can re-push the
         // same objects into env on rebuild even if the pushing
