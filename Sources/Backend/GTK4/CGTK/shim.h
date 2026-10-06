@@ -339,6 +339,12 @@ static inline GtkWidget *gtk_swift_video_surface_new(void) {
     return picture;
 }
 
+// The GStreamer GTK sink owns its GPU textures; GtkPicture renders the same
+// paintable directly without mapping, copying or uploading pixels in Swift.
+static inline void gtk_swift_video_surface_set_paintable(GtkWidget *area, gpointer paintable) {
+    gtk_picture_set_paintable(GTK_PICTURE(area), GDK_PAINTABLE(paintable));
+}
+
 static inline void gtk_swift_video_surface_set_pixels(GtkWidget *area, const guint8 *pixels,
                                                        gsize length, gint width, gint height,
                                                        gint stride) {

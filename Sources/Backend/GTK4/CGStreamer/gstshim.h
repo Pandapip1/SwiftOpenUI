@@ -10,6 +10,10 @@ typedef struct {
     GstElement *playbin;
     GstElement *video_bin;
     GstElement *normal_appsink;
+    GObject *normal_paintable;
+    GObject *split_paintable;
+    GObject *active_paintable;
+    gboolean prefer_paintable;
     GstElement *split_pipeline;
     GstElement *pipeline;
     GstElement *appsink;
@@ -78,8 +82,11 @@ static inline void swift_openui_gst_player_connect_sink(SwiftOpenUIGStreamerPlay
 }
 
 static inline void swift_openui_gst_player_disconnect_sink(SwiftOpenUIGStreamerPlayer *player) {
-    if (player->sample_handler != 0 && player->appsink)
-        g_signal_handler_disconnect(player->appsink, player->sample_handler);
+    if (player->sample_handler != 0) {
+        if (player->appsink) g_signal_handler_disconnect(player->appsink, player->sample_handler);
+        else if (player->active_paintable) g_signal_handler_disconnect(player->active_paintable, player->sample_handler);
+    }
+    player->active_paintable = NULL;
     player->sample_handler = 0;
     player->appsink = NULL;
 }
@@ -95,14 +102,60 @@ static inline gboolean swift_openui_gst_player_dispatch_frame(gpointer data) {
     return G_SOURCE_REMOVE;
 }
 
-static inline GstFlowReturn swift_openui_gst_player_new_sample(GstAppSink *sink, gpointer data) {
-    (void)sink;
-    SwiftOpenUIGStreamerPlayer *player = data;
+static inline void swift_openui_gst_player_schedule_frame(SwiftOpenUIGStreamerPlayer *player) {
     g_mutex_lock(&player->frame_source_mutex);
     if (player->frame_callback && player->frame_source == 0)
         player->frame_source = g_idle_add(swift_openui_gst_player_dispatch_frame, player);
     g_mutex_unlock(&player->frame_source_mutex);
+}
+
+static inline GstFlowReturn swift_openui_gst_player_new_sample(GstAppSink *sink, gpointer data) {
+    (void)sink;
+    swift_openui_gst_player_schedule_frame(data);
     return GST_FLOW_OK;
+}
+
+static inline void swift_openui_gst_player_paintable_changed(GObject *paintable, gpointer data) {
+    (void)paintable;
+    // GTK's sink owns frame lifetime and texture presentation. Swift still
+    // receives a coalesced notification to apply pending seeks/rate changes.
+    swift_openui_gst_player_schedule_frame(data);
+}
+
+static inline void swift_openui_gst_player_connect_paintable(SwiftOpenUIGStreamerPlayer *player,
+                                                               GObject *paintable) {
+    player->appsink = NULL;
+    player->active_paintable = paintable;
+    player->sample_handler = g_signal_connect(paintable, "invalidate-contents",
+        G_CALLBACK(swift_openui_gst_player_paintable_changed), player);
+}
+
+// Follows gtk4paintablesink's upstream GL integration: glsinkbin negotiates
+// uploads/color conversion on the GPU and shares the sink's GDK GL context.
+// Do not insert videoconvert or force SystemMemory/RGBA before this bin.
+// The caller must already have initialized GTK on its main thread.
+static inline GstElement *swift_openui_gst_player_make_gl_sink(GObject **paintable_out) {
+    *paintable_out = NULL;
+    GstElement *sink = gst_element_factory_make("gtk4paintablesink", NULL);
+    if (!sink) return NULL;
+    gst_object_ref_sink(sink);
+    GObject *paintable = NULL;
+    GObject *context = NULL;
+    g_object_get(sink, "paintable", &paintable, NULL);
+    if (paintable && g_object_class_find_property(G_OBJECT_GET_CLASS(paintable), "gl-context"))
+        g_object_get(paintable, "gl-context", &context, NULL);
+    GstElement *bin = context ? gst_element_factory_make("glsinkbin", NULL) : NULL;
+    if (context) g_object_unref(context);
+    if (bin) {
+        g_object_set(bin, "sink", sink, NULL);
+        *paintable_out = paintable;
+    } else if (paintable) g_object_unref(paintable);
+    gst_object_unref(sink);
+    return bin;
+}
+
+static inline gpointer swift_openui_gst_player_paintable(SwiftOpenUIGStreamerPlayer *player) {
+    return player ? player->active_paintable : NULL;
 }
 
 static inline void swift_openui_gst_player_clear_pending_sample(SwiftOpenUIGStreamerPlayer *player) {
@@ -112,7 +165,7 @@ static inline void swift_openui_gst_player_clear_pending_sample(SwiftOpenUIGStre
     }
 }
 
-static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
+static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new_with_paintable(gboolean prefer_paintable) {
     static gsize initialized = 0;
     if (g_once_init_enter(&initialized)) {
         gst_init(NULL, NULL);
@@ -124,16 +177,19 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
     player->video_headers = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     player->audio_headers = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     g_mutex_init(&player->frame_source_mutex);
+    player->prefer_paintable = prefer_paintable;
     player->playbin = gst_element_factory_make("playbin3", NULL);
-    player->video_bin = gst_parse_bin_from_description(
+    if (prefer_paintable) player->video_bin = swift_openui_gst_player_make_gl_sink(&player->normal_paintable);
+    if (!player->video_bin) player->video_bin = gst_parse_bin_from_description(
         "videoconvert ! video/x-raw,format=RGBA ! appsink name=swiftappsink",
         TRUE, NULL);
     if (player->playbin) gst_object_ref_sink(player->playbin);
     if (player->video_bin) gst_object_ref_sink(player->video_bin);
-    player->normal_appsink = player->video_bin ? gst_bin_get_by_name(GST_BIN(player->video_bin), "swiftappsink") : NULL;
-    if (!player->playbin || !player->normal_appsink || !player->video_bin) {
+    player->normal_appsink = player->video_bin && !player->normal_paintable ? gst_bin_get_by_name(GST_BIN(player->video_bin), "swiftappsink") : NULL;
+    if (!player->playbin || (!player->normal_appsink && !player->normal_paintable) || !player->video_bin) {
         if (player->playbin) gst_object_unref(player->playbin);
         if (player->normal_appsink) gst_object_unref(player->normal_appsink);
+        if (player->normal_paintable) g_object_unref(player->normal_paintable);
         if (player->video_bin) gst_object_unref(player->video_bin);
         g_hash_table_unref(player->video_headers);
         g_hash_table_unref(player->audio_headers);
@@ -146,7 +202,8 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
     // racing several seconds ahead of clocked audio before stalling at EOS.
     player->pipeline = player->playbin;
     g_signal_connect(player->playbin, "source-setup", G_CALLBACK(swift_openui_gst_video_source_setup), player);
-    swift_openui_gst_player_connect_sink(player, player->normal_appsink);
+    if (player->normal_paintable) swift_openui_gst_player_connect_paintable(player, player->normal_paintable);
+    else swift_openui_gst_player_connect_sink(player, player->normal_appsink);
     g_object_set(player->playbin, "video-sink", player->video_bin, NULL);
     // Keep automated and headless runs away from the user's real audio
     // device for both ordinary playbin media and split A/V compositions.
@@ -170,6 +227,11 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
     return player;
 }
 
+// Display-independent users and tests explicitly retain the CPU fallback.
+static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new(void) {
+    return swift_openui_gst_player_new_with_paintable(FALSE);
+}
+
 static inline void swift_openui_gst_player_free(SwiftOpenUIGStreamerPlayer *player) {
     if (!player) return;
     if (player->bus_source) g_source_remove(player->bus_source);
@@ -188,7 +250,9 @@ static inline void swift_openui_gst_player_free(SwiftOpenUIGStreamerPlayer *play
     gst_object_unref(player->playbin);
     if (player->split_pipeline) gst_object_unref(player->split_pipeline);
     if (player->stream_collection) gst_object_unref(player->stream_collection);
-    gst_object_unref(player->normal_appsink);
+    if (player->normal_appsink) gst_object_unref(player->normal_appsink);
+    if (player->normal_paintable) g_object_unref(player->normal_paintable);
+    if (player->split_paintable) g_object_unref(player->split_paintable);
     gst_object_unref(player->video_bin);
     g_hash_table_unref(player->video_headers);
     g_hash_table_unref(player->audio_headers);
@@ -266,13 +330,15 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
     gst_element_set_state(player->pipeline, GST_STATE_NULL);
     swift_openui_gst_player_clear_pending_sample(player);
     swift_openui_gst_player_disconnect_sink(player);
+    g_clear_object(&player->split_paintable);
     if (player->split_pipeline) {
         gst_object_unref(player->split_pipeline);
         player->split_pipeline = NULL;
     }
     if (!audio_uri) {
         player->pipeline = player->playbin;
-        swift_openui_gst_player_connect_sink(player, player->normal_appsink);
+        if (player->normal_paintable) swift_openui_gst_player_connect_paintable(player, player->normal_paintable);
+        else swift_openui_gst_player_connect_sink(player, player->normal_appsink);
         g_object_set(player->playbin, "uri", video_uri, NULL);
         swift_openui_gst_player_watch_bus(player);
         return;
@@ -284,13 +350,16 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
     // fixture audio to the user's sound server.
     const gchar *audio_sink = swift_openui_gst_uses_fake_audio()
         ? "fakesink sync=true" : "autoaudiosink";
+    GstElement *native_video = player->prefer_paintable
+        ? swift_openui_gst_player_make_gl_sink(&player->split_paintable) : NULL;
+    const gchar *video_sink = native_video ? "queue name=video_queue" :
+        "queue ! videoconvert ! video/x-raw,format=RGBA ! appsink name=swiftappsink";
     gchar *description = g_strdup_printf(
         "uridecodebin uri=\"%s\" name=video_source "
-        "video_source. ! queue ! videoconvert ! video/x-raw,format=RGBA ! "
-        "appsink name=swiftappsink "
+        "video_source. ! %s "
         "uridecodebin uri=\"%s\" name=audio_source "
         "audio_source. ! queue ! audioconvert ! audioresample ! %s",
-        video, audio, audio_sink);
+        video, video_sink, audio, audio_sink);
     GError *error = NULL;
     player->split_pipeline = gst_parse_launch(description, &error);
     if (player->split_pipeline) gst_object_ref_sink(player->split_pipeline);
@@ -298,6 +367,21 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
     g_free(video);
     g_free(audio);
     if (error) g_error_free(error);
+    if (native_video) {
+        gboolean linked = FALSE;
+        if (player->split_pipeline) {
+            GstElement *queue = gst_bin_get_by_name(GST_BIN(player->split_pipeline), "video_queue");
+            if (gst_bin_add(GST_BIN(player->split_pipeline), native_video)) {
+                linked = queue && gst_element_link(queue, native_video);
+            } else gst_object_unref(native_video);
+            if (queue) gst_object_unref(queue);
+        } else gst_object_unref(native_video);
+        if (!linked) {
+            if (player->split_pipeline) gst_object_unref(player->split_pipeline);
+            player->split_pipeline = NULL;
+            g_clear_object(&player->split_paintable);
+        }
+    }
     GstElement *sink = player->split_pipeline
         ? gst_bin_get_by_name(GST_BIN(player->split_pipeline), "swiftappsink") : NULL;
     GstElement *video_source = player->split_pipeline
@@ -312,21 +396,23 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
         g_signal_connect(audio_source, "source-setup", G_CALLBACK(swift_openui_gst_audio_source_setup), player);
         gst_object_unref(audio_source);
     }
-    if (!player->split_pipeline || !sink) {
+    if (!player->split_pipeline || (!sink && !player->split_paintable)) {
         if (sink) gst_object_unref(sink);
         if (player->split_pipeline) {
             gst_object_unref(player->split_pipeline);
             player->split_pipeline = NULL;
         }
         player->pipeline = player->playbin;
-        swift_openui_gst_player_connect_sink(player, player->normal_appsink);
+        if (player->normal_paintable) swift_openui_gst_player_connect_paintable(player, player->normal_paintable);
+        else swift_openui_gst_player_connect_sink(player, player->normal_appsink);
         g_object_set(player->playbin, "uri", video_uri, NULL);
         swift_openui_gst_player_watch_bus(player);
         return;
     }
     player->pipeline = player->split_pipeline;
-    swift_openui_gst_player_connect_sink(player, sink);
-    gst_object_unref(sink);
+    if (player->split_paintable) swift_openui_gst_player_connect_paintable(player, player->split_paintable);
+    else swift_openui_gst_player_connect_sink(player, sink);
+    if (sink) gst_object_unref(sink);
     swift_openui_gst_player_watch_bus(player);
 }
 
@@ -572,7 +658,7 @@ static inline gboolean swift_openui_gst_player_is_playing(SwiftOpenUIGStreamerPl
 static inline gboolean swift_openui_gst_player_pull_frame(SwiftOpenUIGStreamerPlayer *player,
                                                             guint8 **data, gsize *length,
                                                             gint *width, gint *height, gint *stride) {
-    if (!player || !data || !length || !width || !height || !stride) return FALSE;
+    if (!player || !player->appsink || !data || !length || !width || !height || !stride) return FALSE;
     GstSample *sample = player->pending_sample;
     player->pending_sample = NULL;
     // This runs on GTK's main thread. Never wait here: blocking the UI loop

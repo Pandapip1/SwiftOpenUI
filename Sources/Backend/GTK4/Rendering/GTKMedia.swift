@@ -47,7 +47,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
         g_object_ref_sink(gpointer(videoWidget))
         gtk_box_append(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkBox.self), videoWidget)
         g_object_ref_sink(gpointer(widget))
-        gst = swift_openui_gst_player_new()
+        gst = swift_openui_gst_player_new_with_paintable(1)
         let context = Unmanaged.passUnretained(self).toOpaque()
         // GStreamer invokes this as clock-eligible samples arrive. The C shim
         // coalesces delivery onto GTK's main context before calling Swift.
@@ -140,6 +140,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
             swift_openui_gst_player_set_header(gst, 1, name, value)
         }
         swift_openui_gst_player_set_uris(gst, videoURL.absoluteString, audioURL?.absoluteString)
+        bindVideoPaintable()
         pendingAutoplay = false
         if startSource != 0 { g_source_remove(startSource) }
         let context = Unmanaged.passUnretained(self).toOpaque()
@@ -332,6 +333,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
             swift_openui_gst_player_set_uris(
                 gst, localVideoURL.absoluteString, (localAudioURL ?? sourceAudioURL)?.absoluteString
             )
+            bindVideoPaintable()
             if pendingAutoplay {
                 swift_openui_gst_player_play(gst)
                 rateNeedsApplication = true
@@ -483,6 +485,11 @@ final class GTKVideoDriver: _AVPlayerDriver {
         }
     }
 
+    private func bindVideoPaintable() {
+        guard let gst, let paintable = swift_openui_gst_player_paintable(gst) else { return }
+        gtk_swift_video_surface_set_paintable(videoWidget, paintable)
+    }
+
     private func presentFrame() {
         if let gst, let mediaSelectionAsset,
            swift_openui_gst_player_stream_collection_generation(gst) != mediaSelectionGeneration {
@@ -494,6 +501,12 @@ final class GTKVideoDriver: _AVPlayerDriver {
         }
         applyPlaybackRateIfReady()
         guard let gst else { return }
+        if swift_openui_gst_player_paintable(gst) != nil {
+            // Native paintable invalidation acknowledges the post-seek frame.
+            // The sink presents it without pulling CPU pixels through Swift.
+            acceptedSeek = nil
+            return
+        }
         var data: UnsafeMutablePointer<UInt8>?
         var length: gsize = 0
         var width: gint = 0
