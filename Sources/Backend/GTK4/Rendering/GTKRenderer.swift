@@ -5127,6 +5127,37 @@ extension TupleView: GTKRenderable {
 // `TabView` iterates `[AnyTab]` and renders each `tab.wrapped` directly.
 // This matches the Win32 backend, which also does not render bare `Tab`.
 
+/// Keeps unvisited tab bodies out of the initial widget tree. GTK widgets must
+/// be created on its thread, so postpone that work until the page is selected.
+/// Once built, a page stays attached to its stable container across switches.
+private final class GTKDeferredTabPage {
+    let container = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+    private var build: (() -> OpaquePointer)?
+
+    init(content: any View) {
+        let environment = getCurrentEnvironment()
+        let navigation = getCurrentNavigationContext()
+        build = {
+            let previousEnvironment = getCurrentEnvironment()
+            let previousNavigation = getCurrentNavigationContext()
+            setCurrentEnvironment(environment)
+            setCurrentNavigationContext(navigation)
+            defer {
+                setCurrentEnvironment(previousEnvironment)
+                setCurrentNavigationContext(previousNavigation)
+            }
+            return gtkRenderAnyView(content)
+        }
+    }
+
+    func materialize() {
+        guard let build else { return }
+        self.build = nil
+        let child = widgetFromOpaque(build())
+        gtkAppendChildrenPropagatingExpand(to: container, widgets: [child])
+    }
+}
+
 extension TabView: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
         let stack = gtk_stack_new()!
@@ -5134,6 +5165,7 @@ extension TabView: GTKRenderable {
 
         var usedIds = Set<String>()
         var orderedIds: [String] = []
+        var pages: [String: GTKDeferredTabPage] = [:]
         for tab in tabs {
             var id = tab.id
             if usedIds.contains(id) {
@@ -5143,40 +5175,50 @@ extension TabView: GTKRenderable {
             }
             usedIds.insert(id)
             orderedIds.append(id)
-            let childWidget = widgetFromOpaque(gtkRenderAnyView(tab.wrapped))
-            gtk_swift_stack_add_titled(stack, childWidget, id, tab.title)
+            let page = GTKDeferredTabPage(content: tab.wrapped)
+            pages[id] = page
+            gtk_swift_stack_add_titled(stack, page.container, id, tab.title)
         }
 
-        if let tabIndex = initialTab, tabIndex >= 0, tabIndex < orderedIds.count {
-            gtk_swift_stack_set_visible_child_name(stack, orderedIds[tabIndex])
+        // Choose the initial page before evaluating any bodies, including when
+        // the binding points at a page other than the first one.
+        let requestedIndex = selectionIndex?.wrappedValue ?? initialTab ?? 0
+        let index = orderedIds.indices.contains(requestedIndex) ? requestedIndex : 0
+        if orderedIds.indices.contains(index) {
+            let id = orderedIds[index]
+            pages[id]?.materialize()
+            gtk_swift_stack_set_visible_child_name(stack, id)
         }
 
-        // `TabView(selection:)`: show the bound tab, and write the binding back when the user picks another.
-        if let selection = selectionIndex {
-            let current = selection.wrappedValue
-            if current >= 0, current < orderedIds.count {
-                gtk_swift_stack_set_visible_child_name(stack, orderedIds[current])
+        // Materialize before the newly selected child is laid out. This also
+        // handles TabView without a selection binding and programmatic switches.
+        let selection = selectionIndex
+        let ids = orderedIds
+        let box = Unmanaged.passRetained(StringClosureBox { name in
+            guard let page = pages[name] else { return }
+            page.materialize()
+            if let titlebar = gtkFindTitlebar(in: page.container) {
+                gtk_swift_set_root_window_titlebar(page.container, titlebar)
             }
-            let ids = orderedIds
-            let box = Unmanaged.passRetained(StringClosureBox { name in
-                guard let index = ids.firstIndex(of: name), index != selection.wrappedValue else { return }
+            if let selection, let index = ids.firstIndex(of: name),
+               index != selection.wrappedValue {
                 selection.wrappedValue = index
-            }).toOpaque()
-            g_signal_connect_data(
-                gpointer(stack),
-                "notify::visible-child-name",
-                unsafeBitCast({ (widget: gpointer?, _: gpointer?, userData: gpointer?) in
-                    let box = Unmanaged<StringClosureBox>.fromOpaque(userData!).takeUnretainedValue()
-                    guard let widget, let cName = gtk_swift_stack_get_visible_child_name(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkWidget.self)) else { return }
-                    box.closure(String(cString: cName))
-                } as @convention(c) (gpointer?, gpointer?, gpointer?) -> Void, to: GCallback.self),
-                box,
-                { (userData: gpointer?, _: UnsafeMutablePointer<GClosure>?) in
-                    Unmanaged<StringClosureBox>.fromOpaque(userData!).release()
-                },
-                GConnectFlags(rawValue: 0)
-            )
-        }
+            }
+        }).toOpaque()
+        g_signal_connect_data(
+            gpointer(stack),
+            "notify::visible-child-name",
+            unsafeBitCast({ (widget: gpointer?, _: gpointer?, userData: gpointer?) in
+                let box = Unmanaged<StringClosureBox>.fromOpaque(userData!).takeUnretainedValue()
+                guard let widget, let cName = gtk_swift_stack_get_visible_child_name(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkWidget.self)) else { return }
+                box.closure(String(cString: cName))
+            } as @convention(c) (gpointer?, gpointer?, gpointer?) -> Void, to: GCallback.self),
+            box,
+            { (userData: gpointer?, _: UnsafeMutablePointer<GClosure>?) in
+                Unmanaged<StringClosureBox>.fromOpaque(userData!).release()
+            },
+            GConnectFlags(rawValue: 0)
+        )
 
         let switcher = gtk_stack_switcher_new()!
         gtk_swift_stack_switcher_set_stack(switcher, stack)
