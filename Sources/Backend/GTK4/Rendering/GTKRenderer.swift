@@ -5211,7 +5211,13 @@ extension TabView: GTKRenderable {
             guard let page = pages[name] else { return }
             page.materialize()
             if let titlebar = gtkFindTitlebar(in: page.container) {
-                gtk_swift_set_root_window_titlebar(page.container, titlebar)
+                // Not gtk_swift_set_root_window_titlebar directly: an
+                // ancestor outside this TabView may already claim the
+                // window's titlebar for itself (see windowTitleBar(_:)),
+                // same reasoning as a nested NavigationStack's own push/pop
+                // must not steal it back. gtkSetVisibleWindowTitlebar
+                // carries that check.
+                gtkSetVisibleWindowTitlebar(page.container, titlebar)
             }
             if let selection, let index = ids.firstIndex(of: name),
                index != selection.wrappedValue {

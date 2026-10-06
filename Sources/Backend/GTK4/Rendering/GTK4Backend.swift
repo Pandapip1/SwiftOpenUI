@@ -55,7 +55,16 @@ func gtkFindTitlebar(in widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutabl
 /// currently visible page may replace the window's navigation chrome.
 func gtkSetVisibleWindowTitlebar(_ widget: UnsafeMutablePointer<GtkWidget>, _ titlebar: UnsafeMutablePointer<GtkWidget>) {
     var child = widget
-    while let parent = gtk_widget_get_parent(child) {
+    while true {
+        // A `windowTitleBar(_:)` modifier tags its content root.  Calls made
+        // by that root itself must see the claim as well as calls made by a
+        // descendant; otherwise a deferred TabView page can incorrectly
+        // promote its NavigationStack header to the real window titlebar.
+        if let slot = gtkWindowTitlebarNestedSlot(of: child) {
+            gtkInstallNestedTitlebar(titlebar, in: slot)
+            return
+        }
+        guard let parent = gtk_widget_get_parent(child) else { break }
         if String(cString: g_type_name(gtk_swift_get_widget_type(parent))) == "GtkStack",
            gtk_stack_get_visible_child(OpaquePointer(parent)) != child { return }
         // An ancestor already claimed the window's titlebar for itself at
@@ -63,16 +72,69 @@ func gtkSetVisibleWindowTitlebar(_ widget: UnsafeMutablePointer<GtkWidget>, _ ti
         // see `windowTitleBar(_:)`). A NavigationStack nested underneath,
         // e.g. inside one of the app's own pinned-tab sections, must not
         // then steal it back on every push/pop; only the outermost claim
-        // drives window-level chrome.
-        if gtkWidgetClaimsWindowTitlebar(parent) { return }
+        // drives window-level chrome. Its own title/back button still need
+        // somewhere to show, though — that ancestor set aside a row for
+        // exactly this.
         child = parent
     }
+    let needsRelease = gtkPrepareRootWindowTitlebar(widget, titlebar)
     gtk_swift_set_root_window_titlebar(widget, titlebar)
+    if needsRelease { g_object_unref(gpointer(titlebar)) }
 }
 
-private func gtkWidgetClaimsWindowTitlebar(_ widget: UnsafeMutablePointer<GtkWidget>) -> Bool {
+/// A NavigationStack header can first have been rendered in an outer
+/// `windowTitleBar(_:)`'s nested row. That placement suppresses its window
+/// buttons because the outer header already owns them. If a later rebuild
+/// makes the same cached stack the actual window titlebar, restore the
+/// normal GtkHeaderBar behavior before installing it there.
+private func gtkPrepareRootWindowTitlebar(
+    _ widget: UnsafeMutablePointer<GtkWidget>,
+    _ titlebar: UnsafeMutablePointer<GtkWidget>
+) -> Bool {
+    guard String(cString: g_type_name(gtk_swift_get_widget_type(titlebar))) == "GtkHeaderBar" else { return false }
+    gtk_header_bar_set_show_title_buttons(OpaquePointer(titlebar), 1)
+
+    // `gtk_window_set_titlebar` adopts a direct child of the window. A cached
+    // navigation header can still be a child of the former outer chrome's
+    // nested-slot box, so move it out first. Hold a reference across the
+    // unparent/adopt handoff: removing the slot's only ownership would
+    // otherwise dispose it before GtkWindow can take it.
+    guard let parent = gtk_widget_get_parent(titlebar),
+          gtkWidgetIsNestedTitlebarSlot(parent),
+          gtk_widget_get_root(widget) != nil else { return false }
+    g_object_ref(gpointer(titlebar))
+    gtk_widget_unparent(titlebar)
+    return true
+}
+
+/// Show a nested NavigationStack's own title/back button in `slot` (an
+/// outer `windowTitleBar(_:)`'s reserved row) instead of as the real window
+/// titlebar. `show-title-buttons` defaults on for any `GtkHeaderBar` — fine
+/// when it's genuinely installed as the window's titlebar, wrong here,
+/// since the outer one already drew those once.
+private func gtkInstallNestedTitlebar(_ titlebar: UnsafeMutablePointer<GtkWidget>, in slot: UnsafeMutablePointer<GtkWidget>) {
+    if String(cString: g_type_name(gtk_swift_get_widget_type(titlebar))) == "GtkHeaderBar" {
+        gtk_header_bar_set_show_title_buttons(OpaquePointer(titlebar), 0)
+    }
+    var existing = gtk_widget_get_first_child(slot)
+    while let current = existing {
+        let next = gtk_widget_get_next_sibling(current)
+        gtk_box_remove(boxPointer(slot), current)
+        existing = next
+    }
+    if gtk_widget_get_parent(titlebar) != nil { gtk_widget_unparent(titlebar) }
+    gtk_box_append(boxPointer(slot), titlebar)
+}
+
+private func gtkWindowTitlebarNestedSlot(of widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget>? {
     let gobject = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
-    return g_object_get_data(gobject, "gtk-swift-window-titlebar") != nil
+    guard let data = g_object_get_data(gobject, "gtk-swift-nested-titlebar-slot") else { return nil }
+    return UnsafeMutableRawPointer(data).assumingMemoryBound(to: GtkWidget.self)
+}
+
+private func gtkWidgetIsNestedTitlebarSlot(_ widget: UnsafeMutablePointer<GtkWidget>) -> Bool {
+    let gobject = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
+    return g_object_get_data(gobject, "gtk-swift-is-nested-titlebar-slot") != nil
 }
 
 extension WindowTitleBarModifier: GTKRenderable {
@@ -91,9 +153,21 @@ extension WindowTitleBarModifier: GTKRenderable {
         let headerBar = gtk_header_bar_new()!
         let titleWidget = widgetFromOpaque(gtkRenderView(titleBar))
 
+        // A nested NavigationStack underneath this (e.g. one of the pinned
+        // tab's own sections) still needs somewhere to show its own title
+        // and back button once it can no longer become the *window's*
+        // titlebar — this row is that somewhere. gtkInstallNestedTitlebar
+        // fills it in place of the window-titlebar claim gtkSetVisible
+        // WindowTitlebar/the TabView page-switch callback would otherwise
+        // have made.
+        let nestedSlot = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        let nestedSlotObject = UnsafeMutableRawPointer(nestedSlot).assumingMemoryBound(to: GObject.self)
+        g_object_set_data(nestedSlotObject, "gtk-swift-is-nested-titlebar-slot", gpointer(nestedSlot))
+
         let titlebarBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
         gtk_box_append(boxPointer(titlebarBox), headerBar)
         gtk_box_append(boxPointer(titlebarBox), titleWidget)
+        gtk_box_append(boxPointer(titlebarBox), nestedSlot)
 
         let contentWidget = widgetFromOpaque(gtkRenderView(content))
 
@@ -107,6 +181,7 @@ extension WindowTitleBarModifier: GTKRenderable {
         g_object_set_data_full(gobject, "gtk-swift-window-titlebar", titlebarBox, { userData in
             g_object_unref(userData)
         })
+        g_object_set_data(gobject, "gtk-swift-nested-titlebar-slot", gpointer(nestedSlot))
 
         return opaqueFromWidget(contentWidget)
     }
