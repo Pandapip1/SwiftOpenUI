@@ -31,6 +31,7 @@ typedef struct {
     gchar *error_message;
     gboolean ended;
     gboolean failed;
+    gboolean audio_sink_available;
     gboolean is_live;
     gint buffering_percent;
     GstState target_state;
@@ -42,6 +43,9 @@ typedef struct {
     gint selected_track_indices[3];
     gint requested_track_indices[3];
     guint64 stream_collection_generation;
+    // Integration tests can force the parser failure path without changing
+    // the process-wide GStreamer registry.
+    const gchar *test_audio_sink_description;
 } SwiftOpenUIGStreamerPlayer;
 
 static inline void swift_openui_gst_player_apply_pending_track_selection(SwiftOpenUIGStreamerPlayer *player);
@@ -52,6 +56,36 @@ static inline GstFlowReturn swift_openui_gst_player_new_sample(GstAppSink *sink,
 
 static inline gboolean swift_openui_gst_uses_fake_audio(void) {
     return g_strcmp0(g_getenv("SWIFT_OPENUI_GST_FAKE_AUDIO"), "1") == 0;
+}
+
+// autoaudiosink quietly falls back to fakesink when it cannot discover a
+// device. That makes a missing Pulse/PipeWire connection look like successful
+// playback while dropping every audio buffer. Hummingbird's Linux runtime
+// ships GStreamer's PulseAudio plugin, and PipeWire exposes a compatible Pulse
+// server, so use that sink explicitly. Tests opt into fakesink above.
+static inline const gchar *swift_openui_gst_audio_sink_description(void) {
+    return swift_openui_gst_uses_fake_audio()
+        ? "fakesink sync=true"
+        : "pulsesink client-name=Hummingbird";
+}
+
+static inline GstElement *swift_openui_gst_player_make_audio_sink(void) {
+    GstElement *sink = gst_element_factory_make(
+        swift_openui_gst_uses_fake_audio() ? "fakesink" : "pulsesink", NULL);
+    if (!sink) return NULL;
+    g_object_set(sink, "sync", TRUE, NULL);
+    if (!swift_openui_gst_uses_fake_audio())
+        g_object_set(sink, "client-name", "Hummingbird", NULL);
+    return sink;
+}
+
+static inline void swift_openui_gst_player_fail(SwiftOpenUIGStreamerPlayer *player,
+                                                const gchar *message) {
+    if (!player) return;
+    g_free(player->error_message);
+    player->error_message = g_strdup(message);
+    player->failed = TRUE;
+    if (player->event_callback) player->event_callback(player->event_callback_data);
 }
 
 static inline void swift_openui_gst_apply_headers(GstElement *source, GHashTable *headers) {
@@ -249,16 +283,14 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new_with_paint
     if (player->normal_paintable) swift_openui_gst_player_connect_paintable(player, player->normal_paintable, player->video_bin);
     else swift_openui_gst_player_connect_sink(player, player->normal_appsink);
     g_object_set(player->playbin, "video-sink", player->video_bin, NULL);
-    // Keep automated and headless runs away from the user's real audio
-    // device for both ordinary playbin media and split A/V compositions.
-    if (swift_openui_gst_uses_fake_audio()) {
-        GstElement *fake_audio_sink = gst_element_factory_make("fakesink", NULL);
-        if (fake_audio_sink) {
-            gst_object_ref_sink(fake_audio_sink);
-            g_object_set(fake_audio_sink, "sync", TRUE, NULL);
-            g_object_set(player->playbin, "audio-sink", fake_audio_sink, NULL);
-            gst_object_unref(fake_audio_sink);
-        }
+    // Tests can opt into fakesink; ordinary playback is given a concrete
+    // desktop sink instead of autoaudiosink's silent fake-sink fallback.
+    GstElement *audio_sink = swift_openui_gst_player_make_audio_sink();
+    player->audio_sink_available = audio_sink != NULL;
+    if (audio_sink) {
+        gst_object_ref_sink(audio_sink);
+        g_object_set(player->playbin, "audio-sink", audio_sink, NULL);
+        gst_object_unref(audio_sink);
     }
     // Keep progressively downloaded files on disk. Besides avoiding repeated
     // network reads, queue2 can seek within media served by simple HTTP origins
@@ -352,6 +384,11 @@ static inline gboolean swift_openui_gst_player_has_ended(SwiftOpenUIGStreamerPla
 
 static inline void swift_openui_gst_player_set_uri(SwiftOpenUIGStreamerPlayer *player, const char *uri) {
     if (player && player->playbin) {
+        if (!player->audio_sink_available) {
+            swift_openui_gst_player_fail(player,
+                "PulseAudio output is unavailable; audio playback cannot start");
+            return;
+        }
         swift_openui_gst_player_clear_pending_sample(player);
         g_object_set(player->playbin, "uri", uri, NULL);
     }
@@ -374,11 +411,20 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
     }
     for (gint kind = 0; kind < 3; kind++) player->selected_track_indices[kind] = -1;
     for (gint kind = 0; kind < 3; kind++) player->requested_track_indices[kind] = -2;
+    if (!player->audio_sink_available) {
+        swift_openui_gst_player_fail(player,
+            "PulseAudio output is unavailable; audio playback cannot start");
+        return;
+    }
     gst_element_set_state(player->pipeline, GST_STATE_NULL);
     swift_openui_gst_player_clear_pending_sample(player);
     swift_openui_gst_player_disconnect_sink(player);
     g_clear_object(&player->split_paintable);
     if (player->split_pipeline) {
+        // A replacement may fail while parsing its new split A/V graph. Keep
+        // pipeline pointing at the retained playbin before releasing the old
+        // graph so stop/free never dereference the former split pipeline.
+        player->pipeline = player->playbin;
         gst_object_unref(player->split_pipeline);
         player->split_pipeline = NULL;
     }
@@ -395,8 +441,8 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
     gchar *audio = g_strescape(audio_uri, NULL);
     // Headless integration tests opt into a fake sink so they never route
     // fixture audio to the user's sound server.
-    const gchar *audio_sink = swift_openui_gst_uses_fake_audio()
-        ? "fakesink sync=true" : "autoaudiosink";
+    const gchar *audio_sink = player->test_audio_sink_description
+        ? player->test_audio_sink_description : swift_openui_gst_audio_sink_description();
     GstElement *native_video = player->prefer_paintable
         ? swift_openui_gst_player_make_gl_sink(&player->split_paintable) : NULL;
     const gchar *video_sink = native_video ? "queue name=video_queue" :
@@ -413,7 +459,15 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
     g_free(description);
     g_free(video);
     g_free(audio);
+    gchar *parse_error = error ? g_strdup(error->message) : NULL;
     if (error) g_error_free(error);
+    // gst_parse_launch may return a partial bin alongside an error. A partial
+    // split graph can still render video while silently dropping its audio
+    // branch, so it is not a usable replacement.
+    if (parse_error && player->split_pipeline) {
+        gst_object_unref(player->split_pipeline);
+        player->split_pipeline = NULL;
+    }
     if (native_video) {
         gboolean linked = FALSE;
         if (player->split_pipeline) {
@@ -449,13 +503,15 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
             gst_object_unref(player->split_pipeline);
             player->split_pipeline = NULL;
         }
-        player->pipeline = player->playbin;
-        if (player->normal_paintable) swift_openui_gst_player_connect_paintable(player, player->normal_paintable, player->video_bin);
-        else swift_openui_gst_player_connect_sink(player, player->normal_appsink);
-        g_object_set(player->playbin, "uri", video_uri, NULL);
-        swift_openui_gst_player_watch_bus(player);
+        gchar *message = g_strdup_printf(
+            "Could not create the GStreamer audio playback pipeline%s%s",
+            parse_error ? ": " : "", parse_error ? parse_error : "");
+        g_free(parse_error);
+        swift_openui_gst_player_fail(player, message);
+        g_free(message);
         return;
     }
+    g_free(parse_error);
     player->pipeline = player->split_pipeline;
     if (player->split_paintable) swift_openui_gst_player_connect_paintable(player, player->split_paintable, native_video);
     else swift_openui_gst_player_connect_sink(player, sink);

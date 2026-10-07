@@ -49,6 +49,35 @@ int main(void) {
     // No environment override or autoaudiosink is used: this test verifies
     // actual decoded audio buffers reaching a file, independently of devices.
     g_unsetenv("SWIFT_OPENUI_GST_FAKE_AUDIO");
+    gst_init(NULL, NULL);
+    // Desktop playback must use the explicit PulseAudio sink.  In particular,
+    // do not regress to autoaudiosink: it can silently select fakesink when
+    // device discovery fails, reporting successful but silent playback.
+    g_assert_cmpstr(swift_openui_gst_audio_sink_description(), ==,
+                    "pulsesink client-name=Hummingbird");
+    GstElement *audio_sink = swift_openui_gst_player_make_audio_sink();
+    g_assert_nonnull(audio_sink);
+    g_assert_cmpstr(GST_OBJECT_NAME(gst_element_get_factory(audio_sink)), ==, "pulsesink");
+    gst_object_unref(audio_sink);
+    g_setenv("SWIFT_OPENUI_GST_FAKE_AUDIO", "1", TRUE);
+    g_assert_cmpstr(swift_openui_gst_audio_sink_description(), ==, "fakesink sync=true");
+    audio_sink = swift_openui_gst_player_make_audio_sink();
+    g_assert_nonnull(audio_sink);
+    g_assert_cmpstr(GST_OBJECT_NAME(gst_element_get_factory(audio_sink)), ==, "fakesink");
+    gst_object_unref(audio_sink);
+    g_unsetenv("SWIFT_OPENUI_GST_FAKE_AUDIO");
+    // A missing explicit sink must fail playback rather than let playbin use
+    // its default autoaudiosink (which could silently become fakesink).
+    SwiftOpenUIGStreamerPlayer *missing_audio = swift_openui_gst_player_new();
+    g_assert_nonnull(missing_audio);
+    missing_audio->audio_sink_available = FALSE;
+    swift_openui_gst_player_set_uris(missing_audio, "file:///fixture.mp4", NULL);
+    g_assert_true(missing_audio->failed);
+    gchar *missing_audio_error = swift_openui_gst_player_take_error(missing_audio);
+    g_assert_nonnull(missing_audio_error);
+    g_assert_nonnull(strstr(missing_audio_error, "PulseAudio output is unavailable"));
+    g_free(missing_audio_error);
+    swift_openui_gst_player_free(missing_audio);
     Probe probe = {0};
     probe.player = swift_openui_gst_player_new();
     g_assert_nonnull(probe.player);
@@ -175,5 +204,20 @@ int main(void) {
     g_assert_true(swift_openui_gst_player_is_playing(p));
     swift_openui_gst_player_free(p);
     g_print("live buffering notification: playback continues\n");
+
+    // Replacing an existing split graph can fail if the requested output
+    // factory disappears. stop/free must then use playbin, not the released
+    // previous split pipeline.
+    p = swift_openui_gst_player_new();
+    g_assert_nonnull(p);
+    swift_openui_gst_player_set_uris(p, "file:///video.mp4", "file:///audio.m4a");
+    g_assert_nonnull(p->split_pipeline);
+    p->test_audio_sink_description = "swiftopenui_missing_audio_sink";
+    swift_openui_gst_player_set_uris(p, "file:///replacement.mp4", "file:///replacement.m4a");
+    g_assert_true(p->failed);
+    g_assert_true(p->pipeline == p->playbin);
+    swift_openui_gst_player_stop(p);
+    swift_openui_gst_player_free(p);
+    g_print("split replacement failure: released graph is not retained as pipeline\n");
     return 0;
 }
