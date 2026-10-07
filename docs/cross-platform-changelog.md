@@ -21,6 +21,15 @@ backend.
 
 ---
 
+## 2026-10-07 — GTK4 — discrete `onHover` delivery
+
+- **Shared surface:** `View.onHover(perform:)` now reports one enter and one
+  leave per hover lifetime, even when its enclosing view rebuilds.
+- **Impact:** applications can use the SwiftUI discrete hover API for transient
+  controls without receiving one `true` callback for every pointer motion.
+- **Ping:** GTK4 and shared API integrators.
+- **Refs:** `GestureModifier.swift`, `GTK4RenderTests.swift`.
+
 ## 2026-10-05 — GTK4 — async AVAsset media-selection loading
 
 - **Shared surface:** added `AVAsset.load(_:)` for

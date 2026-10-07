@@ -133,20 +133,40 @@ public struct DragGestureView<Content: View>: View {
     public var body: Never { fatalError("DragGestureView is a primitive view") }
 }
 
+/// Implements SwiftUI's discrete hover API on top of continuous hover phases.
+///
+/// `isHovering` is view state, rather than closure-local storage, so it stays
+/// associated with this modifier's identity when its parent rebuilds.
+private struct HoverModifierView<Content: View>: View {
+    let content: Content
+    let action: (Bool) -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        content.onContinuousHover { phase in
+            switch phase {
+            case .active:
+                guard !isHovering else { return }
+                isHovering = true
+                action(true)
+            case .ended:
+                guard isHovering else { return }
+                isHovering = false
+                action(false)
+            }
+        }
+    }
+}
+
 extension View {
     /// Calls `perform` with `true` when a pointer enters this view and `false`
     /// when it leaves it.
     ///
-    /// This is SwiftUI's discrete hover API. Backends share the existing
-    /// continuous-hover recognizer so the enter/leave lifetime remains tied to
-    /// the rendered view rather than to a transient wrapper.
+    /// This is SwiftUI's discrete hover API. Its state is tied to the
+    /// modifier's identity so parent updates do not create duplicate enters.
     public func onHover(perform action: @escaping (Bool) -> Void) -> some View {
-        onContinuousHover { phase in
-            switch phase {
-            case .active: action(true)
-            case .ended: action(false)
-            }
-        }
+        HoverModifierView(content: self, action: action)
     }
 
     /// Calls `action` whenever a pointing device moves over this view, and

@@ -1990,6 +1990,55 @@ final class GTK4RenderTests: XCTestCase {
                                 .active(CGPoint(x: 5, y: 7)), .ended])
     }
 
+    func testHoverEmitsOnlyEnterAndLeave() throws {
+        try requireGTK()
+        var values: [Bool] = []
+        let widget = widgetFromOpaque(gtkRenderView(
+            Text("Hover").onHover { values.append($0) }
+        ))
+        let object = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
+        let stored = try XCTUnwrap(g_object_get_data(object, gtkSwiftContinuousHoverControllerMarker))
+        let controller = OpaquePointer(stored)
+
+        gtk_swift_emit_motion_enter(controller, 2, 3)
+        gtk_swift_emit_motion(controller, 5, 7)
+        gtk_swift_emit_motion(controller, 8, 9)
+        gtk_swift_emit_motion_leave(controller)
+        gtk_swift_emit_motion_leave(controller)
+
+        XCTAssertEqual(values, [true, false])
+    }
+
+    func testHoverRemainsEnteredAcrossParentStateRebuild() throws {
+        try requireGTK()
+        let log = GTKHoverEventLog()
+        let root = widgetFromOpaque(gtkRenderView(GTKRebuildingHoverView(log: log)))
+
+        func controller(in widget: UnsafeMutablePointer<GtkWidget>) -> OpaquePointer? {
+            let object = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
+            if let stored = g_object_get_data(object, gtkSwiftContinuousHoverControllerMarker) {
+                return OpaquePointer(stored)
+            }
+            var child = gtk_widget_get_first_child(widget)
+            while let current = child {
+                if let found = controller(in: current) { return found }
+                child = gtk_widget_get_next_sibling(current)
+            }
+            return nil
+        }
+
+        gtk_swift_emit_motion_enter(try XCTUnwrap(controller(in: root)), 2, 3)
+        while g_main_context_pending(nil) != 0 {
+            _ = g_main_context_iteration(nil, 0)
+        }
+
+        let replacement = try XCTUnwrap(controller(in: root))
+        gtk_swift_emit_motion(replacement, 5, 7)
+        gtk_swift_emit_motion_leave(replacement)
+
+        XCTAssertEqual(log.values, [true, false])
+    }
+
     func testContinuousHoverResolvesGlobalAndNamedCoordinateSpaces() throws {
         try requireGTK()
         func controller(in widget: UnsafeMutablePointer<GtkWidget>) -> OpaquePointer? {
@@ -2451,6 +2500,22 @@ final class GTK4RenderTests: XCTestCase {
 
 private final class GTKDelayedEnvModel {
     var count: Int = 0
+}
+
+private final class GTKHoverEventLog {
+    var values: [Bool] = []
+}
+
+private struct GTKRebuildingHoverView: View {
+    let log: GTKHoverEventLog
+    @State private var didReceiveEnter = false
+
+    var body: some View {
+        Text("Hover").onHover { isHovering in
+            log.values.append(isHovering)
+            if isHovering { didReceiveEnter = true }
+        }
+    }
 }
 
 private struct GTKDelayedEnvButtonView: View {
