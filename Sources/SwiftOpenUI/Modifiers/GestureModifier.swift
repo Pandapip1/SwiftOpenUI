@@ -134,6 +134,21 @@ public struct DragGestureView<Content: View>: View {
 }
 
 extension View {
+    /// Calls `perform` with `true` when a pointer enters this view and `false`
+    /// when it leaves it.
+    ///
+    /// This is SwiftUI's discrete hover API. Backends share the existing
+    /// continuous-hover recognizer so the enter/leave lifetime remains tied to
+    /// the rendered view rather than to a transient wrapper.
+    public func onHover(perform action: @escaping (Bool) -> Void) -> some View {
+        onContinuousHover { phase in
+            switch phase {
+            case .active: action(true)
+            case .ended: action(false)
+            }
+        }
+    }
+
     /// Calls `action` whenever a pointing device moves over this view, and
     /// once more when it leaves the view.
     public func onContinuousHover(

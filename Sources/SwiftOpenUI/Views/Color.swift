@@ -94,6 +94,18 @@ public struct Color: Equatable, View, PrimitiveView {
     public static let white = Color(red: 1.0, green: 1.0, blue: 1.0)
     public static let black = Color(red: 0.0, green: 0.0, blue: 0.0)
     public static let clear = Color(red: 0.0, green: 0.0, blue: 0.0, opacity: 0.0)
+
+    /// The semantic background color for the current interface appearance.
+    /// When a backend has supplied its native palette, use that palette so a
+    /// view matches its host window; otherwise use the platform-equivalent
+    /// light or dark window color.
+    public static var background: Color {
+        let environment = getCurrentEnvironment()
+        if let palette = environment.themePalette { return palette.windowBackground }
+        return environment.colorScheme == .dark
+            ? Color(red: 0.11, green: 0.11, blue: 0.12)
+            : Color(red: 1.0, green: 1.0, blue: 1.0)
+    }
     public static let pink = Color(red: 1.0, green: 0.176, blue: 0.333)
     public static let brown = Color(red: 0.635, green: 0.518, blue: 0.369)
     public static let mint = Color(red: 0.0, green: 0.780, blue: 0.745)

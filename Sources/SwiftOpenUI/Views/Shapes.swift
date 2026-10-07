@@ -130,6 +130,19 @@ extension Shape {
         FilledShape(shape: self, color: color)
     }
 
+    /// Fills this shape using a material style.
+    ///
+    /// `Material` is a SwiftUI `ShapeStyle`; SwiftOpenUI currently resolves it
+    /// to the same theme-aware flat-color approximation used by backgrounds.
+    public func fill(_ material: Material) -> FilledShape<Self> {
+        FilledShape(shape: self, color: material.approximatedColor)
+    }
+
+    /// Fills this shape using a hierarchical shape style.
+    public func fill(_ style: HierarchicalShapeStyle) -> FilledShape<Self> {
+        FilledShape(shape: self, color: style.approximatedColor)
+    }
+
     /// Stroke this shape with a color and line width.
     public func stroke(_ color: Color, lineWidth: Double = 1) -> StrokedShape<Self> {
         StrokedShape(shape: self, color: color, style: StrokeStyle(lineWidth: lineWidth))
