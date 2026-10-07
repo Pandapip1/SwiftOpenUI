@@ -1551,6 +1551,23 @@ final class GTK4RenderTests: XCTestCase {
         XCTAssertEqual(items[2].placement, .primaryAction)
     }
 
+    func testToolbarItemGroupExtractsItsControls() throws {
+        try requireGTK()
+
+        let view = Text("Content").toolbar {
+            ToolbarItemGroup(placement: .trailing) {
+                Text("Group action")
+            }
+        }
+
+        let items = gtkExtractToolbarItems(from: view)
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items[0].placement, .trailing)
+        let widget = widgetFromOpaque(gtkRenderView(items[0].wrapped))
+        let label = try unwrapFirstDescendant(ofType: "GtkLabel", in: widget)
+        XCTAssertEqual(String(cString: gtk_label_get_text(OpaquePointer(label))), "Group action")
+    }
+
     func testToolbarWithIdExtractsItems() throws {
         try requireGTK()
 

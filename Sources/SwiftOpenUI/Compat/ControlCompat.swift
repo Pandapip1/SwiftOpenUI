@@ -123,15 +123,6 @@ extension Toggle {
     }
 }
 
-// MARK: - Toolbar content from plain views
-
-extension ToolbarContentBuilder {
-    /// A bare `Button` (or any view) in a toolbar becomes an item in the default placement.
-    public static func buildExpression<V: View>(_ expression: V) -> ToolbarContent {
-        ToolbarContent(items: [AnyToolbarItem(ToolbarItem(placement: .primaryAction) { expression })])
-    }
-}
-
 // MARK: - Editing affordances (no-ops where there is no edit mode)
 
 extension ForEach {

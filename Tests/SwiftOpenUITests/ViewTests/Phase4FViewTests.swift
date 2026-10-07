@@ -443,6 +443,37 @@ final class Phase4FViewTests: XCTestCase {
         }
     }
 
+    func testToolbarItemGroupCanBeReturnedAsToolbarContent() {
+        let view = Text("Content").toolbar {
+            ReusableToolbarActions()
+        }
+
+        XCTAssertEqual(view.toolbarItems.count, 1)
+        if case .trailing = view.toolbarItems[0].placement {} else {
+            XCTFail("Expected reusable ToolbarContent placement to be .trailing")
+        }
+    }
+
+    func testToolbarContentBuilderPreservesConditionalGroup() {
+        let includeActions = true
+        let view = Text("Content").toolbar {
+            if includeActions {
+                ToolbarItemGroup(placement: .trailing) {
+                    Button("Save") { }
+                }
+            } else {
+                ToolbarItem(placement: .leading) {
+                    Button("Back") { }
+                }
+            }
+        }
+
+        XCTAssertEqual(view.toolbarItems.count, 1)
+        if case .trailing = view.toolbarItems[0].placement {} else {
+            XCTFail("Expected active toolbar-content branch to be preserved")
+        }
+    }
+
     func testToolbarModifierStoresID() {
         let view = Text("Content").toolbar(id: "detail-toolbar") {
             ToolbarItem(placement: .trailing) {
@@ -830,5 +861,14 @@ final class Phase4FViewTests: XCTestCase {
         let _ = LineJoin.miter
         let _ = LineJoin.round
         let _ = LineJoin.bevel
+    }
+}
+
+private struct ReusableToolbarActions: ToolbarContent {
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .trailing) {
+            Button("Save") { }
+            Button("Share") { }
+        }
     }
 }
