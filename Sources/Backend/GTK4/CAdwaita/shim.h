@@ -55,6 +55,14 @@ static inline void swift_adw_tab_page_set_title(AdwTabPage *page, const char *ti
     adw_tab_page_set_title(page, title);
 }
 
+static inline const char *swift_adw_tab_page_get_title(AdwTabPage *page) {
+    return adw_tab_page_get_title(page);
+}
+
+static inline GtkWidget *swift_adw_tab_page_get_child(AdwTabPage *page) {
+    return adw_tab_page_get_child(page);
+}
+
 static inline void swift_adw_tab_view_set_page_pinned(GtkWidget *view, AdwTabPage *page, gboolean pinned) {
     adw_tab_view_set_page_pinned(ADW_TAB_VIEW(view), page, pinned);
 }
@@ -89,6 +97,27 @@ static inline GtkWidget *swift_adw_tab_bar_new(GtkWidget *view) {
     adw_tab_bar_set_autohide(bar, FALSE);
     adw_tab_bar_set_expand_tabs(bar, TRUE);
     return GTK_WIDGET(bar);
+}
+
+static inline GtkWidget *swift_adw_tab_overview_new(GtkWidget *view, GtkWidget *child) {
+    AdwTabOverview *overview = ADW_TAB_OVERVIEW(adw_tab_overview_new());
+    adw_tab_overview_set_view(overview, ADW_TAB_VIEW(view));
+    adw_tab_overview_set_child(overview, child);
+    return GTK_WIDGET(overview);
+}
+
+static inline GtkWidget *swift_adw_tab_button_new(GtkWidget *view) {
+    AdwTabButton *button = ADW_TAB_BUTTON(adw_tab_button_new());
+    adw_tab_button_set_view(button, ADW_TAB_VIEW(view));
+    return GTK_WIDGET(button);
+}
+
+static inline gboolean swift_adw_tab_overview_get_open(GtkWidget *overview) {
+    return adw_tab_overview_get_open(ADW_TAB_OVERVIEW(overview));
+}
+
+static inline void swift_adw_tab_overview_set_open(GtkWidget *overview, gboolean open) {
+    adw_tab_overview_set_open(ADW_TAB_OVERVIEW(overview), open);
 }
 
 static inline GtkWidget *swift_adw_tab_bar_get_view(GtkWidget *bar) {

@@ -257,12 +257,27 @@ class GTKNavigationContext {
         let title = entries.last?.title ?? ""
         gtk_header_bar_set_title_widget(headerBar, gtk_label_new(title))
         gtk_widget_set_visible(backButton, entries.count > 1 ? 1 : 0)
+        updateSemanticControlsMarker()
         // A nested NavigationStack may have installed its own window chrome.
         // Restore the visible destination's titlebar when navigating back.
         let visibleTitlebar = entries.last.flatMap { gtkFindTitlebar(in: $0.widget) }
             ?? UnsafeMutableRawPointer(headerBar).assumingMemoryBound(to: GtkWidget.self)
         gtkSetVisibleWindowTitlebar(
             UnsafeMutableRawPointer(stack).assumingMemoryBound(to: GtkWidget.self), visibleTitlebar
+        )
+    }
+
+    /// Record whether this header has controls that remain meaningful when an
+    /// ancestor window title suppresses its title. Inspecting GtkHeaderBar's
+    /// widget children is incorrect here: GTK includes implementation details
+    /// and our hidden root Back button in that hierarchy.
+    func updateSemanticControlsMarker() {
+        let headerObject = UnsafeMutableRawPointer(headerBar).assumingMemoryBound(to: GObject.self)
+        let hasControls = entries.count > 1 || !(entries.last?.toolbarWidgets.isEmpty ?? true)
+        g_object_set_data(
+            headerObject,
+            "gtk-swift-has-navigation-controls",
+            hasControls ? gpointer(bitPattern: 1) : nil
         )
     }
 }
@@ -607,6 +622,7 @@ extension NavigationStack: GTKRenderable {
         gtk_stack_add_named(stackOp, rootWidget, "nav-root")
         gtk_stack_set_visible_child_name(stackOp, "nav-root")
         context.entries.append(rootEntry)
+        context.updateSemanticControlsMarker()
 
         // Set initial title
         gtk_header_bar_set_title_widget(headerBarOp, gtk_label_new(title))

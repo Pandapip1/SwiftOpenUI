@@ -22,6 +22,49 @@ public struct BrowserTabItem: Identifiable, Equatable, Sendable {
 }
 
 #if canImport(SwiftUI)
+public struct BrowserTabContainer<Content: View>: View {
+    public let items: [BrowserTabItem]
+    public let selection: Binding<UUID>
+    public let onClose: (UUID) -> Void
+    private let content: Content
+    @State private var showingOverview = false
+
+    public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
+                @ViewBuilder content: () -> Content) {
+        self.items = items
+        self.selection = selection
+        self.onClose = onClose
+        self.content = content()
+    }
+
+    public var body: some View {
+        content
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showingOverview = true } label: { Image(systemName: "square.grid.2x2") }
+                        .accessibilityLabel("Tab Overview")
+                }
+            }
+            .sheet(isPresented: $showingOverview) {
+                VStack {
+                    ForEach(items) { item in
+                        HStack {
+                            Button(item.title) {
+                                selection.wrappedValue = item.id
+                                showingOverview = false
+                            }
+                            Spacer()
+                            if !item.isPinned {
+                                Button { onClose(item.id) } label: { Image(systemName: "xmark") }
+                                    .accessibilityLabel("Close \(item.title)")
+                            }
+                        }
+                    }
+                }.padding()
+            }
+    }
+}
+
 public struct BrowserTabBar: View {
     public let items: [BrowserTabItem]
     public let selection: Binding<UUID>
@@ -96,6 +139,24 @@ private struct BrowserTabActiveStyle: ViewModifier {
     }
 }
 #else
+public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
+    public typealias Body = Never
+    public let items: [BrowserTabItem]
+    public let selection: Binding<UUID>
+    public let onClose: (UUID) -> Void
+    public let content: Content
+
+    public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
+                @ViewBuilder content: () -> Content) {
+        self.items = items
+        self.selection = selection
+        self.onClose = onClose
+        self.content = content()
+    }
+
+    public var body: Never { fatalError("BrowserTabContainer is a platform-rendered primitive view") }
+}
+
 public struct BrowserTabBar: View {
     public typealias Body = Never
     public let items: [BrowserTabItem]
@@ -123,59 +184,85 @@ private final class BrowserTabCallbacks {
     }
 }
 
+private func makeNativeTabView(items: [BrowserTabItem], selection: Binding<UUID>,
+                               onClose: @escaping (UUID) -> Void,
+                               selectedContent: UnsafeMutablePointer<GtkWidget>? = nil) -> UnsafeMutablePointer<GtkWidget> {
+    let view = swift_adw_tab_view_new()!
+    var pages: [(UUID, OpaquePointer)] = []
+    for item in items {
+        let pageContent = item.id == selection.wrappedValue
+            ? (selectedContent ?? gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!)
+            : gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        let page = swift_adw_tab_view_append(view, pageContent)!
+        item.title.withCString { swift_adw_tab_page_set_title(page, $0) }
+        swift_adw_tab_view_set_page_pinned(view, page, item.isPinned ? 1 : 0)
+        pages.append((item.id, page))
+        if item.id == selection.wrappedValue { swift_adw_tab_view_set_selected_page(view, page) }
+    }
+    let callbacks = Unmanaged.passRetained(BrowserTabCallbacks(pages: pages, selection: selection, onClose: onClose)).toOpaque()
+    g_object_set_data_full(UnsafeMutableRawPointer(view).assumingMemoryBound(to: GObject.self),
+                           "swift-browser-tab-callbacks", callbacks) { pointer in
+        if let pointer { Unmanaged<BrowserTabCallbacks>.fromOpaque(pointer).release() }
+    }
+    g_signal_connect_data(gpointer(view), "notify::selected-page",
+        unsafeBitCast({ (object: gpointer?, _: gpointer?, data: gpointer?) in
+            guard let object, let data else { return }
+            let state = Unmanaged<BrowserTabCallbacks>.fromOpaque(data).takeUnretainedValue()
+            let widget = UnsafeMutableRawPointer(object).assumingMemoryBound(to: GtkWidget.self)
+            guard let selected = swift_adw_tab_view_get_selected_page(widget),
+                  let match = state.pages.first(where: { $0.1 == selected }),
+                  state.selection.wrappedValue != match.0 else { return }
+            state.selection.wrappedValue = match.0
+        } as @convention(c) (gpointer?, gpointer?, gpointer?) -> Void, to: GCallback.self), callbacks, nil,
+        GConnectFlags(rawValue: 0))
+    g_signal_connect_data(gpointer(view), "close-page",
+        unsafeBitCast({ (_: gpointer?, page: OpaquePointer?, data: gpointer?) -> gboolean in
+            guard let page, let data else { return 0 }
+            let state = Unmanaged<BrowserTabCallbacks>.fromOpaque(data).takeUnretainedValue()
+            guard let match = state.pages.first(where: { $0.1 == page }) else { return 0 }
+            state.onClose(match.0); return 1
+        } as @convention(c) (gpointer?, OpaquePointer?, gpointer?) -> gboolean, to: GCallback.self), callbacks, nil,
+        GConnectFlags(rawValue: 0))
+    return view
+}
+
+extension BrowserTabContainer: GTKRenderable {
+    public func gtkCreateWidget() -> OpaquePointer {
+        adw_init()
+        let renderedContent = gtkRenderView(content)
+        let contentWidget = UnsafeMutableRawPointer(renderedContent).assumingMemoryBound(to: GtkWidget.self)
+        let view = makeNativeTabView(items: items, selection: selection, onClose: onClose,
+                                     selectedContent: contentWidget)
+        let overview = swift_adw_tab_overview_new(view, view)!
+        let bar = swift_adw_tab_bar_new(view)!
+        let button = swift_adw_tab_button_new(view)!
+        // GtkWindow owns its custom titlebar separately from its content
+        // hierarchy, so `overview.open` cannot resolve through ancestors once
+        // the native button is seated in that titlebar. Connect the native
+        // button directly to the overview it represents.
+        g_signal_connect_data(gpointer(button), "clicked",
+            unsafeBitCast({ (_: gpointer?, data: gpointer?) in
+                guard let data else { return }
+                let overview = UnsafeMutableRawPointer(data).assumingMemoryBound(to: GtkWidget.self)
+                swift_adw_tab_overview_set_open(overview, 1)
+            } as @convention(c) (gpointer?, gpointer?) -> Void, to: GCallback.self),
+            gpointer(overview), nil, GConnectFlags(rawValue: 0))
+        gtk_widget_set_hexpand(bar, 1)
+        let object = UnsafeMutableRawPointer(overview).assumingMemoryBound(to: GObject.self)
+        g_object_set_data_full(object, "gtk-swift-browser-tab-bar", g_object_ref_sink(gpointer(bar))) {
+            g_object_unref($0)
+        }
+        g_object_set_data_full(object, "gtk-swift-browser-tab-button", g_object_ref_sink(gpointer(button))) {
+            g_object_unref($0)
+        }
+        return OpaquePointer(overview)
+    }
+}
+
 extension BrowserTabBar: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
         adw_init()
-        let view = swift_adw_tab_view_new()!
-        var pages: [(UUID, OpaquePointer)] = []
-        for item in items {
-            let content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
-            let page = swift_adw_tab_view_append(view, content)!
-            item.title.withCString { swift_adw_tab_page_set_title(page, $0) }
-            swift_adw_tab_view_set_page_pinned(view, page, item.isPinned ? 1 : 0)
-            pages.append((item.id, page))
-            if item.id == selection.wrappedValue {
-                swift_adw_tab_view_set_selected_page(view, page)
-            }
-        }
-
-        let callbacks = Unmanaged.passRetained(BrowserTabCallbacks(
-            pages: pages, selection: selection, onClose: onClose
-        )).toOpaque()
-        g_object_set_data_full(
-            UnsafeMutableRawPointer(view).assumingMemoryBound(to: GObject.self),
-            "swift-browser-tab-callbacks", callbacks
-        ) { pointer in
-            guard let pointer else { return }
-            Unmanaged<BrowserTabCallbacks>.fromOpaque(pointer).release()
-        }
-
-        g_signal_connect_data(
-            gpointer(view), "notify::selected-page",
-            unsafeBitCast({ (object: gpointer?, _: gpointer?, data: gpointer?) in
-                guard let object, let data else { return }
-                let state = Unmanaged<BrowserTabCallbacks>.fromOpaque(data).takeUnretainedValue()
-                let widget = UnsafeMutableRawPointer(object).assumingMemoryBound(to: GtkWidget.self)
-                guard let selected = swift_adw_tab_view_get_selected_page(widget),
-                      let match = state.pages.first(where: { $0.1 == selected }),
-                      state.selection.wrappedValue != match.0 else { return }
-                state.selection.wrappedValue = match.0
-            } as @convention(c) (gpointer?, gpointer?, gpointer?) -> Void, to: GCallback.self),
-            callbacks, nil, GConnectFlags(rawValue: 0)
-        )
-
-        g_signal_connect_data(
-            gpointer(view), "close-page",
-            unsafeBitCast({ (_: gpointer?, page: OpaquePointer?, data: gpointer?) -> gboolean in
-                guard let page, let data else { return 0 }
-                let state = Unmanaged<BrowserTabCallbacks>.fromOpaque(data).takeUnretainedValue()
-                guard let match = state.pages.first(where: { $0.1 == page }) else { return 0 }
-                state.onClose(match.0)
-                return 1
-            } as @convention(c) (gpointer?, OpaquePointer?, gpointer?) -> gboolean, to: GCallback.self),
-            callbacks, nil, GConnectFlags(rawValue: 0)
-        )
-
+        let view = makeNativeTabView(items: items, selection: selection, onClose: onClose)
         let bar = swift_adw_tab_bar_new(view)!
         gtk_widget_set_hexpand(bar, 1)
         gtk_widget_set_halign(bar, GTK_ALIGN_FILL)

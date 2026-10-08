@@ -7137,6 +7137,18 @@ extension ToolbarView: GTKRenderable {
         let windowTitle = (content as? NavigationTitled)?.navigationTitle ?? ""
         var principalWidget: UnsafeMutablePointer<GtkWidget>?
 
+        // BrowserTabs' container owns the AdwTabView/AdwTabOverview. Seat its
+        // native chrome in the two CSD rows without exposing GTK in the app.
+        let browserChromeOwner = gtkFindWidgetWithData("gtk-swift-browser-tab-bar", in: contentWidget)
+        let browserContentObject = browserChromeOwner.map {
+            UnsafeMutableRawPointer($0).assumingMemoryBound(to: GObject.self)
+        }
+        let nativeBrowserBar = browserContentObject.flatMap { g_object_get_data($0, "gtk-swift-browser-tab-bar") }
+            .map { UnsafeMutableRawPointer($0).assumingMemoryBound(to: GtkWidget.self) }
+        let nativeBrowserButton = browserContentObject.flatMap { g_object_get_data($0, "gtk-swift-browser-tab-button") }
+            .map { UnsafeMutableRawPointer($0).assumingMemoryBound(to: GtkWidget.self) }
+        if let nativeBrowserButton { gtk_header_bar_pack_end(headerBarOp, nativeBrowserButton) }
+
         for item in items {
             let itemWidget = widgetFromOpaque(gtkRenderAnyView(item.wrapped))
             switch item.placement {
@@ -7197,7 +7209,7 @@ extension ToolbarView: GTKRenderable {
         // below the header remain visually inside the CSD area.
         gtk_widget_add_css_class(titlebarBox, "titlebar")
         gtk_box_append(boxPointer(titlebarBox), headerBar)
-        if let principalWidget {
+        if let principalWidget = nativeBrowserBar ?? principalWidget {
             // Use a second native header bar for browser-style principal
             // content. GtkBox with the `toolbar` CSS class does not receive
             // the theme's header-bar minimum height or vertical padding.
@@ -7241,6 +7253,20 @@ extension ToolbarView: GTKRenderable {
 private final class GTKWindowTitleState {
     let title: String
     init(_ title: String) { self.title = title }
+}
+
+private func gtkFindWidgetWithData(
+    _ key: String,
+    in widget: UnsafeMutablePointer<GtkWidget>
+) -> UnsafeMutablePointer<GtkWidget>? {
+    let object = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
+    if g_object_get_data(object, key) != nil { return widget }
+    var child = gtk_widget_get_first_child(widget)
+    while let current = child {
+        if let match = gtkFindWidgetWithData(key, in: current) { return match }
+        child = gtk_widget_get_next_sibling(current)
+    }
+    return nil
 }
 
 extension ToolbarConfigurationView: GTKRenderable {

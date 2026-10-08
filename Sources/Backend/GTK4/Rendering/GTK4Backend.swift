@@ -98,6 +98,13 @@ private func gtkPrepareRootWindowTitlebar(
 ) -> Bool {
     guard String(cString: g_type_name(gtk_swift_get_widget_type(titlebar))) == "GtkHeaderBar" else { return false }
     gtk_header_bar_set_show_title_buttons(OpaquePointer(titlebar), 1)
+    let headerObject = UnsafeMutableRawPointer(titlebar).assumingMemoryBound(to: GObject.self)
+    if let storedTitle = g_object_get_data(headerObject, "gtk-swift-suppressed-navigation-title") {
+        let titleWidget = UnsafeMutableRawPointer(storedTitle).assumingMemoryBound(to: GtkWidget.self)
+        gtk_header_bar_set_title_widget(OpaquePointer(titlebar), titleWidget)
+        gtk_widget_set_visible(titleWidget, 1)
+        g_object_set_data(headerObject, "gtk-swift-suppressed-navigation-title", nil)
+    }
 
     // `gtk_window_set_titlebar` adopts a direct child of the window. A cached
     // navigation header can still be a child of the former outer chrome's
@@ -134,13 +141,17 @@ func gtkInstallNestedTitlebar(_ titlebar: UnsafeMutablePointer<GtkWidget>, in sl
         // The root `.navigationTitle` is already displayed in the native
         // window header. Suppress only the duplicate nested title; keep a row
         // when the nested NavigationStack has controls/actions of its own.
-        if let titleWidget { gtk_widget_set_visible(titleWidget, 0) }
-        var hasControls = false
-        var child = gtk_widget_get_first_child(titlebar)
-        while let current = child {
-            if current != titleWidget { hasControls = true; break }
-            child = gtk_widget_get_next_sibling(current)
+        let headerObject = UnsafeMutableRawPointer(titlebar).assumingMemoryBound(to: GObject.self)
+        if let titleWidget {
+            g_object_set_data_full(
+                headerObject,
+                "gtk-swift-suppressed-navigation-title",
+                g_object_ref(gpointer(titleWidget)),
+                { g_object_unref($0) }
+            )
+            gtk_header_bar_set_title_widget(header, nil)
         }
+        let hasControls = g_object_get_data(headerObject, "gtk-swift-has-navigation-controls") != nil
         guard hasControls else {
             gtk_widget_set_visible(slot, 0)
             return
