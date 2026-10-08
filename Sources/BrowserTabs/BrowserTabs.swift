@@ -102,7 +102,7 @@ public struct BrowserTabBar: View {
         let separator = previous.map {
             !active && selection.wrappedValue != $0.id && !hovered && hoveredID != $0.id
         } ?? false
-        return Button { selection.wrappedValue = item.id } label: {
+        let button = Button { selection.wrappedValue = item.id } label: {
             ZStack(alignment: .leading) {
                 if separator { Rectangle().fill(Color.secondary.opacity(0.35)).frame(width: 1, height: 14) }
                 HStack(spacing: 6) {
@@ -120,7 +120,11 @@ public struct BrowserTabBar: View {
         }
         .buttonStyle(.plain)
         .modifier(BrowserTabActiveStyle(isActive: active))
-        .onHover { hoveredID = $0 ? item.id : nil }
+        #if os(tvOS)
+        return button
+        #else
+        return button.onHover { hoveredID = $0 ? item.id : nil }
+        #endif
     }
 }
 
@@ -128,7 +132,7 @@ private struct BrowserTabActiveStyle: ViewModifier {
     let isActive: Bool
 
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, iOS 26.0, *) {
+        if #available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *) {
             if isActive { content.glassEffect(.clear) } else { content }
         } else if isActive {
             content.background(Capsule().fill(.regularMaterial)
