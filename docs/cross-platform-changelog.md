@@ -21,6 +21,14 @@ backend.
 
 ---
 
+## 2026-10-08 — GTK4 — principal toolbar content uses a separate CSD row
+
+- **GTK4 backend:** root `.principal` toolbar content now fills a dedicated
+  row below the header bar while remaining inside the window decorations.
+- **Impact:** browser-style tab strips no longer share a row with navigation
+  controls and GTK window buttons.
+- **Refs:** Hummingbird issue #6.
+
 ## 2026-10-08 — Shared — interface size class environment values
 
 - **Shared surface:** added SwiftUI-compatible `UserInterfaceSizeClass` and

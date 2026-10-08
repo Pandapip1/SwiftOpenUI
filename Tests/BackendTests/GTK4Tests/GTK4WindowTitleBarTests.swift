@@ -43,6 +43,12 @@ final class GTK4WindowTitleBarTests: XCTestCase {
         pump()
 
         XCTAssertTrue(labelTexts(in: initialTitlebar).contains("Browser tabs"))
+        let header = try XCTUnwrap(findFirstWidget(ofType: "GtkHeaderBar", in: initialTitlebar))
+        let principal = try XCTUnwrap(findLabel("Browser tabs", in: initialTitlebar))
+        XCTAssertFalse(isDescendant(principal, of: header),
+                       "principal toolbar content belongs in a separate CSD row below the header")
+        XCTAssertEqual(gtk_widget_get_parent(header), gtk_widget_get_parent(principal),
+                       "header and principal rows should share the titlebar's vertical container")
         let tabs = try XCTUnwrap(findStack(visibleChildNamed: "home", in: root))
         gtk_swift_stack_set_visible_child_name(tabs, "library")
         pump()
@@ -133,5 +139,35 @@ final class GTK4WindowTitleBarTests: XCTestCase {
             child = gtk_widget_get_next_sibling(current)
         }
         return nil
+    }
+
+    private func findFirstWidget(ofType type: String, in widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget>? {
+        if String(cString: g_type_name(gtk_swift_get_widget_type(widget))) == type { return widget }
+        var child = gtk_widget_get_first_child(widget)
+        while let current = child {
+            if let found = findFirstWidget(ofType: type, in: current) { return found }
+            child = gtk_widget_get_next_sibling(current)
+        }
+        return nil
+    }
+
+    private func findLabel(_ text: String, in widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget>? {
+        if String(cString: g_type_name(gtk_swift_get_widget_type(widget))) == "GtkLabel",
+           String(cString: gtk_label_get_text(OpaquePointer(widget))) == text { return widget }
+        var child = gtk_widget_get_first_child(widget)
+        while let current = child {
+            if let found = findLabel(text, in: current) { return found }
+            child = gtk_widget_get_next_sibling(current)
+        }
+        return nil
+    }
+
+    private func isDescendant(_ widget: UnsafeMutablePointer<GtkWidget>, of ancestor: UnsafeMutablePointer<GtkWidget>) -> Bool {
+        var parent = gtk_widget_get_parent(widget)
+        while let current = parent {
+            if current == ancestor { return true }
+            parent = gtk_widget_get_parent(current)
+        }
+        return false
     }
 }

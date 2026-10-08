@@ -7072,30 +7072,28 @@ extension ToolbarView: GTKRenderable {
 
         let headerBar = gtk_header_bar_new()!
         let headerBarOp = OpaquePointer(headerBar)
-        var hasPrincipal = false
+        var principalWidget: UnsafeMutablePointer<GtkWidget>?
 
         for item in items {
             let itemWidget = widgetFromOpaque(gtkRenderAnyView(item.wrapped))
             switch item.placement {
             case .principal:
-                // GtkHeaderBar allocates its title widget from the flexible
-                // center region. Expanding it makes a tab strip distribute
-                // its tabs across the usable width rather than measuring as
-                // an intrinsic chip row.
-                guard !hasPrincipal else { continue }
-                hasPrincipal = true
+                // GTK browser-style principal content (for example a tab
+                // strip) belongs in its own full-width CSD row below the
+                // navigation/window-controls row. Keep the first principal
+                // item, matching the previous single-title-widget behavior.
+                guard principalWidget == nil else { continue }
                 gtk_widget_set_hexpand(itemWidget, 1)
                 gtk_widget_set_halign(itemWidget, GTK_ALIGN_FILL)
-                gtk_header_bar_set_title_widget(headerBarOp, itemWidget)
+                gtk_widget_set_size_request(itemWidget, -1, 34)
+                principalWidget = itemWidget
             case .leading:
                 gtk_header_bar_pack_start(headerBarOp, itemWidget)
             case .primaryAction, .trailing:
                 gtk_header_bar_pack_end(headerBarOp, itemWidget)
             }
         }
-        if !hasPrincipal {
-            gtk_header_bar_set_title_widget(headerBarOp, gtk_label_new(""))
-        }
+        gtk_header_bar_set_title_widget(headerBarOp, gtk_label_new(""))
 
         // A nested NavigationStack may still need to show its title/back
         // row. The backend's navigation code recognizes this private marker
@@ -7107,6 +7105,9 @@ extension ToolbarView: GTKRenderable {
 
         let titlebarBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
         gtk_box_append(boxPointer(titlebarBox), headerBar)
+        if let principalWidget {
+            gtk_box_append(boxPointer(titlebarBox), principalWidget)
+        }
         gtk_box_append(boxPointer(titlebarBox), nestedSlot)
 
         g_object_ref(gpointer(titlebarBox))
