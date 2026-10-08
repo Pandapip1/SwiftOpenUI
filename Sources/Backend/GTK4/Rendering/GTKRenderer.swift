@@ -7746,7 +7746,7 @@ private func gtkCreateShapeWidget(box: ShapeDrawBox) -> OpaquePointer {
            userData: gpointer?) in
             guard let cr = cr, let userData = userData else { return }
             let box = Unmanaged<ShapeDrawBox>.fromOpaque(userData).takeUnretainedValue()
-            let rect = CGRect(x: 0, y: 0, width: CGFloat(w), height: CGFloat(h))
+            let rect = CGRect(origin: CGPoint(x: 0, y: 0), size: CGSize(width: CGFloat(w), height: CGFloat(h)))
             let path = box.pathGenerator(rect)
             let context = DrawingContext(cr: cr)
 

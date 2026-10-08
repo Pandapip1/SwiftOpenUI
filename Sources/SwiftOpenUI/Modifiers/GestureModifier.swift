@@ -46,6 +46,15 @@ extension CoordinateSpaceProtocol where Self == NamedCoordinateSpace {
 public enum HoverPhase: Equatable, Sendable {
     case active(CGPoint)
     case ended
+
+    public static func == (lhs: HoverPhase, rhs: HoverPhase) -> Bool {
+        switch (lhs, rhs) {
+        case (.ended, .ended): true
+        case (.active(let lhsPoint), .active(let rhsPoint)):
+            lhsPoint.x == rhsPoint.x && lhsPoint.y == rhsPoint.y
+        default: false
+        }
+    }
 }
 
 /// Backend storage for the public opaque continuous-hover modifier.

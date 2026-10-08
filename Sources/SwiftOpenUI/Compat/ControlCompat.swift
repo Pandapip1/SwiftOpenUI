@@ -138,11 +138,13 @@ public struct EditButton: View {
     public var body: some View { EmptyView() }
 }
 
+#if !canImport(AppKit) && !canImport(UIKit)
 extension URL {
     /// Security-scoped access only exists on Apple sandboxes; elsewhere the URL is directly readable.
     public func startAccessingSecurityScopedResource() -> Bool { false }
     public func stopAccessingSecurityScopedResource() {}
 }
+#endif
 
 extension Link {
     public init(_ title: String, destination: URL) { self.init(title, destination: destination.absoluteString) }

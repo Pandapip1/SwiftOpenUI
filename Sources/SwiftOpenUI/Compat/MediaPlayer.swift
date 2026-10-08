@@ -1,6 +1,6 @@
 import Foundation
 
-#if canImport(AVFoundation)
+#if canImport(AVFoundation) && !BACKEND_GTK
 @_exported import AVFoundation
 #else
 public struct CMTime: Hashable, Sendable {

@@ -1,7 +1,7 @@
 import Foundation
 
 import SwiftOpenUI
-#if !canImport(SwiftUI)
+#if BACKEND_GTK
 import BackendGTK4
 import CGTK
 import CAdwaita
@@ -19,7 +19,7 @@ public struct BrowserTabItem: Identifiable, Equatable, Sendable {
     }
 }
 
-#if canImport(SwiftUI)
+#if !BACKEND_GTK
 public struct BrowserTabContainer<Content: View>: View {
     public let items: [BrowserTabItem]
     public let selection: Binding<UUID>

@@ -2,11 +2,22 @@
 
 import PackageDescription
 
+let requestedBackend = Context.environment["SWIFTOPENUI_BACKEND"]?.lowercased()
+#if os(Linux)
+let gtkBackendEnabled = requestedBackend == nil || requestedBackend == "gtk"
+let gtkWebKitEnabled = gtkBackendEnabled
+#else
+let gtkBackendEnabled = requestedBackend == "gtk"
+let gtkWebKitEnabled = false
+#endif
+let gtkSwiftSettings: [SwiftSetting] = gtkBackendEnabled ? [.define("BACKEND_GTK")] : []
+
 var targets: [Target] = [
     // Portable declarative UI model consumed by non-SwiftUI renderers.
     .target(
         name: "SwiftOpenUICore",
-        path: "Sources/SwiftOpenUI"
+        path: "Sources/SwiftOpenUI",
+        swiftSettings: gtkSwiftSettings
     ),
 
     // Native Apple renderer. The public SwiftOpenUI facade re-exports this
@@ -20,8 +31,9 @@ var targets: [Target] = [
     // every platform; this facade chooses the available backend surface.
     .target(
         name: "SwiftOpenUI",
-        dependencies: ["SwiftOpenUICore", "BackendSwiftUI"],
-        path: "Sources/SwiftOpenUIFacade"
+        dependencies: gtkBackendEnabled ? ["SwiftOpenUICore"] : ["SwiftOpenUICore", "BackendSwiftUI"],
+        path: "Sources/SwiftOpenUIFacade",
+        swiftSettings: gtkSwiftSettings
     ),
 
     // Small helper module for macOS example launch boilerplate.
@@ -84,8 +96,14 @@ targets += [
     ),
 ]
 
-// GTK4 backend (Linux)
-#if os(Linux)
+// GTK4 backend. Linux selects it by default; macOS can opt in for backend development.
+if gtkBackendEnabled {
+var gtkBackendDependencies: [Target.Dependency] = [
+    "SwiftOpenUICore", "CGTK", "CAdwaita", "CGTKBridge", "CGStreamer", "SwiftOpenUISymbols",
+]
+var gtkBackendExclude: [String] = []
+if gtkWebKitEnabled { gtkBackendDependencies += ["WebKit", "CWebKitGTK"] }
+else { gtkBackendExclude.append("GTKWebView.swift") }
 targets += [
     .systemLibrary(
         name: "CWebKitGTK",
@@ -118,8 +136,9 @@ targets += [
     ),
     .target(
         name: "BackendGTK4",
-        dependencies: ["SwiftOpenUICore", "WebKit", "CGTK", "CAdwaita", "CGTKBridge", "CGStreamer", "CWebKitGTK", "SwiftOpenUISymbols"],
+        dependencies: gtkBackendDependencies,
         path: "Sources/Backend/GTK4/Rendering",
+        exclude: gtkBackendExclude,
         linkerSettings: [
             // FontConfig is used by the process-local font registration
             // path that loads SwiftOpenUISymbols' bundled Material Symbols
@@ -135,7 +154,8 @@ targets += [
     .target(
         name: "BrowserTabs",
         dependencies: ["SwiftOpenUI", "BackendGTK4", "CGTK", "CAdwaita"],
-        path: "Sources/BrowserTabs"
+        path: "Sources/BrowserTabs",
+        swiftSettings: gtkSwiftSettings
     ),
     .testTarget(
         name: "GTK4RenderTests",
@@ -153,7 +173,7 @@ targets += [
     ),
 ]
 exampleDeps.append("BackendGTK4")
-#endif
+}
 
 // Win32 backend (Windows)
 #if os(Windows)
@@ -199,6 +219,7 @@ exampleDeps.append("BackendWin32")
 
 // Android backend — temporarily in root for cross-compilation testing
 #if os(macOS)
+if !gtkBackendEnabled {
 targets += [
     .target(
         name: "CAdwaita",
@@ -219,6 +240,9 @@ targets += [
         dependencies: [],
         path: "Sources/Backend/GTK4/Stubs"
     ),
+]
+}
+targets += [
     .target(
         name: "BackendAndroid",
         dependencies: ["SwiftOpenUICore"],
@@ -470,7 +494,7 @@ let package = Package(
         var p: [Product] = [
             .library(name: "SwiftOpenUI", targets: ["SwiftOpenUI"]),
         ]
-        #if os(Linux)
+        if gtkBackendEnabled {
         p.append(.library(name: "WebKit", targets: ["WebKit"]))
         p.append(.library(name: "CGTK", targets: ["CGTK"]))
         p.append(.library(name: "CAdwaita", targets: ["CAdwaita"]))
@@ -482,7 +506,7 @@ let package = Package(
         // `MaterialSymbolsResources` directly (e.g. to surface the bundled
         // license text in an About dialog or to perform custom font lookups).
         p.append(.library(name: "SwiftOpenUISymbols", targets: ["SwiftOpenUISymbols"]))
-        #endif
+        }
         #if os(Windows)
         p.append(.library(name: "CWin32", targets: ["CWin32"]))
         p.append(.library(name: "CWin32Bridge", targets: ["CWin32Bridge"]))
@@ -493,10 +517,12 @@ let package = Package(
         #endif
         #if os(macOS)
         p.append(.library(name: "BackendSwiftUI", targets: ["BackendSwiftUI"]))
+        if !gtkBackendEnabled {
         p.append(.library(name: "WebKit", targets: ["WebKit"]))
         p.append(.library(name: "CAdwaita", targets: ["CAdwaita"]))
         p.append(.library(name: "BackendGTK4", targets: ["BackendGTK4"]))
         p.append(.library(name: "BrowserTabs", targets: ["BrowserTabs"]))
+        }
         p.append(.library(name: "BackendAndroid", type: .dynamic, targets: ["BackendAndroid"]))
         #endif
         return p
