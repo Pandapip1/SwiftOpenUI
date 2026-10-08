@@ -80,6 +80,19 @@ final class GTK4RenderTests: XCTestCase {
         XCTAssertEqual(String(cString: gtk_label_get_text(OpaquePointer(label))), expected)
     }
 
+    func testSmallSystemImageUsesLogicalPixelHeight() throws {
+        try requireGTK()
+
+        let label = widgetFromOpaque(gtkRenderView(Image(systemName: "house.fill").imageScale(.small)))
+        var minimum: gint = 0
+        var natural: gint = 0
+        gtk_widget_measure(label, GTK_ORIENTATION_VERTICAL, -1, &minimum, &natural, nil, nil)
+
+        XCTAssertGreaterThanOrEqual(natural, 14)
+        XCTAssertLessThanOrEqual(natural, 17,
+            "a 14-point ImageScale must not be interpreted as 14 physical Pango points at 96 DPI")
+    }
+
     func testFrameViewCentersTextUsingFixedChildPosition() throws {
         try requireGTK()
 

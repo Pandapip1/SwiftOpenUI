@@ -4932,9 +4932,10 @@ extension Image: GTKRenderable {
 /// disable ligatures through ambient font features, which would expose names
 /// such as `picture_in_picture` as visible text in controls.
 ///
-/// Pango's font_size attribute uses thousandths of a point, hence
-/// `scale.pointSize * 1000`. The widget is clamped to a point-size box
-/// for consistency with the other `gtk_image`-based Image cases.
+/// Pango's font_size attribute uses thousandths of a physical point, while
+/// ImageScale uses platform-independent logical points (GTK pixels). Convert
+/// at GTK's 96-DPI baseline. The widget keeps a matching minimum box for
+/// consistency with the other `gtk_image`-based Image cases.
 private func gtkRenderMaterialSymbolLabel(
     _ name: String,
     scale: ImageScale
@@ -4945,8 +4946,13 @@ private func gtkRenderMaterialSymbolLabel(
         ?? MaterialSymbolsCodepoints.missingGlyphCodepoint
     let glyph = UnicodeScalar(codepoint).map(String.init) ?? "?"
     let escapedGlyph = gtkEscapeMarkup(glyph)
+    // ImageScale sizes are logical pixels. Pango's numeric markup size is in
+    // points, so convert at GTK's 96-DPI baseline (72 / 96) before scaling to
+    // Pango units. Treating the pixel value as points makes every symbol 4/3
+    // too tall and changes the intrinsic height of otherwise text-sized rows.
+    let pangoSize = scale.pointSize * 750
     let markup = """
-        <span font_family="\(familyName)" font_size="\(scale.pointSize * 1000)">\(escapedGlyph)</span>
+        <span font_family="\(familyName)" font_size="\(pangoSize)">\(escapedGlyph)</span>
         """
     gtk_swift_label_set_markup(label, markup)
     let px = gint(scale.pointSize)
