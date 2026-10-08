@@ -46,18 +46,20 @@ static void pump_until(Probe *probe, guint events, gint64 timeout) {
 }
 
 int main(void) {
-    // No environment override or autoaudiosink is used: this test verifies
-    // actual decoded audio buffers reaching a file, independently of devices.
+    // The production path delegates device selection to GStreamer while tests
+    // can explicitly select a fake sink.
     g_unsetenv("SWIFT_OPENUI_GST_FAKE_AUDIO");
     gst_init(NULL, NULL);
-    // Desktop playback must use the explicit PulseAudio sink.  In particular,
-    // do not regress to autoaudiosink: it can silently select fakesink when
-    // device discovery fails, reporting successful but silent playback.
     g_assert_cmpstr(swift_openui_gst_audio_sink_description(), ==,
-                    "pulsesink client-name=Hummingbird");
+                    "autoaudiosink sync=true");
     GstElement *audio_sink = swift_openui_gst_player_make_audio_sink();
     g_assert_nonnull(audio_sink);
-    g_assert_cmpstr(GST_OBJECT_NAME(gst_element_get_factory(audio_sink)), ==, "pulsesink");
+    g_assert_cmpstr(GST_OBJECT_NAME(gst_element_get_factory(audio_sink)), ==, "autoaudiosink");
+    GstMessage *missing_output = gst_message_new_warning(GST_OBJECT(audio_sink),
+        g_error_new(GST_RESOURCE_ERROR, GST_RESOURCE_ERROR_NOT_FOUND, "no usable sink"),
+        "autodetection exhausted all candidates");
+    g_assert_true(swift_openui_gst_message_is_missing_audio_output(missing_output));
+    gst_message_unref(missing_output);
     gst_object_unref(audio_sink);
     g_setenv("SWIFT_OPENUI_GST_FAKE_AUDIO", "1", TRUE);
     g_assert_cmpstr(swift_openui_gst_audio_sink_description(), ==, "fakesink sync=true");
@@ -66,8 +68,7 @@ int main(void) {
     g_assert_cmpstr(GST_OBJECT_NAME(gst_element_get_factory(audio_sink)), ==, "fakesink");
     gst_object_unref(audio_sink);
     g_unsetenv("SWIFT_OPENUI_GST_FAKE_AUDIO");
-    // A missing explicit sink must fail playback rather than let playbin use
-    // its default autoaudiosink (which could silently become fakesink).
+    // Failure to construct the selector itself must fail playback immediately.
     SwiftOpenUIGStreamerPlayer *missing_audio = swift_openui_gst_player_new();
     g_assert_nonnull(missing_audio);
     missing_audio->audio_sink_available = FALSE;
@@ -75,9 +76,25 @@ int main(void) {
     g_assert_true(missing_audio->failed);
     gchar *missing_audio_error = swift_openui_gst_player_take_error(missing_audio);
     g_assert_nonnull(missing_audio_error);
-    g_assert_nonnull(strstr(missing_audio_error, "PulseAudio output is unavailable"));
+    g_assert_nonnull(strstr(missing_audio_error, "Audio output is unavailable"));
     g_free(missing_audio_error);
     swift_openui_gst_player_free(missing_audio);
+    SwiftOpenUIGStreamerPlayer *fallback_audio = swift_openui_gst_player_new();
+    g_assert_nonnull(fallback_audio);
+    GstElement *fallback_selector = gst_element_factory_make("autoaudiosink", NULL);
+    g_assert_nonnull(fallback_selector);
+    GstMessage *fallback_warning = gst_message_new_warning(GST_OBJECT(fallback_selector),
+        g_error_new(GST_RESOURCE_ERROR, GST_RESOURCE_ERROR_NOT_FOUND, "no usable sink"),
+        "autodetection exhausted all candidates");
+    swift_openui_gst_player_bus_message(NULL, fallback_warning, fallback_audio);
+    g_assert_true(fallback_audio->failed);
+    gchar *fallback_error = swift_openui_gst_player_take_error(fallback_audio);
+    g_assert_nonnull(fallback_error);
+    g_assert_nonnull(strstr(fallback_error, "Audio output is unavailable"));
+    g_free(fallback_error);
+    gst_message_unref(fallback_warning);
+    gst_object_unref(fallback_selector);
+    swift_openui_gst_player_free(fallback_audio);
     Probe probe = {0};
     probe.player = swift_openui_gst_player_new();
     g_assert_nonnull(probe.player);

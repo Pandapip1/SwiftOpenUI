@@ -58,25 +58,30 @@ static inline gboolean swift_openui_gst_uses_fake_audio(void) {
     return g_strcmp0(g_getenv("SWIFT_OPENUI_GST_FAKE_AUDIO"), "1") == 0;
 }
 
-// autoaudiosink quietly falls back to fakesink when it cannot discover a
-// device. That makes a missing Pulse/PipeWire connection look like successful
-// playback while dropping every audio buffer. Hummingbird's Linux runtime
-// ships GStreamer's PulseAudio plugin, and PipeWire exposes a compatible Pulse
-// server, so use that sink explicitly. Tests opt into fakesink above.
+// Let GStreamer choose the native audio backend. autoaudiosink posts a warning
+// when no real sink can enter READY and only then installs its fakesink fallback;
+// the bus handler below promotes that warning to a playback failure. Tests can
+// still opt into an intentional fakesink without going through autodetection.
 static inline const gchar *swift_openui_gst_audio_sink_description(void) {
     return swift_openui_gst_uses_fake_audio()
         ? "fakesink sync=true"
-        : "pulsesink client-name=Hummingbird";
+        : "autoaudiosink sync=true";
 }
 
 static inline GstElement *swift_openui_gst_player_make_audio_sink(void) {
     GstElement *sink = gst_element_factory_make(
-        swift_openui_gst_uses_fake_audio() ? "fakesink" : "pulsesink", NULL);
+        swift_openui_gst_uses_fake_audio() ? "fakesink" : "autoaudiosink", NULL);
     if (!sink) return NULL;
     g_object_set(sink, "sync", TRUE, NULL);
-    if (!swift_openui_gst_uses_fake_audio())
-        g_object_set(sink, "client-name", "Hummingbird", NULL);
     return sink;
+}
+
+static inline gboolean swift_openui_gst_message_is_missing_audio_output(GstMessage *message) {
+    if (!message || GST_MESSAGE_TYPE(message) != GST_MESSAGE_WARNING
+        || !GST_IS_ELEMENT(GST_MESSAGE_SRC(message))) return FALSE;
+    GstElementFactory *factory = gst_element_get_factory(GST_ELEMENT(GST_MESSAGE_SRC(message)));
+    return factory && g_strcmp0(gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(factory)),
+                                "autoaudiosink") == 0;
 }
 
 static inline void swift_openui_gst_player_fail(SwiftOpenUIGStreamerPlayer *player,
@@ -386,7 +391,7 @@ static inline void swift_openui_gst_player_set_uri(SwiftOpenUIGStreamerPlayer *p
     if (player && player->playbin) {
         if (!player->audio_sink_available) {
             swift_openui_gst_player_fail(player,
-                "PulseAudio output is unavailable; audio playback cannot start");
+                "Audio output is unavailable; playback cannot start");
             return;
         }
         swift_openui_gst_player_clear_pending_sample(player);
@@ -413,7 +418,7 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
     for (gint kind = 0; kind < 3; kind++) player->requested_track_indices[kind] = -2;
     if (!player->audio_sink_available) {
         swift_openui_gst_player_fail(player,
-            "PulseAudio output is unavailable; audio playback cannot start");
+            "Audio output is unavailable; playback cannot start");
         return;
     }
     gst_element_set_state(player->pipeline, GST_STATE_NULL);
@@ -653,7 +658,15 @@ static inline gboolean swift_openui_gst_player_bus_message(GstBus *bus, GstMessa
             }
         }
     }
-    if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_BUFFERING) {
+    if (swift_openui_gst_message_is_missing_audio_output(message)) {
+        GError *warning = NULL;
+        gst_message_parse_warning(message, &warning, NULL);
+        gchar *description = g_strdup_printf("Audio output is unavailable%s%s",
+            warning ? ": " : "", warning ? warning->message : "");
+        if (warning) g_error_free(warning);
+        swift_openui_gst_player_fail(player, description);
+        g_free(description);
+    } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_BUFFERING) {
         gint percent = 100;
         gst_message_parse_buffering(message, &percent);
         gboolean was_buffering = player->buffering_percent < 100;
