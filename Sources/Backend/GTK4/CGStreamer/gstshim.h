@@ -58,21 +58,35 @@ static inline gboolean swift_openui_gst_uses_fake_audio(void) {
     return g_strcmp0(g_getenv("SWIFT_OPENUI_GST_FAKE_AUDIO"), "1") == 0;
 }
 
-// Let GStreamer choose the native audio backend. autoaudiosink posts a warning
-// when no real sink can enter READY and only then installs its fakesink fallback;
-// the bus handler below promotes that warning to a playback failure. Tests can
-// still opt into an intentional fakesink without going through autodetection.
+// Prefer Pulse when its plugin is present. PipeWire exposes the Pulse protocol,
+// and constructing this sink directly avoids autoaudiosink's timing-dependent
+// probe/fakesink fallback during application startup. Keep autoaudiosink for
+// systems whose GStreamer installation has no Pulse plugin.
 static inline const gchar *swift_openui_gst_audio_sink_description(void) {
-    return swift_openui_gst_uses_fake_audio()
-        ? "fakesink sync=true"
-        : "autoaudiosink sync=true";
+    if (swift_openui_gst_uses_fake_audio()) return "fakesink sync=true";
+    GstElementFactory *pulse = gst_element_factory_find("pulsesink");
+    if (pulse) {
+        gst_object_unref(pulse);
+        return "pulsesink sync=true client-name=SwiftOpenUI";
+    }
+    return "autoaudiosink sync=true";
 }
 
 static inline GstElement *swift_openui_gst_player_make_audio_sink(void) {
-    GstElement *sink = gst_element_factory_make(
-        swift_openui_gst_uses_fake_audio() ? "fakesink" : "autoaudiosink", NULL);
+    const gchar *factory = "autoaudiosink";
+    if (swift_openui_gst_uses_fake_audio()) factory = "fakesink";
+    else {
+        GstElementFactory *pulse = gst_element_factory_find("pulsesink");
+        if (pulse) {
+            factory = "pulsesink";
+            gst_object_unref(pulse);
+        }
+    }
+    GstElement *sink = gst_element_factory_make(factory, NULL);
     if (!sink) return NULL;
     g_object_set(sink, "sync", TRUE, NULL);
+    if (g_strcmp0(factory, "pulsesink") == 0)
+        g_object_set(sink, "client-name", "SwiftOpenUI", NULL);
     return sink;
 }
 
