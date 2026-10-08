@@ -1934,6 +1934,14 @@ extension BackgroundView: GTKRenderable, GTKDescribable {
     }
 
     public func gtkCreateWidget() -> OpaquePointer {
+        // Conditional platform content commonly leaves an EmptyView in a
+        // background closure. It is layout-transparent in SwiftUI; wrapping
+        // it and the content in a ZStack makes the empty child GTK's sizing
+        // child and can collapse an otherwise expanding view to zero height.
+        if background is EmptyView {
+            return gtkRenderView(content)
+        }
+
         if let color = background as? Color {
             let widget = widgetFromOpaque(gtkRenderView(content))
             applyCSSToWidget(widget, properties: "background-color: \(color.hex);")
@@ -4416,10 +4424,10 @@ extension OverlayView: GTKRenderable {
         let baseWidget = widgetFromOpaque(gtkRenderView(content))
         gtk_overlay_set_child(OpaquePointer(container), baseWidget)
 
-        if gtk_widget_get_hexpand(baseWidget) != 0 {
+        if gtkWantsExpand(baseWidget, GTK_ORIENTATION_HORIZONTAL) {
             gtk_widget_set_hexpand(container, 1)
         }
-        if gtk_widget_get_vexpand(baseWidget) != 0 {
+        if gtkWantsExpand(baseWidget, GTK_ORIENTATION_VERTICAL) {
             gtk_widget_set_vexpand(container, 1)
         }
 
@@ -4433,8 +4441,8 @@ extension OverlayView: GTKRenderable {
         // isn't asking to expand. This matches SwiftUI's "overlay fills when
         // its content fills" semantics; explicit alignment still governs
         // non-filling overlays like Text or Image.
-        let overlayWantsHExpand = gtk_widget_get_hexpand(overlayWidget) != 0
-        let overlayWantsVExpand = gtk_widget_get_vexpand(overlayWidget) != 0
+        let overlayWantsHExpand = gtkWantsExpand(overlayWidget, GTK_ORIENTATION_HORIZONTAL)
+        let overlayWantsVExpand = gtkWantsExpand(overlayWidget, GTK_ORIENTATION_VERTICAL)
         gtk_widget_set_halign(overlayWidget, overlayWantsHExpand ? GTK_ALIGN_FILL : hAlign)
         gtk_widget_set_valign(overlayWidget, overlayWantsVExpand ? GTK_ALIGN_FILL : vAlign)
         gtk_overlay_add_overlay(OpaquePointer(container), overlayWidget)

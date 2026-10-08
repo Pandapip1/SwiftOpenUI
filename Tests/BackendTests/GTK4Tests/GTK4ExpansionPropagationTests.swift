@@ -62,6 +62,33 @@ final class GTK4ExpansionPropagationTests: XCTestCase {
             gtk_widget_compute_expand(hosted, GTK_ORIENTATION_VERTICAL) != 0,
             "a hosted view containing a List should expand with it")
     }
+
+    /// Overlay is a layout-transparent modifier: expansion requested anywhere
+    /// in its base subtree must remain visible to every parent above it.
+    func testExpansionSurvivesNestedOverlays() throws {
+        try requireGTK()
+        let overlaid = widgetFromOpaque(gtkRenderView(
+            VStack {
+                Text("header")
+                List { Text("row") }
+            }
+            .overlay { Text("first") }
+            .overlay(alignment: .top) { Text("second") }
+        ))
+        XCTAssertTrue(
+            gtk_widget_compute_expand(overlaid, GTK_ORIENTATION_VERTICAL) != 0,
+            "nested overlays must preserve their base view's expansion")
+    }
+
+    func testEmptyBackgroundIsLayoutTransparent() throws {
+        try requireGTK()
+        let background = widgetFromOpaque(gtkRenderView(
+            List { Text("row") }.background { EmptyView() }
+        ))
+        XCTAssertTrue(
+            gtk_widget_compute_expand(background, GTK_ORIENTATION_VERTICAL) != 0,
+            "an empty background must not discard its content's expansion")
+    }
 }
 
 private func requireGTK(
