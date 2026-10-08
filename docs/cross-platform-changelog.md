@@ -21,6 +21,14 @@ backend.
 
 ---
 
+## 2026-10-08 — Shared — incoming URL modifier surface
+
+- **Shared surface:** added SwiftUI-compatible `View.onOpenURL(perform:)`.
+- **Impact:** shared application views can declare custom-URL handling without
+  conditional SwiftUI imports; backend URL delivery remains backend-owned.
+- **Ping:** app lifecycle and backend integrators.
+- **Refs:** `OpenURLModifier.swift`.
+
 ## 2026-10-07 — GTK4 — discrete `onHover` delivery
 
 - **Shared surface:** `View.onHover(perform:)` now reports one enter and one
