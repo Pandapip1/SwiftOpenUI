@@ -47,7 +47,7 @@ final class GTK4WindowTitleBarTests: XCTestCase {
         let principal = try XCTUnwrap(findLabel("Browser tabs", in: initialTitlebar))
         XCTAssertFalse(isDescendant(principal, of: header),
                        "principal toolbar content belongs in a separate CSD row below the header")
-        let principalRow = try XCTUnwrap(gtk_widget_get_parent(principal))
+        let principalRow = try XCTUnwrap(ancestor(withCSSClass: "toolbar", from: principal))
         XCTAssertEqual(gtk_widget_get_parent(header), gtk_widget_get_parent(principalRow),
                        "header and principal rows should share the titlebar's vertical container")
         XCTAssertTrue(gtk_widget_has_css_class(initialTitlebar, "titlebar") != 0,
@@ -56,6 +56,8 @@ final class GTK4WindowTitleBarTests: XCTestCase {
                       "the principal row should use the native toolbar surface")
         XCTAssertNotEqual(gtk_widget_get_hexpand(principalRow), 0)
         XCTAssertEqual(gtk_widget_get_halign(principalRow), GTK_ALIGN_FILL)
+        XCTAssertEqual(gtk_widget_get_height(principalRow), gtk_widget_get_height(header),
+                       "the principal CSD row should follow the GTK theme's native header height")
         let tabs = try XCTUnwrap(findStack(visibleChildNamed: "home", in: root))
         gtk_swift_stack_set_visible_child_name(tabs, "library")
         pump()
@@ -165,6 +167,15 @@ final class GTK4WindowTitleBarTests: XCTestCase {
         while let current = child {
             if let found = findLabel(text, in: current) { return found }
             child = gtk_widget_get_next_sibling(current)
+        }
+        return nil
+    }
+
+    private func ancestor(withCSSClass name: String, from widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget>? {
+        var current: UnsafeMutablePointer<GtkWidget>? = widget
+        while let node = current {
+            if gtk_widget_has_css_class(node, name) != 0 { return node }
+            current = gtk_widget_get_parent(node)
         }
         return nil
     }

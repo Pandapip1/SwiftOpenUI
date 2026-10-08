@@ -7122,7 +7122,6 @@ extension ToolbarView: GTKRenderable {
                 guard principalWidget == nil else { continue }
                 gtk_widget_set_hexpand(itemWidget, 1)
                 gtk_widget_set_halign(itemWidget, GTK_ALIGN_FILL)
-                gtk_widget_set_size_request(itemWidget, -1, 34)
                 principalWidget = itemWidget
             case .leading:
                 gtk_header_bar_pack_start(headerBarOp, itemWidget)
@@ -7148,14 +7147,20 @@ extension ToolbarView: GTKRenderable {
         gtk_widget_add_css_class(titlebarBox, "titlebar")
         gtk_box_append(boxPointer(titlebarBox), headerBar)
         if let principalWidget {
-            let principalRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
+            // Use a second native header bar for browser-style principal
+            // content. GtkBox with the `toolbar` CSS class does not receive
+            // the theme's header-bar minimum height or vertical padding.
+            // Keeping this row a GtkHeaderBar lets the active GTK theme own
+            // those metrics, just as it does for the controls row above.
+            let principalRow = gtk_header_bar_new()!
+            let principalRowOp = OpaquePointer(principalRow)
+            gtk_header_bar_set_show_title_buttons(principalRowOp, 0)
             gtk_widget_add_css_class(principalRow, "toolbar")
             gtk_widget_set_hexpand(principalRow, 1)
             gtk_widget_set_halign(principalRow, GTK_ALIGN_FILL)
-            gtk_widget_set_size_request(principalRow, -1, 34)
             gtk_widget_set_hexpand(principalWidget, 1)
             gtk_widget_set_halign(principalWidget, GTK_ALIGN_FILL)
-            gtk_box_append(boxPointer(principalRow), principalWidget)
+            gtk_header_bar_set_title_widget(principalRowOp, principalWidget)
             gtk_box_append(boxPointer(titlebarBox), principalRow)
         }
         gtk_box_append(boxPointer(titlebarBox), nestedSlot)
