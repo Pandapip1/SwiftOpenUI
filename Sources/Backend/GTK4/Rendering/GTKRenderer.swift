@@ -5237,6 +5237,10 @@ private final class GTKDeferredTabPage {
 
 extension TabView: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
+        gtkCreateWidget(sidebarAdaptable: false)
+    }
+
+    fileprivate func gtkCreateWidget(sidebarAdaptable: Bool) -> OpaquePointer {
         adw_init()
         let stack = swift_adw_view_stack_new()!
 
@@ -5307,7 +5311,9 @@ extension TabView: GTKRenderable {
             GConnectFlags(rawValue: 0)
         )
 
-        let switcher = swift_adw_view_switcher_new(stack)!
+        let switcher = sidebarAdaptable
+            ? swift_adw_view_switcher_sidebar_new(stack)!
+            : swift_adw_view_switcher_new(stack)!
 
         // Spacing comes from the theme, not from a number picked here. GTK's
         // own stylesheet gives .toolbar `padding: 4px; border-spacing: 4px`, so
@@ -5329,12 +5335,23 @@ extension TabView: GTKRenderable {
         // spacing and let the window show through.
         applyCSSToWidget(switcher, properties: "background: transparent;")
 
-        let vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        let vbox = gtk_box_new(sidebarAdaptable ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL, 0)!
         gtk_box_append(boxPointer(vbox), switcher)
         gtk_box_append(boxPointer(vbox), stack)
+        if sidebarAdaptable { gtk_widget_set_vexpand(switcher, 1) }
         gtk_widget_set_vexpand(stack, 1)
+        gtk_widget_set_hexpand(stack, 1)
 
         return opaqueFromWidget(vbox)
+    }
+}
+
+extension TabViewStyleView: GTKRenderable {
+    public func gtkCreateWidget() -> OpaquePointer {
+        if let tabs = content as? TabView {
+            return tabs.gtkCreateWidget(sidebarAdaptable: style is SidebarAdaptableTabViewStyle)
+        }
+        return gtkRenderView(content)
     }
 }
 
@@ -7099,6 +7116,7 @@ extension ToolbarView: GTKRenderable {
         // here keeps it backend-private and lets applications use SwiftUI's
         // ordinary `.toolbar` API on every platform.
         let contentWidget = widgetFromOpaque(gtkRenderView(content))
+        let initialNestedTitlebar = gtkFindTitlebar(in: contentWidget)
         guard getCurrentNavigationContext() == nil else {
             return opaqueFromWidget(contentWidget)
         }
@@ -7113,6 +7131,10 @@ extension ToolbarView: GTKRenderable {
 
         let headerBar = gtk_header_bar_new()!
         let headerBarOp = OpaquePointer(headerBar)
+        // Only a title applied to the toolbar's own content is a window
+        // title. Recursively extracting here would incorrectly promote a
+        // title from a nested NavigationStack or an inactive tab.
+        let windowTitle = (content as? NavigationTitled)?.navigationTitle ?? ""
         var principalWidget: UnsafeMutablePointer<GtkWidget>?
 
         for item in items {
@@ -7133,7 +7155,32 @@ extension ToolbarView: GTKRenderable {
                 gtk_header_bar_pack_end(headerBarOp, itemWidget)
             }
         }
-        gtk_header_bar_set_title_widget(headerBarOp, gtk_label_new(""))
+        let titleLabel = gtk_label_new(windowTitle)
+        gtk_label_set_ellipsize(OpaquePointer(titleLabel), PANGO_ELLIPSIZE_END)
+        gtk_header_bar_set_title_widget(headerBarOp, titleLabel)
+
+        // `.navigationTitle` on a window-root toolbar is both the visible CSD
+        // title and the native GtkWindow title exposed to the compositor.
+        // The widget is not rooted yet during initial rendering, so observe
+        // `root` and apply it once GTK attaches the content to its window.
+        if !windowTitle.isEmpty {
+            let titleState = Unmanaged.passRetained(GTKWindowTitleState(windowTitle)).toOpaque()
+            g_signal_connect_data(
+                gpointer(contentWidget), "notify::root",
+                unsafeBitCast({ (object: gpointer?, _: gpointer?, data: gpointer?) in
+                    guard let object, let data else { return }
+                    let state = Unmanaged<GTKWindowTitleState>.fromOpaque(data).takeUnretainedValue()
+                    let widget = UnsafeMutableRawPointer(object).assumingMemoryBound(to: GtkWidget.self)
+                    state.title.withCString { gtk_swift_set_root_window_title(widget, $0) }
+                } as @convention(c) (gpointer?, gpointer?, gpointer?) -> Void, to: GCallback.self),
+                titleState,
+                { data, _ in
+                    guard let data else { return }
+                    Unmanaged<GTKWindowTitleState>.fromOpaque(data).release()
+                },
+                GConnectFlags(rawValue: 0)
+            )
+        }
 
         // A nested NavigationStack may still need to show its title/back
         // row. The backend's navigation code recognizes this private marker
@@ -7167,6 +7214,14 @@ extension ToolbarView: GTKRenderable {
             gtk_header_bar_set_title_widget(principalRowOp, principalWidget)
             gtk_box_append(boxPointer(titlebarBox), principalRow)
         }
+        // A root title supersedes descendant NavigationStack titles. The slot
+        // remains attached so nested toolbar actions/back controls stay
+        // reachable; gtkInstallNestedTitlebar hides its duplicate title and
+        // collapses the row when there are no controls to show.
+        if !windowTitle.isEmpty {
+            g_object_set_data(nestedSlotObject, "gtk-swift-suppress-nested-title", gpointer(bitPattern: 1))
+            gtk_widget_set_visible(nestedSlot, 0)
+        }
         gtk_box_append(boxPointer(titlebarBox), nestedSlot)
 
         g_object_ref(gpointer(titlebarBox))
@@ -7175,9 +7230,17 @@ extension ToolbarView: GTKRenderable {
             g_object_unref(userData)
         })
         g_object_set_data(contentObject, "gtk-swift-nested-titlebar-slot", gpointer(nestedSlot))
+        if let initialNestedTitlebar {
+            gtkInstallNestedTitlebar(initialNestedTitlebar, in: nestedSlot)
+        }
 
         return opaqueFromWidget(contentWidget)
     }
+}
+
+private final class GTKWindowTitleState {
+    let title: String
+    init(_ title: String) { self.title = title }
 }
 
 extension ToolbarConfigurationView: GTKRenderable {

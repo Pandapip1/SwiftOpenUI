@@ -936,6 +936,15 @@ gtk_swift_set_root_window_titlebar(GtkWidget *widget, GtkWidget *titlebar) {
     }
 }
 
+/// Update the native title of the GtkWindow containing `widget`.
+static inline void
+gtk_swift_set_root_window_title(GtkWidget *widget, const char *title) {
+    GtkRoot *root = gtk_widget_get_root(widget);
+    if (root && GTK_IS_WINDOW(root)) {
+        gtk_window_set_title(GTK_WINDOW(root), title);
+    }
+}
+
 // --- GtkSwitch shims ---
 
 static inline GtkWidget *

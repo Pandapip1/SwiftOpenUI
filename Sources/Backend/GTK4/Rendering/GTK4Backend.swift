@@ -117,7 +117,7 @@ private func gtkPrepareRootWindowTitlebar(
 /// titlebar. `show-title-buttons` defaults on for any `GtkHeaderBar` — fine
 /// when it's genuinely installed as the window's titlebar, wrong here,
 /// since the outer one already drew those once.
-private func gtkInstallNestedTitlebar(_ titlebar: UnsafeMutablePointer<GtkWidget>, in slot: UnsafeMutablePointer<GtkWidget>) {
+func gtkInstallNestedTitlebar(_ titlebar: UnsafeMutablePointer<GtkWidget>, in slot: UnsafeMutablePointer<GtkWidget>) {
     if String(cString: g_type_name(gtk_swift_get_widget_type(titlebar))) == "GtkHeaderBar" {
         gtk_header_bar_set_show_title_buttons(OpaquePointer(titlebar), 0)
     }
@@ -126,6 +126,26 @@ private func gtkInstallNestedTitlebar(_ titlebar: UnsafeMutablePointer<GtkWidget
         let next = gtk_widget_get_next_sibling(current)
         gtk_box_remove(boxPointer(slot), current)
         existing = next
+    }
+    let slotObject = UnsafeMutableRawPointer(slot).assumingMemoryBound(to: GObject.self)
+    if g_object_get_data(slotObject, "gtk-swift-suppress-nested-title") != nil {
+        let header = OpaquePointer(titlebar)
+        let titleWidget = gtk_header_bar_get_title_widget(header)
+        // The root `.navigationTitle` is already displayed in the native
+        // window header. Suppress only the duplicate nested title; keep a row
+        // when the nested NavigationStack has controls/actions of its own.
+        if let titleWidget { gtk_widget_set_visible(titleWidget, 0) }
+        var hasControls = false
+        var child = gtk_widget_get_first_child(titlebar)
+        while let current = child {
+            if current != titleWidget { hasControls = true; break }
+            child = gtk_widget_get_next_sibling(current)
+        }
+        guard hasControls else {
+            gtk_widget_set_visible(slot, 0)
+            return
+        }
+        gtk_widget_set_visible(slot, 1)
     }
     if gtk_widget_get_parent(titlebar) != nil { gtk_widget_unparent(titlebar) }
     gtk_box_append(boxPointer(slot), titlebar)

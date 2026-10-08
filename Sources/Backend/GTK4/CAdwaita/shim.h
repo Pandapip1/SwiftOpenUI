@@ -37,6 +37,12 @@ static inline GtkWidget *swift_adw_view_switcher_new(GtkWidget *stack) {
     return GTK_WIDGET(switcher);
 }
 
+static inline GtkWidget *swift_adw_view_switcher_sidebar_new(GtkWidget *stack) {
+    AdwViewSwitcherSidebar *sidebar = ADW_VIEW_SWITCHER_SIDEBAR(adw_view_switcher_sidebar_new());
+    adw_view_switcher_sidebar_set_stack(sidebar, ADW_VIEW_STACK(stack));
+    return GTK_WIDGET(sidebar);
+}
+
 static inline GtkWidget *swift_adw_tab_view_new(void) {
     return GTK_WIDGET(adw_tab_view_new());
 }

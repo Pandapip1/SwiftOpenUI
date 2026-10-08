@@ -6,6 +6,18 @@ import CAdwaita
 import CGTKBridge
 
 final class GTK4WindowTitleBarTests: XCTestCase {
+    struct RootWithWindowTitleAndNestedAction: View {
+        var body: some View {
+            NavigationStack {
+                Text("Page content")
+                    .navigationTitle("Nested page")
+                    .toolbar { ToolbarItem(placement: .primaryAction) { Button("Refresh") {} } }
+            }
+            .navigationTitle("Selected tab")
+            .toolbar { ToolbarItem(placement: .principal) { Text("Browser tabs") } }
+        }
+    }
+
     /// This mirrors the pinned Home tab: a browser-style titlebar owns the
     /// window chrome while each bottom tab owns a NavigationStack. Selecting
     /// a deferred bottom tab after the tree is attached used to bypass the
@@ -88,6 +100,27 @@ final class GTK4WindowTitleBarTests: XCTestCase {
                           "the promoted header must no longer be parented by its old nested titlebar slot")
         XCTAssertNotEqual(gtk_header_bar_get_show_title_buttons(OpaquePointer(nestedHeader)), 0,
                           "a cached header promoted from a nested titlebar slot must restore its window buttons")
+    }
+
+    func testRootTitleSuppressesOnlyNestedTitleAndKeepsNestedActions() throws {
+        guard gtk_is_initialized() != 0 else { throw XCTSkip("no GTK display") }
+        let root = widgetFromOpaque(gtkRenderView(RootWithWindowTitleAndNestedAction()))
+        let window = gtk_window_new()!
+        let win = UnsafeMutableRawPointer(window).assumingMemoryBound(to: GtkWindow.self)
+        gtk_window_set_child(win, root)
+        let titlebar = try XCTUnwrap(gtkFindTitlebar(in: root))
+        gtk_window_set_titlebar(win, titlebar)
+        gtk_widget_set_visible(window, 1)
+        defer { gtk_window_destroy(win) }
+        pump()
+
+        let header = try XCTUnwrap(findFirstWidget(ofType: "GtkHeaderBar", in: titlebar))
+        XCTAssertNotNil(findLabel("Selected tab", in: header))
+        XCTAssertNil(findLabel("Nested page", in: titlebar),
+                     "a nested navigation title must not draw beneath the browser tab bar")
+        XCTAssertNotNil(findLabel("Refresh", in: titlebar),
+                        "suppressing the nested title must preserve its toolbar actions")
+        XCTAssertEqual(String(cString: try XCTUnwrap(gtk_window_get_title(win))), "Selected tab")
     }
 
     private func pump() {
