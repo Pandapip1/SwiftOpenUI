@@ -22,6 +22,12 @@ public struct FocusedEqualsView<Content: View, Value: Hashable>: View {
 }
 
 extension View {
+    /// Indicates that this view's frame and focusable descendants should guide
+    /// focus movement. Backends without a focus engine preserve the content.
+    public func focusSection() -> some View {
+        self
+    }
+
     /// Binds the focus state of this view to a boolean @FocusState.
     public func focused(_ state: FocusState<Bool>) -> FocusedView<Self> {
         FocusedView(content: self, focusState: state)

@@ -21,6 +21,13 @@ backend.
 
 ---
 
+## 2026-10-08 — Shared — focus-section modifier surface
+
+- **Shared surface:** added SwiftUI-compatible `View.focusSection()`.
+- **Impact:** shared views can define directional-focus cohorts for tvOS while
+  backends without a focus engine preserve the wrapped content unchanged.
+- **Refs:** Hummingbird issue #18.
+
 ## 2026-10-08 — GTK4 — principal toolbar content uses a separate CSD row
 
 - **GTK4 backend:** root `.principal` toolbar content now fills a dedicated
