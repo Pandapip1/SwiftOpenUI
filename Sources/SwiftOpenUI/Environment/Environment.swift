@@ -314,6 +314,34 @@ public struct ColorSchemeKey: EnvironmentKey {
     public static let defaultValue: ColorScheme = .light
 }
 
+/// The horizontal or vertical size class supplied by the presentation
+/// backend. Desktop backends leave both values `nil`, matching SwiftUI on
+/// macOS; compact-device backends can supply their native class.
+public enum UserInterfaceSizeClass: Sendable, Hashable {
+    case compact
+    case regular
+}
+
+private struct HorizontalSizeClassKey: EnvironmentKey {
+    static let defaultValue: UserInterfaceSizeClass? = nil
+}
+
+private struct VerticalSizeClassKey: EnvironmentKey {
+    static let defaultValue: UserInterfaceSizeClass? = nil
+}
+
+extension EnvironmentValues {
+    public var horizontalSizeClass: UserInterfaceSizeClass? {
+        get { self[HorizontalSizeClassKey.self] }
+        set { self[HorizontalSizeClassKey.self] = newValue }
+    }
+
+    public var verticalSizeClass: UserInterfaceSizeClass? {
+        get { self[VerticalSizeClassKey.self] }
+        set { self[VerticalSizeClassKey.self] = newValue }
+    }
+}
+
 extension EnvironmentValues {
     public var colorScheme: ColorScheme {
         get { self[ColorSchemeKey.self] }

@@ -21,6 +21,16 @@ backend.
 
 ---
 
+## 2026-10-08 — Shared — interface size class environment values
+
+- **Shared surface:** added SwiftUI-compatible `UserInterfaceSizeClass` and
+  `EnvironmentValues.horizontalSizeClass` / `verticalSizeClass`.
+- **Impact:** shared adaptive views can distinguish compact-device
+  presentations without platform conditionals; desktop backends default to
+  `nil`, matching SwiftUI on macOS.
+- **Ping:** environment and backend integrators.
+- **Refs:** Hummingbird issue #51.
+
 ## 2026-10-08 — Shared — incoming URL modifier surface
 
 - **Shared surface:** added SwiftUI-compatible `View.onOpenURL(perform:)`.
