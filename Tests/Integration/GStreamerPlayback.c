@@ -51,18 +51,15 @@ int main(void) {
     g_unsetenv("SWIFT_OPENUI_GST_FAKE_AUDIO");
     gst_init(NULL, NULL);
     g_assert_cmpstr(swift_openui_gst_audio_sink_description(), ==,
-                    "pulsesink sync=true client-name=SwiftOpenUI");
+                    "autoaudiosink sync=true");
     GstElement *audio_sink = swift_openui_gst_player_make_audio_sink();
     g_assert_nonnull(audio_sink);
-    g_assert_cmpstr(GST_OBJECT_NAME(gst_element_get_factory(audio_sink)), ==, "pulsesink");
-    GstElement *automatic_sink = gst_element_factory_make("autoaudiosink", NULL);
-    g_assert_nonnull(automatic_sink);
-    GstMessage *missing_output = gst_message_new_warning(GST_OBJECT(automatic_sink),
+    g_assert_cmpstr(GST_OBJECT_NAME(gst_element_get_factory(audio_sink)), ==, "autoaudiosink");
+    GstMessage *missing_output = gst_message_new_warning(GST_OBJECT(audio_sink),
         g_error_new(GST_RESOURCE_ERROR, GST_RESOURCE_ERROR_NOT_FOUND, "no usable sink"),
         "autodetection exhausted all candidates");
     g_assert_true(swift_openui_gst_message_is_missing_audio_output(missing_output));
     gst_message_unref(missing_output);
-    gst_object_unref(automatic_sink);
     gst_object_unref(audio_sink);
     g_setenv("SWIFT_OPENUI_GST_FAKE_AUDIO", "1", TRUE);
     g_assert_cmpstr(swift_openui_gst_audio_sink_description(), ==, "fakesink sync=true");
