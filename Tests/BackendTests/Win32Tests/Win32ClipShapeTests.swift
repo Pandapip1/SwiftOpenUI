@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 @testable import BackendWin32
 import WinSDK
 import CWin32
@@ -138,7 +138,7 @@ final class Win32ClipShapeTests: XCTestCase {
         let ctx = testContext()
         let view = Text("Hello")
             .frame(width: 60, height: 20)
-            .clipShape(SwiftOpenUI.Rectangle())
+            .clipShape(SwiftOpenUICore.Rectangle())
         let hwnd = winRenderView(view, in: ctx)
         XCTAssertNotNil(hwnd)
     }
@@ -147,7 +147,7 @@ final class Win32ClipShapeTests: XCTestCase {
         let ctx = testContext()
         let view = Text("Hello")
             .frame(width: 60, height: 20)
-            .clipShape(SwiftOpenUI.Rectangle())
+            .clipShape(SwiftOpenUICore.Rectangle())
         let hwnd = winRenderView(view, in: ctx)
         XCTAssertNotNil(hwnd)
 

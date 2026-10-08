@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 @testable import BackendWeb
 
 final class WebDescriptorTests: XCTestCase {
@@ -692,7 +692,7 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     func testDescribeDivider() {
-        let node = webDescribeView(SwiftOpenUI.Divider())
+        let node = webDescribeView(SwiftOpenUICore.Divider())
         XCTAssertEqual(node.kind, .divider)
         XCTAssertTrue(node.children.isEmpty)
     }
@@ -791,7 +791,7 @@ final class WebDescriptorTests: XCTestCase {
     // MARK: - Searchable Descriptor Tests
 
     func testDescribeSearchableDefault() {
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let view = Text("Content").searchable(text: $query)
         let node = webDescribeView(view)
 
@@ -817,7 +817,7 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     func testDescribeSearchableWithPlacement() {
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let view = Text("Content").searchable(
             text: $query,
             placement: .toolbar,
@@ -845,8 +845,8 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     func testDescribeSearchableWithIsPresented() {
-        @SwiftOpenUI.State var query = ""
-        @SwiftOpenUI.State var presented = true
+        @SwiftOpenUICore.State var query = ""
+        @SwiftOpenUICore.State var presented = true
         let view = Text("Content").searchable(
             text: $query,
             isPresented: $presented
@@ -873,8 +873,8 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     func testDescribeSearchableIsPresentedFalse() {
-        @SwiftOpenUI.State var query = ""
-        @SwiftOpenUI.State var presented = false
+        @SwiftOpenUICore.State var query = ""
+        @SwiftOpenUICore.State var presented = false
         let view = Text("Content").searchable(
             text: $query,
             isPresented: $presented
@@ -899,7 +899,7 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     func testDescribeSearchableNavigationBarDrawerPlacement() {
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let view = Text("Content").searchable(
             text: $query,
             placement: .navigationBarDrawer(displayMode: .always)
@@ -924,7 +924,7 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     func testDescribeSearchableSidebarPlacement() {
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let view = Text("Content").searchable(
             text: $query,
             placement: .sidebar
@@ -1158,8 +1158,8 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     func testDescribeSearchableWithTokens() {
-        @SwiftOpenUI.State var query = ""
-        @SwiftOpenUI.State var tokens = [
+        @SwiftOpenUICore.State var query = ""
+        @SwiftOpenUICore.State var tokens = [
             TestToken(id: "1", name: "Swift"),
             TestToken(id: "2", name: "Rust"),
         ]
@@ -1195,8 +1195,8 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     func testDescribeSearchableWithEditableTokens() {
-        @SwiftOpenUI.State var query = ""
-        @SwiftOpenUI.State var tokens = [
+        @SwiftOpenUICore.State var query = ""
+        @SwiftOpenUICore.State var tokens = [
             TestToken(id: "a", name: "Tag A"),
         ]
         let view = Text("Content").searchable(
@@ -1228,8 +1228,8 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     func testDescribeSearchableWithEmptyTokens() {
-        @SwiftOpenUI.State var query = ""
-        @SwiftOpenUI.State var tokens: [TestToken] = []
+        @SwiftOpenUICore.State var query = ""
+        @SwiftOpenUICore.State var tokens: [TestToken] = []
         let view = Text("Content").searchable(
             text: $query,
             tokens: $tokens,
@@ -1259,7 +1259,7 @@ final class WebDescriptorTests: XCTestCase {
     // MARK: - Search Suggestions Descriptor Tests
 
     func testDescribeSearchableWithSuggestions() {
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let view = Text("Content")
             .searchable(text: $query)
             .searchSuggestions {
@@ -1291,7 +1291,7 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     func testDescribeSearchableWithSearchCompletion() {
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let view = Text("Content")
             .searchable(text: $query)
             .searchSuggestions {
@@ -1319,7 +1319,7 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     func testDescribeSearchableWithEmptySuggestions() {
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let view = Text("Content")
             .searchable(text: $query)
             .searchSuggestions { }
@@ -1351,8 +1351,8 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     func testDescribeSearchableWithScopes() {
-        @SwiftOpenUI.State var query = ""
-        @SwiftOpenUI.State var scope = TestScope.all
+        @SwiftOpenUICore.State var query = ""
+        @SwiftOpenUICore.State var scope = TestScope.all
         let view = Text("Content")
             .searchable(text: $query)
             .searchScopes($scope, scopes: TestScope.allCases) { s in
@@ -1384,8 +1384,8 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     func testDescribeSearchableWithScopesAndSuggestions() {
-        @SwiftOpenUI.State var query = ""
-        @SwiftOpenUI.State var scope = TestScope.books
+        @SwiftOpenUICore.State var query = ""
+        @SwiftOpenUICore.State var scope = TestScope.books
         let view = Text("Content")
             .searchable(text: $query)
             .searchSuggestions {

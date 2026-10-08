@@ -1,6 +1,6 @@
-import SwiftOpenUI
+import SwiftOpenUICore
 
-/// Android rendering backend for SwiftOpenUI.
+/// Android rendering backend for SwiftOpenUICore.
 /// Renders the view tree to a JSON RenderNode tree, which the Kotlin
 /// host decodes and applies to Android Views.
 public struct AndroidBackend: RenderBackend {

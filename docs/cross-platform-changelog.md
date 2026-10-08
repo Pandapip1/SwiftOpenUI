@@ -21,6 +21,17 @@ backend.
 
 ---
 
+## 2026-10-08 — Apple/Shared — SwiftUI backend and stable facade
+
+- **Shared surface:** split the portable declarations into `SwiftOpenUICore`,
+  added `BackendSwiftUI`, and made `SwiftOpenUI` the application-facing facade
+  on every platform.
+- **Impact:** Apple applications can import `SwiftOpenUI` while receiving the
+  native SwiftUI surface; portable renderers consume `SwiftOpenUICore`
+  directly. Backend choice is no longer encoded in application imports.
+- **Ping:** backend and package integrators.
+- **Refs:** `Backend/SwiftUI`, `SwiftOpenUIFacade`, `Package.swift`.
+
 ## 2026-10-08 — Shared — focus-section modifier surface
 
 - **Shared surface:** added SwiftUI-compatible `View.focusSection()`.

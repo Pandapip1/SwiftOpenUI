@@ -1,5 +1,5 @@
 import JavaScriptKit
-import SwiftOpenUI
+import SwiftOpenUICore
 
 // MARK: - Slot table (per-host)
 

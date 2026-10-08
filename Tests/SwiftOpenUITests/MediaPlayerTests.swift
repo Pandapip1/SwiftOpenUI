@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@_spi(SwiftOpenUIBackend) @testable import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) @testable import SwiftOpenUICore
 
 final class AVPlayerCompatibilityTests: XCTestCase {
     func testAssetLoadsMediaSelectionGroupsAsynchronously() async throws {

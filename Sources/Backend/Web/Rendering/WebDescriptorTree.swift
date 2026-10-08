@@ -1,4 +1,4 @@
-import SwiftOpenUI
+import SwiftOpenUICore
 import Foundation
 
 // MARK: - Descriptor kinds and property types

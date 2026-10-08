@@ -1,5 +1,5 @@
 import XCTest
-import SwiftOpenUI
+import SwiftOpenUICore
 import WebKit
 @testable import BackendGTK4
 import CGTK

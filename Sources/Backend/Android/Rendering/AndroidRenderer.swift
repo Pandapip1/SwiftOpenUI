@@ -1,4 +1,4 @@
-import SwiftOpenUI
+import SwiftOpenUICore
 
 // MARK: - Layout measurement
 
@@ -178,13 +178,13 @@ extension Spacer: AndroidRenderable {
     }
 }
 
-extension SwiftOpenUI.Divider: AndroidRenderable {
+extension SwiftOpenUICore.Divider: AndroidRenderable {
     public func androidCreateNode() -> RenderNode {
         RenderNode(type: "divider")
     }
 }
 
-extension SwiftOpenUI.Button: AndroidRenderable {
+extension SwiftOpenUICore.Button: AndroidRenderable {
     public func androidCreateNode() -> RenderNode {
         let node = RenderNode(type: "button")
         // node.id is set by androidRenderView dispatch
@@ -204,7 +204,7 @@ extension SwiftOpenUI.Button: AndroidRenderable {
     }
 }
 
-extension SwiftOpenUI.TextField: AndroidRenderable {
+extension SwiftOpenUICore.TextField: AndroidRenderable {
     public func androidCreateNode() -> RenderNode {
         let node = RenderNode(type: "textfield")
         node.props["placeholder"] = title
@@ -272,7 +272,7 @@ extension ProgressView: AndroidRenderable {
     }
 }
 
-extension SwiftOpenUI.Color: AndroidRenderable {
+extension SwiftOpenUICore.Color: AndroidRenderable {
     public func androidCreateNode() -> RenderNode {
         let node = RenderNode(type: "color")
         node.props["r"] = "\(red)"

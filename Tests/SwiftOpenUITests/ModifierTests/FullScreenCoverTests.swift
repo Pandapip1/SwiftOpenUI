@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 
 final class FullScreenCoverTests: XCTestCase {
 

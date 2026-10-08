@@ -12,7 +12,7 @@
 // each platform. Also serves as a source for new parity scenarios.
 
 #if os(macOS)
-import SwiftUI
+import SwiftOpenUI
 import MacExampleSupport
 #else
 import SwiftOpenUI

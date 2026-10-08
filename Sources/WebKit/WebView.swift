@@ -1,5 +1,5 @@
 import Foundation
-import SwiftOpenUI
+import SwiftOpenUICore
 
 @MainActor @preconcurrency
 public struct WebView: View, PrimitiveView {

@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 @testable import BackendWeb
 
 final class WebTextFormattingTests: XCTestCase {

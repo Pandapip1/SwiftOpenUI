@@ -11,7 +11,7 @@
 // source compiles and runs everywhere with no #if os() guards.
 
 #if os(macOS)
-import SwiftUI
+import SwiftOpenUI
 import MacExampleSupport
 #else
 import SwiftOpenUI

@@ -11,7 +11,7 @@
 //   Win32 — Narrator, once the Win32 a11y bridge lands.
 
 #if os(macOS)
-import SwiftUI
+import SwiftOpenUI
 import MacExampleSupport
 #else
 import SwiftOpenUI

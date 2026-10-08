@@ -9,7 +9,7 @@
 // with multiple children (up to 12).
 
 #if os(macOS)
-import SwiftUI
+import SwiftOpenUI
 import MacExampleSupport
 #else
 import SwiftOpenUI

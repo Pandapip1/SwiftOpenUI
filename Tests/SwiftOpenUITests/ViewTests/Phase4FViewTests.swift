@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 
 final class Phase4FViewTests: XCTestCase {
 
@@ -31,14 +31,14 @@ final class Phase4FViewTests: XCTestCase {
     // MARK: - DatePicker
 
     func testDateComponents() {
-        let dc = SwiftOpenUI.DateComponents(year: 2025, month: 3, day: 15)
+        let dc = SwiftOpenUICore.DateComponents(year: 2025, month: 3, day: 15)
         XCTAssertEqual(dc.year, 2025)
         XCTAssertEqual(dc.month, 3)
         XCTAssertEqual(dc.day, 15)
     }
 
     func testDateComponentsToday() {
-        let dc = SwiftOpenUI.DateComponents()
+        let dc = SwiftOpenUICore.DateComponents()
         XCTAssertGreaterThan(dc.year, 2020)
         XCTAssertTrue((1...12).contains(dc.month))
         XCTAssertTrue((1...31).contains(dc.day))
@@ -51,7 +51,7 @@ final class Phase4FViewTests: XCTestCase {
     }
 
     func testDatePickerBinding() {
-        let dc = SwiftOpenUI.DateComponents(year: 2000, month: 1, day: 1)
+        let dc = SwiftOpenUICore.DateComponents(year: 2000, month: 1, day: 1)
         let picker = DatePicker("DOB", selection: .constant(dc))
         XCTAssertNotNil(picker.selection)
         XCTAssertEqual(picker.selection?.wrappedValue.year, 2000)

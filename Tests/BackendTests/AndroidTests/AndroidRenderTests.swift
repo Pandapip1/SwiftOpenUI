@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 @testable import BackendAndroid
 
 final class AndroidRenderTests: XCTestCase {
@@ -583,7 +583,7 @@ final class AndroidRenderTests: XCTestCase {
     func testNestedStateRestoredAcrossRenders() {
         // A child view with its own @State
         struct ChildCounter: View {
-            @SwiftOpenUI.State var count: Int = 0
+            @SwiftOpenUICore.State var count: Int = 0
             var body: some View {
                 Text("Count: \(count)")
             }
@@ -663,7 +663,7 @@ final class AndroidRenderTests: XCTestCase {
 
         // View with NavigationStack + NavigationLink (registers destination in registry)
         struct NavDemo: View {
-            @SwiftOpenUI.State var path = NavigationPath()
+            @SwiftOpenUICore.State var path = NavigationPath()
             var body: some View {
                 NavigationStack(path: $path) {
                     NavigationLink("Go to Detail", title: "Detail") {

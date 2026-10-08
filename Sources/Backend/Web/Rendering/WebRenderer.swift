@@ -1,5 +1,5 @@
 import JavaScriptKit
-@_spi(SwiftOpenUIBackend) import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) import SwiftOpenUICore
 
 // MARK: - JSClosure lifetime management
 
@@ -178,7 +178,7 @@ extension Spacer: WebRenderable, WebDescribable {
     }
 }
 
-extension SwiftOpenUI.Divider: WebRenderable, WebDescribable {
+extension SwiftOpenUICore.Divider: WebRenderable, WebDescribable {
     public func webDescribeNode() -> WebDescriptorNode {
         WebDescriptorNode(kind: .divider, typeName: "Divider")
     }
@@ -193,7 +193,7 @@ extension SwiftOpenUI.Divider: WebRenderable, WebDescribable {
 /// Flag to suppress input handler during programmatic value updates.
 private var _webSuppressInputHandler = false
 
-extension SwiftOpenUI.TextField: WebRenderable {
+extension SwiftOpenUICore.TextField: WebRenderable {
     public func webCreateElement() -> JSValue {
         let input = document.createElement("input")
         input.type = "text"
@@ -533,7 +533,7 @@ extension Circle: WebRenderable {
     }
 }
 
-extension SwiftOpenUI.Rectangle: WebRenderable {
+extension SwiftOpenUICore.Rectangle: WebRenderable {
     public func webCreateElement() -> JSValue {
         webCreateShapeSVG(self, fill: "black")
     }
@@ -583,7 +583,7 @@ func webClipPathCSS<S: Shape>(_ shape: S) -> String? {
         return "clip-path: inset(0 round \(Int(rr.cornerRadius))px);"
     } else if shape is Capsule {
         return "clip-path: inset(0 round 9999px);"
-    } else if shape is SwiftOpenUI.Rectangle {
+    } else if shape is SwiftOpenUICore.Rectangle {
         return nil // Rectangle clip is just overflow: hidden
     }
     return nil // Unknown shape — fall back to rectangular clip
@@ -1546,7 +1546,7 @@ extension DragGestureView: WebRenderable {
     }
 }
 
-extension SwiftOpenUI.Button: WebRenderable {
+extension SwiftOpenUICore.Button: WebRenderable {
     public func webCreateElement() -> JSValue {
         let button = document.createElement("button")
         let disabled = webIsDisabled()
@@ -1581,7 +1581,7 @@ extension SwiftOpenUI.Button: WebRenderable {
     }
 }
 
-extension SwiftOpenUI.Color: WebRenderable, WebDescribable {
+extension SwiftOpenUICore.Color: WebRenderable, WebDescribable {
     public func webCreateElement() -> JSValue {
         let div = document.createElement("div")
         div.style = .string("background-color: \(cssColor); width: 100%; height: 100%; min-height: 20px;")
@@ -2417,7 +2417,7 @@ extension List: WebRenderable {
     }
 }
 
-extension SwiftOpenUI.Image: WebRenderable {
+extension SwiftOpenUICore.Image: WebRenderable {
     public func webCreateElement() -> JSValue {
         let size = scale.pointSize
         switch source {
@@ -2524,7 +2524,7 @@ extension Stepper: WebRenderable {
     }
 }
 
-extension SwiftOpenUI.Label: WebRenderable {
+extension SwiftOpenUICore.Label: WebRenderable {
     public func webCreateElement() -> JSValue {
         let container = document.createElement("span")
         container.style = "display: inline-flex; align-items: center; gap: 4px;"

@@ -1,7 +1,7 @@
 import WinSDK
 import CWin32
 import CWin32Bridge
-import SwiftOpenUI
+import SwiftOpenUICore
 import SwiftOpenUISymbols
 import Foundation
 #if canImport(Observation)
@@ -657,7 +657,7 @@ final class Win32MenuBarHost {
     }
 }
 
-/// Win32 rendering backend for SwiftOpenUI.
+/// Win32 rendering backend for SwiftOpenUICore.
 public struct Win32Backend: RenderBackend {
     public init() {}
 

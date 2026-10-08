@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 @testable import BackendWeb
 
 final class WebClipShapeTests: XCTestCase {
@@ -27,7 +27,7 @@ final class WebClipShapeTests: XCTestCase {
     }
 
     func testClipPathRectangleIsNil() {
-        let css = webClipPathCSS(SwiftOpenUI.Rectangle())
+        let css = webClipPathCSS(SwiftOpenUICore.Rectangle())
         XCTAssertNil(css, "Rectangle clip uses overflow: hidden, no clip-path needed")
     }
 

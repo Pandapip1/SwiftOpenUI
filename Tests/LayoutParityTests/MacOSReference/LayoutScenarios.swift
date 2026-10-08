@@ -1,16 +1,13 @@
 /// Layout test scenarios shared across platforms.
 ///
 /// Each scenario defines a SwiftOpenUI view tree and the root size to render at.
-/// macOS tests render these with real SwiftUI; GTK tests render with SwiftOpenUI+GTK.
+/// macOS tests render these with SwiftOpenUI's native SwiftUI backend; GTK
+/// tests render with SwiftOpenUICore and GTK.
 ///
-/// IMPORTANT: On macOS, `import SwiftUI` is used. On Linux, `import SwiftOpenUI`.
+/// IMPORTANT: Application-facing scenarios import `SwiftOpenUI` everywhere.
 /// The view code must compile under both. This file uses `#if os(macOS)` guards where needed.
 
-#if os(macOS)
-import SwiftUI
-#else
 import SwiftOpenUI
-#endif
 
 // MARK: - Scenario Registry
 

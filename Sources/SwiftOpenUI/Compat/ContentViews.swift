@@ -38,7 +38,7 @@ public struct _ContentUnavailableBody<L: View, D: View, A: View>: View {
     }
 }
 
-extension ContentUnavailableView where L == SwiftOpenUI.Label, D == Text, A == EmptyView {
+extension ContentUnavailableView where L == SwiftOpenUICore.Label, D == Text, A == EmptyView {
     public init(_ title: String, systemImage name: String, description: Text? = nil) {
         self.label = Label(title, systemImage: name)
         self.description = description ?? Text("")
@@ -46,7 +46,7 @@ extension ContentUnavailableView where L == SwiftOpenUI.Label, D == Text, A == E
     }
 }
 
-extension ContentUnavailableView where L == SwiftOpenUI.Label, D == Text, A == EmptyView {
+extension ContentUnavailableView where L == SwiftOpenUICore.Label, D == Text, A == EmptyView {
     /// "No results for …", as shown for an empty search.
     public static func search(text: String) -> ContentUnavailableView {
         ContentUnavailableView("No Results", systemImage: "magnifyingglass",
@@ -110,7 +110,7 @@ public struct ShareLink<L: View>: View {
     }
 }
 
-extension ShareLink where L == SwiftOpenUI.Label {
+extension ShareLink where L == SwiftOpenUICore.Label {
     public init(item: String, subject: Text? = nil, message: Text? = nil) {
         self.text = item
         self.label = Label("Copy Link", systemImage: "link")

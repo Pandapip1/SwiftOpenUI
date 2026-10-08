@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 @testable import BackendGTK4
 
 final class GTK4DescriptorTests: XCTestCase {
@@ -473,7 +473,7 @@ final class GTK4DescriptorTests: XCTestCase {
     }
 
     func testDescribeDivider() {
-        let node = gtkDescribeView(SwiftOpenUI.Divider())
+        let node = gtkDescribeView(SwiftOpenUICore.Divider())
         XCTAssertEqual(node.kind, .divider)
     }
 

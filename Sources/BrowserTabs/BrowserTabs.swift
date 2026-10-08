@@ -1,9 +1,7 @@
 import Foundation
 
-#if canImport(SwiftUI)
-import SwiftUI
-#else
 import SwiftOpenUI
+#if !canImport(SwiftUI)
 import BackendGTK4
 import CGTK
 import CAdwaita

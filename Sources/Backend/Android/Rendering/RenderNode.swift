@@ -1,4 +1,4 @@
-import SwiftOpenUI
+import SwiftOpenUICore
 
 /// A serializable render tree node for the Android host.
 /// Swift walks the SwiftOpenUI view tree and produces a RenderNode tree.

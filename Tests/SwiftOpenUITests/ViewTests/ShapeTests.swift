@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 import Foundation
 
 final class ShapeTests: XCTestCase {

@@ -1,5 +1,5 @@
 import XCTest
-@_spi(SwiftOpenUIBackend) @testable import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) @testable import SwiftOpenUICore
 
 final class ContextMenuTests: XCTestCase {
     private struct CustomButtonLabel: View {

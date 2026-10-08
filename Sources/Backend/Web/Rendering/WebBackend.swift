@@ -1,5 +1,5 @@
 import JavaScriptKit
-import SwiftOpenUI
+import SwiftOpenUICore
 
 /// Protocol for scenes that can render into the DOM.
 protocol WebWindowRenderable {
@@ -71,7 +71,7 @@ extension WindowGroup: WebWindowRenderable {
     }
 }
 
-/// WebAssembly/DOM rendering backend for SwiftOpenUI.
+/// WebAssembly/DOM rendering backend for SwiftOpenUICore.
 public struct WebBackend: RenderBackend {
     public init() {}
 

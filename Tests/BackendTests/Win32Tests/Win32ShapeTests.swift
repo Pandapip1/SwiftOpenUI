@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 @testable import BackendWin32
 import WinSDK
 import CWin32
@@ -77,7 +77,7 @@ final class Win32ShapeTests: XCTestCase {
 
     func testRectangleRendersHWND() {
         let ctx = testContext()
-        let hwnd = winRenderView(SwiftOpenUI.Rectangle(), in: ctx)
+        let hwnd = winRenderView(SwiftOpenUICore.Rectangle(), in: ctx)
         XCTAssertNotNil(hwnd, "Rectangle should render an HWND")
         XCTAssertEqual(className(of: hwnd!), "SwiftUID2DSurface")
     }
@@ -114,7 +114,7 @@ final class Win32ShapeTests: XCTestCase {
 
     func testFilledRectangleRendersHWND() {
         let ctx = testContext()
-        let hwnd = winRenderView(SwiftOpenUI.Rectangle().fill(.blue), in: ctx)
+        let hwnd = winRenderView(SwiftOpenUICore.Rectangle().fill(.blue), in: ctx)
         XCTAssertNotNil(hwnd)
         XCTAssertEqual(className(of: hwnd!), "SwiftUID2DSurface")
     }
@@ -130,7 +130,7 @@ final class Win32ShapeTests: XCTestCase {
 
     func testStrokedRectangleRendersHWND() {
         let ctx = testContext()
-        let hwnd = winRenderView(SwiftOpenUI.Rectangle().stroke(.green, lineWidth: 3), in: ctx)
+        let hwnd = winRenderView(SwiftOpenUICore.Rectangle().stroke(.green, lineWidth: 3), in: ctx)
         XCTAssertNotNil(hwnd)
         XCTAssertEqual(className(of: hwnd!), "SwiftUID2DSurface")
     }

@@ -2,7 +2,7 @@
 // LinearGradient fix. LinearGradient/RadialGradient share SwiftUI's inits, so this
 // validates against real SwiftUI on macOS too.
 #if os(macOS)
-import SwiftUI
+import SwiftOpenUI
 import MacExampleSupport
 #else
 import SwiftOpenUI

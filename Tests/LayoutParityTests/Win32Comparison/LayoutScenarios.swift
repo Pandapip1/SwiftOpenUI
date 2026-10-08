@@ -7,7 +7,7 @@
 /// The view code must compile under both. This file uses `#if os(macOS)` guards where needed.
 
 #if os(macOS)
-import SwiftUI
+import SwiftOpenUI
 #else
 import SwiftOpenUI
 #endif

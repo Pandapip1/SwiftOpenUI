@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 
 final class ModifierTests: XCTestCase {
 
@@ -290,8 +290,8 @@ final class ModifierTests: XCTestCase {
 
     // MARK: - Environment modifiers
 
-    class TestModel: SwiftOpenUI.ObservableObject {
-        @SwiftOpenUI.Published var value = "test"
+    class TestModel: SwiftOpenUICore.ObservableObject {
+        @SwiftOpenUICore.Published var value = "test"
     }
 
     func testEnvironmentObjectModifier() {

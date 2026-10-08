@@ -1,7 +1,7 @@
 import CGTK
 import CAdwaita
 import CGTKBridge
-@_spi(SwiftOpenUIBackend) import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) import SwiftOpenUICore
 import SwiftOpenUISymbols
 import Foundation
 #if canImport(Observation)
@@ -735,7 +735,7 @@ func gtkSetupMenuBarIfNeeded(
     }
 }
 
-/// GTK4 rendering backend for SwiftOpenUI.
+/// GTK4 rendering backend for SwiftOpenUICore.
 public struct GTK4Backend: RenderBackend {
     public init() {
         MainActor.assumeIsolated {

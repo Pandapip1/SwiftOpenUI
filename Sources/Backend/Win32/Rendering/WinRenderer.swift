@@ -1,7 +1,7 @@
 import WinSDK
 import CWin32
 import CWin32Bridge
-@_spi(SwiftOpenUIBackend) import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) import SwiftOpenUICore
 import SwiftOpenUISymbols
 import Foundation
 
@@ -2951,11 +2951,11 @@ final class BackgroundShapeInfo {
     let backgroundNatural: ViewSize
     let backgroundExpandsWidth: Bool
     let backgroundExpandsHeight: Bool
-    let alignment: SwiftOpenUI.Alignment
+    let alignment: SwiftOpenUICore.Alignment
 
     init(content: HWND, background: HWND?, backgroundNatural: ViewSize,
          backgroundExpandsWidth: Bool, backgroundExpandsHeight: Bool,
-         alignment: SwiftOpenUI.Alignment) {
+         alignment: SwiftOpenUICore.Alignment) {
         self.content = content
         self.background = background
         self.backgroundNatural = backgroundNatural
@@ -2971,7 +2971,7 @@ final class BackgroundShapeInfo {
 /// `.background(alignment:)` rules.
 func placeBackgroundLayer(_ bg: HWND, in size: (Int32, Int32), natural: ViewSize,
                           expandsWidth: Bool, expandsHeight: Bool,
-                          alignment: SwiftOpenUI.Alignment) {
+                          alignment: SwiftOpenUICore.Alignment) {
     let (w, h) = size
     let bw = expandsWidth ? w : Int32(natural.width)
     let bh = expandsHeight ? h : Int32(natural.height)
@@ -6340,10 +6340,10 @@ extension DatePicker: WinRenderable {
 }
 
 private class DatePickerNotifyInfo {
-    let selection: Binding<SwiftOpenUI.DateComponents>?
-    let onChange: ((SwiftOpenUI.DateComponents) -> Void)?
+    let selection: Binding<SwiftOpenUICore.DateComponents>?
+    let onChange: ((SwiftOpenUICore.DateComponents) -> Void)?
     let dtp: HWND
-    init(selection: Binding<SwiftOpenUI.DateComponents>?, onChange: ((SwiftOpenUI.DateComponents) -> Void)?, dtp: HWND) {
+    init(selection: Binding<SwiftOpenUICore.DateComponents>?, onChange: ((SwiftOpenUICore.DateComponents) -> Void)?, dtp: HWND) {
         self.selection = selection
         self.onChange = onChange
         self.dtp = dtp
@@ -6364,7 +6364,7 @@ private let datePickerNotifyProc: SUBCLASSPROC = { (hwnd, uMsg, wParam, lParam, 
                     _ = SendMessageW(info.dtp, UINT(DTM_GETSYSTEMTIME), 0,
                                      LPARAM(Int(bitPattern: stPtr)))
                 }
-                let dc = SwiftOpenUI.DateComponents(year: Int(st.wYear), month: Int(st.wMonth), day: Int(st.wDay))
+                let dc = SwiftOpenUICore.DateComponents(year: Int(st.wYear), month: Int(st.wMonth), day: Int(st.wDay))
                 info.selection?.wrappedValue = dc
                 info.onChange?(dc)
             }
@@ -7594,7 +7594,7 @@ extension ClipShapeView: WinRenderable {
         } else if shape is Capsule {
             let cr = min(w, h)
             rgn = CreateRoundRectRgn(0, 0, w + 1, h + 1, cr, cr)
-        } else if shape is SwiftOpenUI.Rectangle {
+        } else if shape is SwiftOpenUICore.Rectangle {
             rgn = CreateRectRgn(0, 0, w, h)
         } else {
             // Generic shape: build path and create polygon region
@@ -9608,11 +9608,11 @@ extension Circle: WinRenderable {
     }
 }
 
-extension SwiftOpenUI.Rectangle: WinRenderable {
+extension SwiftOpenUICore.Rectangle: WinRenderable {
     public func winCreateWidget(in context: RenderContext) -> HWND? {
         createShapeSurface(draw: { rt, brush, w, h in
             let rect = CGRect(x: 0, y: 0, width: CGFloat(w), height: CGFloat(h))
-            let path = SwiftOpenUI.Rectangle().path(in: rect)
+            let path = SwiftOpenUICore.Rectangle().path(in: rect)
             d2dFillPath(path, rt: rt, brush: brush, r: 0, g: 0, b: 0, a: 1)
         }, context: context)
     }

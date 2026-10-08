@@ -9,7 +9,7 @@
 // regression); macOS is the native reference.
 
 #if os(macOS)
-import SwiftUI
+import SwiftOpenUI
 import MacExampleSupport
 #else
 import SwiftOpenUI

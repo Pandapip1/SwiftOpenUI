@@ -3,7 +3,7 @@
 // See: docs/architecture/swiftui-parity-matrix.md § Views
 
 #if os(macOS)
-import SwiftUI
+import SwiftOpenUI
 import MacExampleSupport
 #else
 import SwiftOpenUI

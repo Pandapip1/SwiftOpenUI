@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 
 /// Tests for the SwiftUI-shaped generic Picker initializer that
 /// takes a `@ViewBuilder content:` with `.tag(_:)`-annotated children.

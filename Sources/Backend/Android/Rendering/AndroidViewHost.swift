@@ -1,4 +1,4 @@
-import SwiftOpenUI
+import SwiftOpenUICore
 
 /// Android ViewHost — holds the root view builder and re-renders to JSON on state change.
 /// Session-scoped: survives Activity recreation. Owned by the global session, not by any Activity.

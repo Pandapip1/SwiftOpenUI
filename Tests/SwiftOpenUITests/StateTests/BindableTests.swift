@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 
 /// Tests for the `@Bindable` property wrapper that projects bindings
 /// from an `@Observable` (or any reference-typed) class's mutable

@@ -1,6 +1,6 @@
 import CGTK
 import CGTKBridge
-import SwiftOpenUI
+import SwiftOpenUICore
 import Foundation
 
 // MARK: - Helpers

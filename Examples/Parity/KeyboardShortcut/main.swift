@@ -5,7 +5,7 @@
 //      docs/issues/gtk4-hidden-keyboardshortcut-button.md
 
 #if os(macOS)
-import SwiftUI
+import SwiftOpenUI
 import MacExampleSupport
 #else
 import SwiftOpenUI

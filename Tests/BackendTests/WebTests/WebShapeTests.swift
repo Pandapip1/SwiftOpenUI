@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 @testable import BackendWeb
 
 final class WebShapeTests: XCTestCase {
@@ -14,7 +14,7 @@ final class WebShapeTests: XCTestCase {
 
     func testRectanglePathIsNotEmpty() {
         let rect = CGRect(x: 0, y: 0, width: 100, height: 100)
-        let path = SwiftOpenUI.Rectangle().path(in: rect)
+        let path = SwiftOpenUICore.Rectangle().path(in: rect)
         XCTAssertFalse(path.isEmpty)
     }
 
@@ -58,7 +58,7 @@ final class WebShapeTests: XCTestCase {
 
     func testStrokeWithStylePreservesStyle() {
         let style = StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .bevel)
-        let stroked = SwiftOpenUI.Rectangle().stroke(.blue, style: style)
+        let stroked = SwiftOpenUICore.Rectangle().stroke(.blue, style: style)
         XCTAssertEqual(stroked.style.lineWidth, 2)
         XCTAssertEqual(stroked.style.lineCap, .round)
         XCTAssertEqual(stroked.style.lineJoin, .bevel)

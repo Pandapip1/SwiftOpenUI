@@ -5,7 +5,7 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
-@_spi(SwiftOpenUIBackend) import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) import SwiftOpenUICore
 
 // MARK: - VideoPlayer
 

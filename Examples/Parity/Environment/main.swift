@@ -4,7 +4,7 @@
 // See: docs/architecture/swiftui-parity-matrix.md § State & Data + § Modifiers
 
 #if os(macOS)
-import SwiftUI
+import SwiftOpenUI
 import MacExampleSupport
 #else
 import SwiftOpenUI

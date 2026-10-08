@@ -116,7 +116,7 @@ extension Toggle {
     public init<L: View>(isOn: Binding<Bool>, @ViewBuilder label: () -> L) {
         let title = AlertActions.flatten(label()).compactMap { v -> String? in
             if let t = v as? Text { return t.content }
-            if let l = v as? SwiftOpenUI.Label { return l.title }
+            if let l = v as? SwiftOpenUICore.Label { return l.title }
             return nil
         }.joined(separator: " ")
         self.init(title, isOn: isOn)

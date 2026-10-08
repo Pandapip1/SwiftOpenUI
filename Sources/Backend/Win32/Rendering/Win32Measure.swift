@@ -1,6 +1,6 @@
 import WinSDK
 import CWin32
-import SwiftOpenUI
+import SwiftOpenUICore
 
 // MARK: - Win32 intrinsic sizing
 //

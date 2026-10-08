@@ -1,4 +1,4 @@
-import SwiftOpenUI
+import SwiftOpenUICore
 import Foundation
 import WinSDK
 import CWin32

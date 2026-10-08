@@ -1,6 +1,6 @@
 import XCTest
 import Foundation
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 
 final class AppBundleTests: XCTestCase {
 

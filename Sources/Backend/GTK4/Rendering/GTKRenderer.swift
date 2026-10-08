@@ -1,7 +1,7 @@
 import CGTK
 import CAdwaita
 import CGTKBridge
-@_spi(SwiftOpenUIBackend) import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) import SwiftOpenUICore
 import SwiftOpenUISymbols
 import Foundation
 
@@ -6531,12 +6531,12 @@ extension Picker: GTKRenderable {
 
 private class DatePickerBox {
     let calendar: UnsafeMutablePointer<GtkWidget>
-    let binding: Binding<SwiftOpenUI.DateComponents>?
-    let onChange: ((SwiftOpenUI.DateComponents) -> Void)?
+    let binding: Binding<SwiftOpenUICore.DateComponents>?
+    let onChange: ((SwiftOpenUICore.DateComponents) -> Void)?
 
     init(calendar: UnsafeMutablePointer<GtkWidget>,
-         binding: Binding<SwiftOpenUI.DateComponents>?,
-         onChange: ((SwiftOpenUI.DateComponents) -> Void)?) {
+         binding: Binding<SwiftOpenUICore.DateComponents>?,
+         onChange: ((SwiftOpenUICore.DateComponents) -> Void)?) {
         self.calendar = calendar
         self.binding = binding
         self.onChange = onChange
@@ -6573,7 +6573,7 @@ extension DatePicker: GTKRenderable {
                 let box = Unmanaged<DatePickerBox>.fromOpaque(userData!).takeUnretainedValue()
                 var y: gint = 0, m: gint = 0, d: gint = 0
                 gtk_swift_calendar_get_ymd(box.calendar, &y, &m, &d)
-                let dc = SwiftOpenUI.DateComponents(year: Int(y), month: Int(m), day: Int(d))
+                let dc = SwiftOpenUICore.DateComponents(year: Int(y), month: Int(m), day: Int(d))
                 if let binding = box.binding, dc != binding.wrappedValue {
                     binding.wrappedValue = dc
                 }

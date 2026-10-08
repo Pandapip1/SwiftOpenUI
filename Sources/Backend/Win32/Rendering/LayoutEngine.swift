@@ -1,6 +1,6 @@
 import WinSDK
 import CWin32
-import SwiftOpenUI
+import SwiftOpenUICore
 
 /// Measure a text string's size using DirectWrite (preferred) or GDI fallback.
 /// DirectWrite provides more accurate sub-pixel measurement than GDI.
@@ -38,7 +38,7 @@ public func measureText(_ text: String, fontFamily: String, hwnd: HWND) -> (widt
 }
 
 /// Measure text with a specific font using DirectWrite.
-public func measureTextWithFont(_ text: String, font: SwiftOpenUI.Font, hwnd: HWND) -> (width: Int32, height: Int32) {
+public func measureTextWithFont(_ text: String, font: SwiftOpenUICore.Font, hwnd: HWND) -> (width: Int32, height: Int32) {
     let (fontSize, bold, italic) = fontParameters(for: font, hwnd: hwnd)
     if let fmt = D2DRenderer.shared.textFormat(fontSize: fontSize, bold: bold, italic: italic) {
         let (w, h) = D2DRenderer.shared.measureText(text, format: fmt)
@@ -48,7 +48,7 @@ public func measureTextWithFont(_ text: String, font: SwiftOpenUI.Font, hwnd: HW
 }
 
 /// Extract DirectWrite parameters from a Font enum.
-func fontParameters(for font: SwiftOpenUI.Font, hwnd: HWND) -> (fontSize: Float, bold: Bool, italic: Bool) {
+func fontParameters(for font: SwiftOpenUICore.Font, hwnd: HWND) -> (fontSize: Float, bold: Bool, italic: Bool) {
     let dpi = win32_GetDpiForWindow(hwnd)
     let scale = Float(dpi) / 96.0
 
@@ -265,10 +265,10 @@ func performHorizontalLayout(container: HWND, info: StackLayoutInfo) {
 // MARK: - ZStack layout
 
 class ZStackLayoutInfo {
-    let alignment: SwiftOpenUI.Alignment
+    let alignment: SwiftOpenUICore.Alignment
     let children: [HWND]
 
-    init(alignment: SwiftOpenUI.Alignment, children: [HWND]) {
+    init(alignment: SwiftOpenUICore.Alignment, children: [HWND]) {
         self.alignment = alignment
         self.children = children
     }

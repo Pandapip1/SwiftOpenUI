@@ -1,5 +1,5 @@
 import JavaScriptKit
-import SwiftOpenUI
+import SwiftOpenUICore
 #if canImport(Observation)
 import Observation
 #endif

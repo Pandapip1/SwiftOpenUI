@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 
 final class StateTests: XCTestCase {
 
@@ -56,8 +56,8 @@ final class StateTests: XCTestCase {
 
     // MARK: - @Published / ObservableObject
 
-    class Counter: SwiftOpenUI.ObservableObject {
-        @SwiftOpenUI.Published var count = 0
+    class Counter: SwiftOpenUICore.ObservableObject {
+        @SwiftOpenUICore.Published var count = 0
     }
 
     func testPublishedInitialValue() {
@@ -103,12 +103,12 @@ final class StateTests: XCTestCase {
 
     // MARK: - Superclass @Published wiring
 
-    class BaseModel: SwiftOpenUI.ObservableObject {
-        @SwiftOpenUI.Published var baseProp = "base"
+    class BaseModel: SwiftOpenUICore.ObservableObject {
+        @SwiftOpenUICore.Published var baseProp = "base"
     }
 
     class DerivedModel: BaseModel {
-        @SwiftOpenUI.Published var derivedProp = "derived"
+        @SwiftOpenUICore.Published var derivedProp = "derived"
     }
 
     func testWirePublishedWalksSuperclass() {

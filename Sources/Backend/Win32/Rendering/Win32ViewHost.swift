@@ -1,7 +1,7 @@
 import WinSDK
 import CWin32
 import CWin32Bridge
-import SwiftOpenUI
+import SwiftOpenUICore
 import Foundation
 #if canImport(Observation)
 import Observation

@@ -31,7 +31,7 @@ extension Button: ActionConvertible {
     /// instead of disappearing from the menu.
     public var actionTitle: String? {
         (label as? Text)?.content
-            ?? (label as? SwiftOpenUI.Label).map(\.title)
+            ?? (label as? SwiftOpenUICore.Label).map(\.title)
             ?? actionLabelText(label)
     }
     public var actionRole: ButtonRole? { buttonRole }
@@ -42,7 +42,7 @@ func actionLabelText<V: View>(_ view: V, depth: Int = 0) -> String? {
     guard depth < 8 else { return nil }
     if let accessible = view as? any _AccessibilityLabelProvider { return accessible._accessibilityLabel }
     if let text = view as? Text { return text.content }
-    if let label = view as? SwiftOpenUI.Label { return label.title }
+    if let label = view as? SwiftOpenUICore.Label { return label.title }
     if let multi = view as? any MultiChildView {
         let labels = multi.children.compactMap { actionLabelText($0, depth: depth + 1) }
         if !labels.isEmpty { return labels.joined(separator: " ") }

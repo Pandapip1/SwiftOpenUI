@@ -1,5 +1,5 @@
 import XCTest
-import SwiftOpenUI
+import SwiftOpenUICore
 @testable import BackendGTK4
 
 /// Guards the GTK4 LinearGradient CSS-angle mapping. The prior bug emitted an

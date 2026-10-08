@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 
 /// Conditionals contribute their ACTIVE branch's children to the
 /// enclosing container (SwiftUI stack-axis semantics). Regression for

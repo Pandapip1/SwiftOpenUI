@@ -3,22 +3,38 @@
 import PackageDescription
 
 var targets: [Target] = [
-    // Core framework (platform-independent)
+    // Portable declarative UI model consumed by non-SwiftUI renderers.
+    .target(
+        name: "SwiftOpenUICore",
+        path: "Sources/SwiftOpenUI"
+    ),
+
+    // Native Apple renderer. The public SwiftOpenUI facade re-exports this
+    // backend wherever the system SwiftUI framework is available.
+    .target(
+        name: "BackendSwiftUI",
+        path: "Sources/Backend/SwiftUI"
+    ),
+
+    // Stable application-facing module. Applications import SwiftOpenUI on
+    // every platform; this facade chooses the available backend surface.
     .target(
         name: "SwiftOpenUI",
-        path: "Sources/SwiftOpenUI"
+        dependencies: ["SwiftOpenUICore", "BackendSwiftUI"],
+        path: "Sources/SwiftOpenUIFacade"
     ),
 
     // Small helper module for macOS example launch boilerplate.
     .target(
         name: "MacExampleSupport",
+        dependencies: ["SwiftOpenUI"],
         path: "Sources/MacExampleSupport"
     ),
 
     // Core tests
     .testTarget(
         name: "SwiftOpenUITests",
-        dependencies: ["SwiftOpenUI"],
+        dependencies: ["SwiftOpenUICore"],
         path: "Tests/SwiftOpenUITests"
     ),
 
@@ -63,7 +79,7 @@ var exampleDeps: [Target.Dependency] = ["SwiftOpenUI", "MacExampleSupport"]
 targets += [
     .target(
         name: "WebKit",
-        dependencies: ["SwiftOpenUI"],
+        dependencies: ["SwiftOpenUICore"],
         path: "Sources/WebKit"
     ),
 ]
@@ -102,7 +118,7 @@ targets += [
     ),
     .target(
         name: "BackendGTK4",
-        dependencies: ["SwiftOpenUI", "WebKit", "CGTK", "CAdwaita", "CGTKBridge", "CGStreamer", "CWebKitGTK", "SwiftOpenUISymbols"],
+        dependencies: ["SwiftOpenUICore", "WebKit", "CGTK", "CAdwaita", "CGTKBridge", "CGStreamer", "CWebKitGTK", "SwiftOpenUISymbols"],
         path: "Sources/Backend/GTK4/Rendering",
         linkerSettings: [
             // FontConfig is used by the process-local font registration
@@ -126,13 +142,13 @@ targets += [
         // SwiftOpenUISymbols is a DIRECT dependency: the symbol-mapping
         // tests import it (declared, not leaked transitively — see the
         // librano NIOFoundationCompat cold-build lesson).
-        dependencies: ["SwiftOpenUI", "WebKit", "BackendGTK4", "CGTK", "CAdwaita", "CGTKBridge", "SwiftOpenUISymbols"],
+        dependencies: ["SwiftOpenUICore", "WebKit", "BackendGTK4", "CGTK", "CAdwaita", "CGTKBridge", "SwiftOpenUISymbols"],
         path: "Tests/BackendTests/GTK4Tests"
     ),
     // Layout parity — GTK comparison against macOS reference
     .testTarget(
         name: "GTKLayoutParityTests",
-        dependencies: ["SwiftOpenUI", "BackendGTK4", "CGTK", "CGTKBridge", "LayoutParityShared"],
+        dependencies: ["SwiftOpenUICore", "BackendGTK4", "CGTK", "CGTKBridge", "LayoutParityShared"],
         path: "Tests/LayoutParityTests/GTKComparison"
     ),
 ]
@@ -163,18 +179,18 @@ targets += [
     ),
     .target(
         name: "BackendWin32",
-        dependencies: ["SwiftOpenUI", "CWin32", "CWin32Bridge", "SwiftOpenUISymbols"],
+        dependencies: ["SwiftOpenUICore", "CWin32", "CWin32Bridge", "SwiftOpenUISymbols"],
         path: "Sources/Backend/Win32/Rendering"
     ),
     .testTarget(
         name: "Win32RenderTests",
-        dependencies: ["SwiftOpenUI", "BackendWin32"],
+        dependencies: ["SwiftOpenUICore", "BackendWin32"],
         path: "Tests/BackendTests/Win32Tests"
     ),
     // Layout parity — Win32 comparison against macOS reference
     .testTarget(
         name: "Win32LayoutParityTests",
-        dependencies: ["SwiftOpenUI", "BackendWin32", "CWin32", "CWin32Bridge", "LayoutParityShared"],
+        dependencies: ["SwiftOpenUICore", "BackendWin32", "CWin32", "CWin32Bridge", "LayoutParityShared"],
         path: "Tests/LayoutParityTests/Win32Comparison"
     ),
 ]
@@ -191,7 +207,7 @@ targets += [
     ),
     .target(
         name: "BrowserTabs",
-        dependencies: [],
+        dependencies: ["SwiftOpenUI"],
         path: "Sources/BrowserTabs"
     ),
     // Stub so SwiftPM can resolve BackendGTK4 on macOS at resolution time.
@@ -205,13 +221,18 @@ targets += [
     ),
     .target(
         name: "BackendAndroid",
-        dependencies: ["SwiftOpenUI"],
+        dependencies: ["SwiftOpenUICore"],
         path: "Sources/Backend/Android/Rendering"
     ),
     .testTarget(
         name: "AndroidRenderTests",
-        dependencies: ["SwiftOpenUI", "BackendAndroid"],
+        dependencies: ["SwiftOpenUICore", "BackendAndroid"],
         path: "Tests/BackendTests/AndroidTests"
+    ),
+    .testTarget(
+        name: "SwiftUIBackendTests",
+        dependencies: ["SwiftOpenUI"],
+        path: "Tests/BackendTests/SwiftUITests"
     ),
     // Layout parity — macOS reference capture (uses real SwiftUI)
     .testTarget(
@@ -230,14 +251,14 @@ targets += [
     .target(
         name: "BackendWeb",
         dependencies: [
-            "SwiftOpenUI",
+            "SwiftOpenUICore",
             .product(name: "JavaScriptKit", package: "JavaScriptKit"),
         ],
         path: "Sources/Backend/Web/Rendering"
     ),
     .testTarget(
         name: "WebDescriptorTests",
-        dependencies: ["SwiftOpenUI", "BackendWeb"],
+        dependencies: ["SwiftOpenUICore", "BackendWeb"],
         path: "Tests/BackendTests/WebTests"
     ),
 ]
@@ -471,6 +492,7 @@ let package = Package(
         p.append(.library(name: "SwiftOpenUISymbols", targets: ["SwiftOpenUISymbols"]))
         #endif
         #if os(macOS)
+        p.append(.library(name: "BackendSwiftUI", targets: ["BackendSwiftUI"]))
         p.append(.library(name: "WebKit", targets: ["WebKit"]))
         p.append(.library(name: "CAdwaita", targets: ["CAdwaita"]))
         p.append(.library(name: "BackendGTK4", targets: ["BackendGTK4"]))

@@ -1,7 +1,7 @@
 #if os(macOS)
 import AppKit
 import Foundation
-import SwiftUI
+import SwiftOpenUI
 
 private let launchLoggingEnabled: Bool = {
     guard let value = ProcessInfo.processInfo.environment["SWIFT_OPENUI_MAC_LAUNCH_LOG"]?

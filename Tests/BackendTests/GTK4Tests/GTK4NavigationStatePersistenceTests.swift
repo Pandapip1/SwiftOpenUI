@@ -1,6 +1,6 @@
 import XCTest
 import Observation
-import SwiftOpenUI
+import SwiftOpenUICore
 @testable import BackendGTK4
 import CGTK
 import CGTKBridge

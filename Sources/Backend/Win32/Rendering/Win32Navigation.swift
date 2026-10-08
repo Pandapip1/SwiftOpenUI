@@ -1,7 +1,7 @@
 import WinSDK
 import CWin32
 import CWin32Bridge
-import SwiftOpenUI
+import SwiftOpenUICore
 import Foundation
 
 // MARK: - Navigation context (Win32-specific)

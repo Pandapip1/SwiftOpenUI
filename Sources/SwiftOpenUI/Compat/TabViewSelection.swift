@@ -16,7 +16,7 @@ public struct TabItemView<Content: View, L: View>: View, PrimitiveView, AnyTabIt
     var anyTabContent: any View { content }
     var anyTabTitle: String {
         for v in AlertActions.flatten(label) {
-            if let l = v as? SwiftOpenUI.Label { return l.title }
+            if let l = v as? SwiftOpenUICore.Label { return l.title }
             if let t = v as? Text { return t.content }
         }
         return "Tab"

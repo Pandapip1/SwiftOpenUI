@@ -83,7 +83,7 @@ public struct Menu<Label: View, Content: View>: View, PrimitiveView {
 extension Menu: _MenuContentProvider {
     var _menuTitle: String {
         if let text = label as? Text { return text.content }
-        if let label = label as? SwiftOpenUI.Label { return label.title }
+        if let label = label as? SwiftOpenUICore.Label { return label.title }
         return actionLabelText(label) ?? ""
     }
 

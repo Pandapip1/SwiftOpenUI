@@ -8,7 +8,7 @@
 // Full OLE IDropTarget support would be needed for parity.
 
 #if os(macOS)
-import SwiftUI
+import SwiftOpenUI
 import MacExampleSupport
 #else
 import SwiftOpenUI

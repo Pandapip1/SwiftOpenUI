@@ -4,7 +4,7 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
-import SwiftOpenUI
+import SwiftOpenUICore
 @_spi(SwiftOpenUIBackend) import WebKit
 
 @MainActor

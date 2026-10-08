@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftOpenUI
+@testable import SwiftOpenUICore
 @testable import BackendWin32
 import WinSDK
 import CWin32
@@ -2877,7 +2877,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchableCreatesSearchField() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let view = Text("Content").searchable(text: $query)
         let hwnd = winRenderView(view, in: ctx)
         XCTAssertNotNil(hwnd)
@@ -2890,7 +2890,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchableWithPlacement() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         // All placements render as top-of-content in Batch A
         let view = Text("Content").searchable(
             text: $query, placement: .toolbar, prompt: "Search")
@@ -2904,8 +2904,8 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchableIsPresentedTrue() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
-        @SwiftOpenUI.State var presented = true
+        @SwiftOpenUICore.State var query = ""
+        @SwiftOpenUICore.State var presented = true
         let view = Text("Content").searchable(
             text: $query, isPresented: $presented)
         let hwnd = winRenderView(view, in: ctx)
@@ -2918,8 +2918,8 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchableIsPresentedFalse() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
-        @SwiftOpenUI.State var presented = false
+        @SwiftOpenUICore.State var query = ""
+        @SwiftOpenUICore.State var presented = false
         let view = Text("Content").searchable(
             text: $query, isPresented: $presented)
         let hwnd = winRenderView(view, in: ctx)
@@ -2933,7 +2933,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchablePromptPreserved() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let view = Text("Content").searchable(text: $query, prompt: "Find items")
         let hwnd = winRenderView(view, in: ctx)
         XCTAssertNotNil(hwnd, "Searchable with custom prompt should render")
@@ -2959,7 +2959,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testDisabledTextFieldIsNotEnabled() {
         let ctx = testContext()
-        @SwiftOpenUI.State var text = ""
+        @SwiftOpenUICore.State var text = ""
         let view = TextField("Placeholder", text: $text).disabled(true)
         let hwnd = winRenderView(view, in: ctx)
         XCTAssertNotNil(hwnd)
@@ -2974,7 +2974,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testDisabledToggleIsNotEnabled() {
         let ctx = testContext()
-        @SwiftOpenUI.State var on = false
+        @SwiftOpenUICore.State var on = false
         let view = Toggle("Switch", isOn: $on).disabled(true)
         let hwnd = winRenderView(view, in: ctx)
         XCTAssertNotNil(hwnd)
@@ -3144,7 +3144,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testConfirmationDialogRendersContent() {
         let ctx = testContext()
-        @SwiftOpenUI.State var presented = false
+        @SwiftOpenUICore.State var presented = false
         let view = Text("Content").confirmationDialog(
             "Delete?",
             isPresented: $presented,
@@ -3158,7 +3158,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testConfirmationDialogHiddenTitleRendersContent() {
         let ctx = testContext()
-        @SwiftOpenUI.State var presented = false
+        @SwiftOpenUICore.State var presented = false
         let view = Text("Content").confirmationDialog(
             "Title",
             isPresented: $presented,
@@ -3171,7 +3171,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testConfirmationDialogOldOverloadStillWorks() {
         let ctx = testContext()
-        @SwiftOpenUI.State var presented = false
+        @SwiftOpenUICore.State var presented = false
         let view = Text("Content").confirmationDialog(
             "Are you sure?",
             isPresented: $presented,
@@ -3185,8 +3185,8 @@ final class Win32RenderTests: XCTestCase {
 
     func testDismissalInterceptionSetsBinding() {
         let ctx = testContext()
-        @SwiftOpenUI.State var presented = true
-        @SwiftOpenUI.State var shouldPresent = false
+        @SwiftOpenUICore.State var presented = true
+        @SwiftOpenUICore.State var shouldPresent = false
         let view = Text("Background").sheet(isPresented: $presented) {
             Text("Sheet Content")
                 .dismissalConfirmationDialog(
@@ -3218,8 +3218,8 @@ final class Win32RenderTests: XCTestCase {
 
     func testDismissalInterceptionWrappedContentSetsBinding() {
         let ctx = testContext()
-        @SwiftOpenUI.State var presented = true
-        @SwiftOpenUI.State var shouldPresent = false
+        @SwiftOpenUICore.State var presented = true
+        @SwiftOpenUICore.State var shouldPresent = false
         let view = Text("Background").sheet(isPresented: $presented) {
             Text("Sheet Content")
                 .dismissalConfirmationDialog(
@@ -3248,8 +3248,8 @@ final class Win32RenderTests: XCTestCase {
 
     func testProgrammaticDismissStillClosesWithInterception() {
         let ctx = testContext()
-        @SwiftOpenUI.State var presented = true
-        @SwiftOpenUI.State var shouldPresent = false
+        @SwiftOpenUICore.State var presented = true
+        @SwiftOpenUICore.State var shouldPresent = false
         let view = Text("Background").sheet(isPresented: $presented) {
             Text("Sheet Content")
                 .dismissalConfirmationDialog(
@@ -3276,8 +3276,8 @@ final class Win32RenderTests: XCTestCase {
 
     func testDismissalConfirmationConfirmClosesInterceptedSheet() {
         let ctx = testContext()
-        @SwiftOpenUI.State var presented = true
-        @SwiftOpenUI.State var shouldPresent = false
+        @SwiftOpenUICore.State var presented = true
+        @SwiftOpenUICore.State var shouldPresent = false
         var confirmed = false
         let view = Text("Background").sheet(isPresented: $presented) {
             Text("Sheet Content")
@@ -3328,8 +3328,8 @@ final class Win32RenderTests: XCTestCase {
 
     func testDismissalConfirmationCancelLeavesInterceptedSheetOpen() {
         let ctx = testContext()
-        @SwiftOpenUI.State var presented = true
-        @SwiftOpenUI.State var shouldPresent = false
+        @SwiftOpenUICore.State var presented = true
+        @SwiftOpenUICore.State var shouldPresent = false
         var cancelled = false
         let view = Text("Background").sheet(isPresented: $presented) {
             Text("Sheet Content")
@@ -3380,7 +3380,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testSheetWithoutDismissalConfigStillCloses() {
         let ctx = testContext()
-        @SwiftOpenUI.State var presented = true
+        @SwiftOpenUICore.State var presented = true
         let view = Text("Background").sheet(isPresented: $presented) {
             Text("Plain sheet")
         }
@@ -3409,7 +3409,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchableTokensRenderChips() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let tokens: [TestSearchToken] = [
             TestSearchToken(id: "1", name: "Swift"),
             TestSearchToken(id: "2", name: "UI")
@@ -3432,7 +3432,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchableEditableTokensRenderChips() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let tokens: [TestSearchToken] = [
             TestSearchToken(id: "a", name: "Open"),
             TestSearchToken(id: "b", name: "Closed")
@@ -3454,7 +3454,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchableEmptyTokensNoChips() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let tokens: [TestSearchToken] = []
         let view = Text("Content").searchable(
             text: $query,
@@ -3473,7 +3473,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchableTokensPreserveOrder() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let tokens: [TestSearchToken] = [
             TestSearchToken(id: "1", name: "Alpha"),
             TestSearchToken(id: "2", name: "Beta"),
@@ -3502,7 +3502,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchSuggestionsRenderButtons() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let view = Text("Content")
             .searchable(text: $query)
             .searchSuggestions {
@@ -3522,7 +3522,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchSuggestionsPreserveOrder() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let view = Text("Content")
             .searchable(text: $query)
             .searchSuggestions {
@@ -3554,7 +3554,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchSuggestionCompletionWritesBinding() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let view = Text("Content")
             .searchable(text: $query)
             .searchSuggestions {
@@ -3592,7 +3592,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchSuggestionsEmptyNoButtons() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let view = Text("Content")
             .searchable(text: $query)
         // No .searchSuggestions call — suggestions array is empty
@@ -3606,7 +3606,7 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchSuggestionsWithTokens() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
+        @SwiftOpenUICore.State var query = ""
         let tokens: [TestSearchToken] = [
             TestSearchToken(id: "1", name: "Tag")
         ]
@@ -3633,8 +3633,8 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchScopesRenderButtons() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
-        @SwiftOpenUI.State var scope = "all"
+        @SwiftOpenUICore.State var query = ""
+        @SwiftOpenUICore.State var scope = "all"
         let view = Text("Content")
             .searchable(text: $query)
             .searchScopes($scope, scopes: ["all", "recent", "favorites"]) { s in
@@ -3654,8 +3654,8 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchScopesPreserveOrder() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
-        @SwiftOpenUI.State var scope = "A"
+        @SwiftOpenUICore.State var query = ""
+        @SwiftOpenUICore.State var scope = "A"
         let view = Text("Content")
             .searchable(text: $query)
             .searchScopes($scope, scopes: ["A", "B", "C"]) { s in Text(s) }
@@ -3681,8 +3681,8 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchScopeSelectionWritesBack() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
-        @SwiftOpenUI.State var scope = "all"
+        @SwiftOpenUICore.State var query = ""
+        @SwiftOpenUICore.State var scope = "all"
         let view = Text("Content")
             .searchable(text: $query)
             .searchScopes($scope, scopes: ["all", "recent"]) { s in Text(s) }
@@ -3714,8 +3714,8 @@ final class Win32RenderTests: XCTestCase {
 
     func testSearchScopesWithSuggestionsAndTokens() {
         let ctx = testContext()
-        @SwiftOpenUI.State var query = ""
-        @SwiftOpenUI.State var scope = "all"
+        @SwiftOpenUICore.State var query = ""
+        @SwiftOpenUICore.State var scope = "all"
         let tokens: [TestSearchToken] = [TestSearchToken(id: "1", name: "Tag")]
         let view = Text("Content")
             .searchable(text: $query, tokens: .constant(tokens)) { t in Text(t.name) }

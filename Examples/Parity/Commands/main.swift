@@ -4,7 +4,7 @@
 //         observation-driven menu updates, keyboard shortcuts
 
 #if os(macOS)
-import SwiftUI
+import SwiftOpenUI
 import MacExampleSupport
 #else
 import SwiftOpenUI

@@ -4,7 +4,7 @@
 // .background(), .foregroundColor(), .font(), .frame()
 
 #if os(macOS)
-import SwiftUI
+import SwiftOpenUI
 import MacExampleSupport
 #else
 import SwiftOpenUI

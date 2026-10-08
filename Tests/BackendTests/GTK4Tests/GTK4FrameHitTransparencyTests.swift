@@ -1,5 +1,5 @@
 import XCTest
-@_spi(SwiftOpenUIBackend) import SwiftOpenUI
+@_spi(SwiftOpenUIBackend) import SwiftOpenUICore
 @testable import BackendGTK4
 import CGTK
 import CGTKBridge

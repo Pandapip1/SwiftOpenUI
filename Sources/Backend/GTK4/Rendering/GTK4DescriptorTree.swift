@@ -1,4 +1,4 @@
-import SwiftOpenUI
+import SwiftOpenUICore
 import Foundation
 import CGTK
 import CGTKBridge

@@ -12,7 +12,7 @@
 
 #if os(macOS)
 import XCTest
-import SwiftUI
+import SwiftOpenUI
 import AppKit
 import LayoutParityShared
 
