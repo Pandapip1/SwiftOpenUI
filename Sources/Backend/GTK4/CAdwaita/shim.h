@@ -120,6 +120,22 @@ static inline void swift_adw_tab_overview_set_open(GtkWidget *overview, gboolean
     adw_tab_overview_set_open(ADW_TAB_OVERVIEW(overview), open);
 }
 
+static inline void swift_adw_tab_overview_set_child(GtkWidget *overview, GtkWidget *child) {
+    adw_tab_overview_set_child(ADW_TAB_OVERVIEW(overview), child);
+}
+
+static inline GtkWidget *swift_adw_toolbar_view_new(void) {
+    return GTK_WIDGET(adw_toolbar_view_new());
+}
+
+static inline void swift_adw_toolbar_view_add_top_bar(GtkWidget *toolbar_view, GtkWidget *bar) {
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar_view), bar);
+}
+
+static inline void swift_adw_toolbar_view_set_content(GtkWidget *toolbar_view, GtkWidget *content) {
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(toolbar_view), content);
+}
+
 static inline GtkWidget *swift_adw_tab_bar_get_view(GtkWidget *bar) {
     return GTK_WIDGET(adw_tab_bar_get_view(ADW_TAB_BAR(bar)));
 }

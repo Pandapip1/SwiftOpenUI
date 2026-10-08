@@ -28,6 +28,12 @@ public func gtkRegisterBundledIconFont() {
 /// Recursively search a widget tree for a navigation-provided window titlebar.
 func gtkFindTitlebar(in widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget>? {
     let gobject = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
+    // Containers such as AdwTabOverview own their header bars inside their
+    // sole window-child hierarchy. Do not recurse into selected page content
+    // and mistake a nested NavigationStack header for detachable window chrome.
+    if g_object_get_data(gobject, "gtk-swift-self-contained-window-chrome") != nil {
+        return nil
+    }
     if let data = g_object_get_data(gobject, "gtk-swift-window-titlebar") {
         return UnsafeMutableRawPointer(data).assumingMemoryBound(to: GtkWidget.self)
     }

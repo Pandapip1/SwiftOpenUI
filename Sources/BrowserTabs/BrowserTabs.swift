@@ -236,19 +236,10 @@ extension BrowserTabContainer: GTKRenderable {
         let overview = swift_adw_tab_overview_new(view, view)!
         let bar = swift_adw_tab_bar_new(view)!
         let button = swift_adw_tab_button_new(view)!
-        // GtkWindow owns its custom titlebar separately from its content
-        // hierarchy, so `overview.open` cannot resolve through ancestors once
-        // the native button is seated in that titlebar. Connect the native
-        // button directly to the overview it represents.
-        g_signal_connect_data(gpointer(button), "clicked",
-            unsafeBitCast({ (_: gpointer?, data: gpointer?) in
-                guard let data else { return }
-                let overview = UnsafeMutableRawPointer(data).assumingMemoryBound(to: GtkWidget.self)
-                swift_adw_tab_overview_set_open(overview, 1)
-            } as @convention(c) (gpointer?, gpointer?) -> Void, to: GCallback.self),
-            gpointer(overview), nil, GConnectFlags(rawValue: 0))
         gtk_widget_set_hexpand(bar, 1)
         let object = UnsafeMutableRawPointer(overview).assumingMemoryBound(to: GObject.self)
+        g_object_set_data(object, "gtk-swift-self-contained-window-chrome", gpointer(overview))
+        g_object_set_data(object, "gtk-swift-browser-tab-view", gpointer(view))
         g_object_set_data_full(object, "gtk-swift-browser-tab-bar", g_object_ref_sink(gpointer(bar))) {
             g_object_unref($0)
         }

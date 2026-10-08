@@ -7236,15 +7236,38 @@ extension ToolbarView: GTKRenderable {
         }
         gtk_box_append(boxPointer(titlebarBox), nestedSlot)
 
-        g_object_ref(gpointer(titlebarBox))
         let contentObject = UnsafeMutableRawPointer(contentWidget).assumingMemoryBound(to: GObject.self)
-        g_object_set_data_full(contentObject, "gtk-swift-window-titlebar", titlebarBox, { userData in
-            g_object_unref(userData)
-        })
         g_object_set_data(contentObject, "gtk-swift-nested-titlebar-slot", gpointer(nestedSlot))
         if let initialNestedTitlebar {
             gtkInstallNestedTitlebar(initialNestedTitlebar, in: nestedSlot)
         }
+
+        // AdwTabOverview is itself the window's chrome owner. Its child must
+        // contain the header bars and AdwTabView; installing those bars with
+        // gtk_window_set_titlebar instead leaves the overview outside the
+        // hierarchy it is designed to control and duplicates window chrome.
+        if let browserChromeOwner, let browserContentObject,
+           String(cString: g_type_name(gtk_swift_get_widget_type(browserChromeOwner))) == "AdwTabOverview",
+           let tabViewData = g_object_get_data(browserContentObject, "gtk-swift-browser-tab-view") {
+            let tabView = UnsafeMutableRawPointer(tabViewData).assumingMemoryBound(to: GtkWidget.self)
+            let toolbarView = swift_adw_toolbar_view_new()!
+            // Replacing the overview child first releases the tab view from
+            // its old parent so AdwToolbarView can adopt it as content.
+            swift_adw_tab_overview_set_child(browserChromeOwner, nil)
+            swift_adw_toolbar_view_add_top_bar(toolbarView, titlebarBox)
+            swift_adw_toolbar_view_set_content(toolbarView, tabView)
+            swift_adw_tab_overview_set_child(browserChromeOwner, toolbarView)
+            return opaqueFromWidget(contentWidget)
+        }
+
+        // Conventional GTK windows detach this widget and install it through
+        // gtk_window_set_titlebar. Keep that metadata entirely out of the
+        // AdwTabOverview path above: the overview's embedded toolbar is its
+        // window chrome and must remain inside the window's sole child tree.
+        g_object_ref(gpointer(titlebarBox))
+        g_object_set_data_full(contentObject, "gtk-swift-window-titlebar", titlebarBox, { userData in
+            g_object_unref(userData)
+        })
 
         return opaqueFromWidget(contentWidget)
     }
