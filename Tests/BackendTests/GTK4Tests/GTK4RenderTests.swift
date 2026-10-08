@@ -2212,6 +2212,38 @@ final class GTK4RenderTests: XCTestCase {
         )
     }
 
+    func testSingleLineLabelKeepsReadableWidthThroughButtonAndStacks() throws {
+        try requireGTK()
+
+        let wrapper = widgetFromOpaque(gtkRenderView(
+            Button(action: {}) {
+                ZStack {
+                    HStack(spacing: 4) {
+                        Image(systemName: "house.fill")
+                        Text("Home").lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .frame(width: 200, height: 40)
+        ))
+        var minimum: gint = 0
+        var natural: gint = 0
+        gtk_widget_measure(wrapper, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, &natural, nil, nil)
+        gtk_widget_measure(wrapper, GTK_ORIENTATION_VERTICAL, 200, &minimum, &natural, nil, nil)
+        allocate(widget: wrapper, size: ViewSize(width: 200, height: 40))
+
+        var labels: [UnsafeMutablePointer<GtkWidget>] = []
+        gtkCollectLabels(in: wrapper, into: &labels)
+        let home = try XCTUnwrap(labels.first { label in
+            String(cString: gtk_label_get_text(OpaquePointer(label))) == "Home"
+        })
+        XCTAssertGreaterThan(
+            gtk_widget_get_width(home), 20,
+            "A readable tab title must not collapse to Pango's one-ellipsis minimum."
+        )
+    }
+
     // MARK: - LayoutStress regressions (2026-04-17)
 
     /// Two VStacks wrapped in `.frame(maxWidth: .infinity)` inside an HStack

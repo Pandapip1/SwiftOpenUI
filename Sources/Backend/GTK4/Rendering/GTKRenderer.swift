@@ -138,6 +138,27 @@ private struct GTKLayoutMeasureContext: LayoutMeasureContext {
     }
 }
 
+/// Pango deliberately reports the smallest useful ellipsized width for a
+/// single-line label. That is a valid minimum, but it is not the label's ideal
+/// width and causes SwiftUI stacks to permanently lay short labels out as an
+/// ellipsis. Preserve the natural width measured before ellipsizing so our
+/// layout engine can distinguish the two proposals.
+private let gtkSwiftIdealLabelWidthKey = "swiftopenui-ideal-label-width"
+
+private func gtkRememberIdealLabelWidth(_ label: UnsafeMutablePointer<GtkWidget>) {
+    var natural: gint = 0
+    var height: gint = 0
+    pango_layout_get_pixel_size(gtk_label_get_layout(OpaquePointer(label)), &natural, &height)
+    let object = UnsafeMutableRawPointer(label).assumingMemoryBound(to: GObject.self)
+    g_object_set_data(object, gtkSwiftIdealLabelWidthKey, UnsafeMutableRawPointer(bitPattern: Int(natural) + 1))
+}
+
+private func gtkIdealLabelWidth(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int? {
+    let object = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
+    guard let value = g_object_get_data(object, gtkSwiftIdealLabelWidthKey) else { return nil }
+    return Int(bitPattern: value) - 1
+}
+
 private func gtkMeasureLayoutSubviews(
     _ widgets: [UnsafeMutablePointer<GtkWidget>]
 ) -> [LayoutMeasurement] {
@@ -935,6 +956,16 @@ private func gtkRenderSharedHStack(
     for (widget, placement) in zip(children, layout.childPlacements) {
         gtk_widget_set_halign(widget, GTK_ALIGN_START)
         gtk_widget_set_valign(widget, GTK_ALIGN_START)
+        // GtkFixed only applies the position passed to `put`; it measures the
+        // child again for its allocation. Preserve the size selected by the
+        // SwiftUI layout engine as well, otherwise an ellipsized GtkLabel is
+        // allocated Pango's one-glyph minimum even though the stack reserved
+        // its full ideal width.
+        gtk_widget_set_size_request(
+            widget,
+            gint(placement.size.width.rounded(.up)),
+            gint(placement.size.height.rounded(.up))
+        )
         gtk_swift_fixed_put(wrapper, widget, placement.origin.x, placement.origin.y)
     }
 
@@ -1884,7 +1915,7 @@ private func gtkMeasureWidgetNaturalSize(_ widget: UnsafeMutablePointer<GtkWidge
     var heightNat: Int32 = 0
     gtk_swift_widget_measure(widget, GTK_ORIENTATION_HORIZONTAL, -1, &widthMin, &widthNat)
     gtk_swift_widget_measure(widget, GTK_ORIENTATION_VERTICAL, -1, &heightMin, &heightNat)
-    let width = max(widthMin, widthNat)
+    let width = max(widthMin, widthNat, Int32(gtkIdealLabelWidth(widget) ?? 0))
     let height = max(heightMin, heightNat)
     return ViewSize(width: Double(width), height: Double(height))
 }
@@ -2113,6 +2144,10 @@ extension LineLimitView: GTKRenderable {
             let labelOp = OpaquePointer(label)
             if let limit = lineLimit {
                 if limit == 1 {
+                    // Capture the unconstrained ideal before enabling Pango's
+                    // ellipsize mode, which changes its reported natural width
+                    // to approximately one ellipsis glyph.
+                    gtkRememberIdealLabelWidth(label)
                     gtk_label_set_wrap(labelOp, 0)
                     gtk_label_set_lines(labelOp, 1)
                     // Default tail truncation for single-line, but don't
@@ -2129,10 +2164,6 @@ extension LineLimitView: GTKRenderable {
                     // stay at natural width and let the Spacer fill the
                     // gap so the value ends up right-aligned.
                     //
-                    // `max-width-chars = -1` keeps the natural request
-                    // at the full text width so short text displays in
-                    // full; ellipsize kicks in only when the allocation
-                    // is smaller than natural.
                     gtk_label_set_width_chars(labelOp, -1)
                     gtk_label_set_max_width_chars(labelOp, -1)
                 } else {
