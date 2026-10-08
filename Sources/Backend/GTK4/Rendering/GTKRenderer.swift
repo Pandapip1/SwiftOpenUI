@@ -7135,9 +7135,22 @@ extension ToolbarView: GTKRenderable {
         g_object_set_data(nestedSlotObject, "gtk-swift-is-nested-titlebar-slot", gpointer(nestedSlot))
 
         let titlebarBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        // GtkWindow accepts any widget as its custom titlebar, but only a
+        // GtkHeaderBar styles itself as window chrome automatically.  The
+        // composite box must carry the native titlebar class as well so rows
+        // below the header remain visually inside the CSD area.
+        gtk_widget_add_css_class(titlebarBox, "titlebar")
         gtk_box_append(boxPointer(titlebarBox), headerBar)
         if let principalWidget {
-            gtk_box_append(boxPointer(titlebarBox), principalWidget)
+            let principalRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
+            gtk_widget_add_css_class(principalRow, "toolbar")
+            gtk_widget_set_hexpand(principalRow, 1)
+            gtk_widget_set_halign(principalRow, GTK_ALIGN_FILL)
+            gtk_widget_set_size_request(principalRow, -1, 34)
+            gtk_widget_set_hexpand(principalWidget, 1)
+            gtk_widget_set_halign(principalWidget, GTK_ALIGN_FILL)
+            gtk_box_append(boxPointer(principalRow), principalWidget)
+            gtk_box_append(boxPointer(titlebarBox), principalRow)
         }
         gtk_box_append(boxPointer(titlebarBox), nestedSlot)
 

@@ -47,8 +47,15 @@ final class GTK4WindowTitleBarTests: XCTestCase {
         let principal = try XCTUnwrap(findLabel("Browser tabs", in: initialTitlebar))
         XCTAssertFalse(isDescendant(principal, of: header),
                        "principal toolbar content belongs in a separate CSD row below the header")
-        XCTAssertEqual(gtk_widget_get_parent(header), gtk_widget_get_parent(principal),
+        let principalRow = try XCTUnwrap(gtk_widget_get_parent(principal))
+        XCTAssertEqual(gtk_widget_get_parent(header), gtk_widget_get_parent(principalRow),
                        "header and principal rows should share the titlebar's vertical container")
+        XCTAssertTrue(gtk_widget_has_css_class(initialTitlebar, "titlebar") != 0,
+                      "the composite window titlebar should inherit native CSD styling")
+        XCTAssertTrue(gtk_widget_has_css_class(principalRow, "toolbar") != 0,
+                      "the principal row should use the native toolbar surface")
+        XCTAssertNotEqual(gtk_widget_get_hexpand(principalRow), 0)
+        XCTAssertEqual(gtk_widget_get_halign(principalRow), GTK_ALIGN_FILL)
         let tabs = try XCTUnwrap(findStack(visibleChildNamed: "home", in: root))
         gtk_swift_stack_set_visible_child_name(tabs, "library")
         pump()
