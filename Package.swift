@@ -444,7 +444,7 @@ targets.append(
 
 let package = Package(
     name: "SwiftOpenUI",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v14), .iOS(.v17), .tvOS(.v17), .visionOS(.v1)],
     products: {
         var p: [Product] = [
             .library(name: "SwiftOpenUI", targets: ["SwiftOpenUI"]),
@@ -472,6 +472,7 @@ let package = Package(
         #endif
         #if os(macOS)
         p.append(.library(name: "WebKit", targets: ["WebKit"]))
+        p.append(.library(name: "CAdwaita", targets: ["CAdwaita"]))
         p.append(.library(name: "BackendGTK4", targets: ["BackendGTK4"]))
         p.append(.library(name: "BrowserTabs", targets: ["BrowserTabs"]))
         p.append(.library(name: "BackendAndroid", type: .dynamic, targets: ["BackendAndroid"]))
