@@ -84,6 +84,12 @@ targets += [
         providers: [.apt(["libgtk-4-dev"])]
     ),
     .systemLibrary(
+        name: "CAdwaita",
+        path: "Sources/Backend/GTK4/CAdwaita",
+        pkgConfig: "libadwaita-1",
+        providers: [.apt(["libadwaita-1-dev"])]
+    ),
+    .systemLibrary(
         name: "CGStreamer",
         path: "Sources/Backend/GTK4/CGStreamer",
         pkgConfig: "gstreamer-app-1.0",
@@ -96,7 +102,7 @@ targets += [
     ),
     .target(
         name: "BackendGTK4",
-        dependencies: ["SwiftOpenUI", "WebKit", "CGTK", "CGTKBridge", "CGStreamer", "CWebKitGTK", "SwiftOpenUISymbols"],
+        dependencies: ["SwiftOpenUI", "WebKit", "CGTK", "CAdwaita", "CGTKBridge", "CGStreamer", "CWebKitGTK", "SwiftOpenUISymbols"],
         path: "Sources/Backend/GTK4/Rendering",
         linkerSettings: [
             // FontConfig is used by the process-local font registration
@@ -110,12 +116,17 @@ targets += [
             .linkedLibrary("gstapp-1.0"),
         ]
     ),
+    .target(
+        name: "BrowserTabs",
+        dependencies: ["SwiftOpenUI", "BackendGTK4", "CGTK", "CAdwaita"],
+        path: "Sources/BrowserTabs"
+    ),
     .testTarget(
         name: "GTK4RenderTests",
         // SwiftOpenUISymbols is a DIRECT dependency: the symbol-mapping
         // tests import it (declared, not leaked transitively — see the
         // librano NIOFoundationCompat cold-build lesson).
-        dependencies: ["SwiftOpenUI", "WebKit", "BackendGTK4", "CGTK", "CGTKBridge", "SwiftOpenUISymbols"],
+        dependencies: ["SwiftOpenUI", "WebKit", "BackendGTK4", "CGTK", "CAdwaita", "CGTKBridge", "SwiftOpenUISymbols"],
         path: "Tests/BackendTests/GTK4Tests"
     ),
     // Layout parity — GTK comparison against macOS reference
@@ -173,6 +184,16 @@ exampleDeps.append("BackendWin32")
 // Android backend — temporarily in root for cross-compilation testing
 #if os(macOS)
 targets += [
+    .target(
+        name: "CAdwaita",
+        dependencies: [],
+        path: "Sources/Backend/GTK4/CAdwaitaStubs"
+    ),
+    .target(
+        name: "BrowserTabs",
+        dependencies: [],
+        path: "Sources/BrowserTabs"
+    ),
     // Stub so SwiftPM can resolve BackendGTK4 on macOS at resolution time.
     // The real target (with GTK system-library deps) only compiles on Linux.
     // HummingbirdKitTests conditionally depends on BackendGTK4 with
@@ -431,8 +452,10 @@ let package = Package(
         #if os(Linux)
         p.append(.library(name: "WebKit", targets: ["WebKit"]))
         p.append(.library(name: "CGTK", targets: ["CGTK"]))
+        p.append(.library(name: "CAdwaita", targets: ["CAdwaita"]))
         p.append(.library(name: "CGTKBridge", targets: ["CGTKBridge"]))
         p.append(.library(name: "BackendGTK4", targets: ["BackendGTK4"]))
+        p.append(.library(name: "BrowserTabs", targets: ["BrowserTabs"]))
         // SwiftOpenUISymbols is consumed transitively by BackendGTK4, but
         // also exposed as an importable product so apps can reference
         // `MaterialSymbolsResources` directly (e.g. to surface the bundled
@@ -450,6 +473,7 @@ let package = Package(
         #if os(macOS)
         p.append(.library(name: "WebKit", targets: ["WebKit"]))
         p.append(.library(name: "BackendGTK4", targets: ["BackendGTK4"]))
+        p.append(.library(name: "BrowserTabs", targets: ["BrowserTabs"]))
         p.append(.library(name: "BackendAndroid", type: .dynamic, targets: ["BackendAndroid"]))
         #endif
         return p

@@ -2,6 +2,7 @@ import XCTest
 import SwiftOpenUI
 @testable import BackendGTK4
 import CGTK
+import CAdwaita
 import CGTKBridge
 
 final class GTK4WindowTitleBarTests: XCTestCase {
@@ -59,7 +60,7 @@ final class GTK4WindowTitleBarTests: XCTestCase {
         XCTAssertEqual(gtk_widget_get_height(principalRow), gtk_widget_get_height(header),
                        "the principal CSD row should follow the GTK theme's native header height")
         let tabs = try XCTUnwrap(findStack(visibleChildNamed: "home", in: root))
-        gtk_swift_stack_set_visible_child_name(tabs, "library")
+        "library".withCString { swift_adw_view_stack_set_visible_child_name(tabs, $0) }
         pump()
 
         let visibleTitlebar = try XCTUnwrap(gtk_window_get_titlebar(windowPointer))
@@ -114,8 +115,8 @@ final class GTK4WindowTitleBarTests: XCTestCase {
     }
 
     private func findStack(visibleChildNamed name: String, in widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget>? {
-        if String(cString: g_type_name(gtk_swift_get_widget_type(widget))) == "GtkStack",
-           let visible = gtk_swift_stack_get_visible_child_name(widget), String(cString: visible) == name {
+        if String(cString: g_type_name(gtk_swift_get_widget_type(widget))) == "AdwViewStack",
+           let visible = swift_adw_view_stack_get_visible_child_name(widget), String(cString: visible) == name {
             return widget
         }
         var child = gtk_widget_get_first_child(widget)

@@ -1,4 +1,5 @@
 import CGTK
+import CAdwaita
 import CGTKBridge
 @_spi(SwiftOpenUIBackend) import SwiftOpenUI
 import SwiftOpenUISymbols
@@ -33,9 +34,12 @@ func gtkFindTitlebar(in widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutabl
 
     // Search only the visible child of GtkStack to avoid stale titlebars.
     let typeName = String(cString: g_type_name(gtk_swift_get_widget_type(widget)))
-    if typeName == "GtkStack" {
+    if typeName == "GtkStack" || typeName == "AdwViewStack" {
         let stackOp = OpaquePointer(widget)
-        if let visibleChild = gtk_stack_get_visible_child(stackOp) {
+        let visibleChild = typeName == "GtkStack"
+            ? gtk_stack_get_visible_child(stackOp)
+            : swift_adw_view_stack_get_visible_child(widget)
+        if let visibleChild {
             return gtkFindTitlebar(in: visibleChild)
         }
         return nil
@@ -65,8 +69,9 @@ func gtkSetVisibleWindowTitlebar(_ widget: UnsafeMutablePointer<GtkWidget>, _ ti
             return
         }
         guard let parent = gtk_widget_get_parent(child) else { break }
-        if String(cString: g_type_name(gtk_swift_get_widget_type(parent))) == "GtkStack",
-           gtk_stack_get_visible_child(OpaquePointer(parent)) != child { return }
+        let parentType = String(cString: g_type_name(gtk_swift_get_widget_type(parent)))
+        if parentType == "GtkStack", gtk_stack_get_visible_child(OpaquePointer(parent)) != child { return }
+        if parentType == "AdwViewStack", swift_adw_view_stack_get_visible_child(parent) != child { return }
         // An ancestor already claimed the window's titlebar for itself at
         // render time (gtkFindTitlebar's outer-wins search finds it first).
         // A NavigationStack nested underneath,

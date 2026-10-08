@@ -1,4 +1,5 @@
 import CGTK
+import CAdwaita
 import CGTKBridge
 @_spi(SwiftOpenUIBackend) import SwiftOpenUI
 import SwiftOpenUISymbols
@@ -5236,8 +5237,8 @@ private final class GTKDeferredTabPage {
 
 extension TabView: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
-        let stack = gtk_stack_new()!
-        gtk_swift_stack_set_transition_type(stack, GTK_STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT)
+        adw_init()
+        let stack = swift_adw_view_stack_new()!
 
         var usedIds = Set<String>()
         var orderedIds: [String] = []
@@ -5253,7 +5254,11 @@ extension TabView: GTKRenderable {
             orderedIds.append(id)
             let page = GTKDeferredTabPage(content: tab.wrapped)
             pages[id] = page
-            gtk_swift_stack_add_titled(stack, page.container, id, tab.title)
+            id.withCString { idPointer in
+                tab.title.withCString { titlePointer in
+                    _ = swift_adw_view_stack_add_titled(stack, page.container, idPointer, titlePointer)
+                }
+            }
         }
 
         // Choose the initial page before evaluating any bodies, including when
@@ -5263,7 +5268,7 @@ extension TabView: GTKRenderable {
         if orderedIds.indices.contains(index) {
             let id = orderedIds[index]
             pages[id]?.materialize()
-            gtk_swift_stack_set_visible_child_name(stack, id)
+            id.withCString { swift_adw_view_stack_set_visible_child_name(stack, $0) }
         }
 
         // Materialize before the newly selected child is laid out. This also
@@ -5292,7 +5297,7 @@ extension TabView: GTKRenderable {
             "notify::visible-child-name",
             unsafeBitCast({ (widget: gpointer?, _: gpointer?, userData: gpointer?) in
                 let box = Unmanaged<StringClosureBox>.fromOpaque(userData!).takeUnretainedValue()
-                guard let widget, let cName = gtk_swift_stack_get_visible_child_name(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkWidget.self)) else { return }
+                guard let widget, let cName = swift_adw_view_stack_get_visible_child_name(UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkWidget.self)) else { return }
                 box.closure(String(cString: cName))
             } as @convention(c) (gpointer?, gpointer?, gpointer?) -> Void, to: GCallback.self),
             box,
@@ -5302,8 +5307,7 @@ extension TabView: GTKRenderable {
             GConnectFlags(rawValue: 0)
         )
 
-        let switcher = gtk_stack_switcher_new()!
-        gtk_swift_stack_switcher_set_stack(switcher, stack)
+        let switcher = swift_adw_view_switcher_new(stack)!
 
         // Spacing comes from the theme, not from a number picked here. GTK's
         // own stylesheet gives .toolbar `padding: 4px; border-spacing: 4px`, so
