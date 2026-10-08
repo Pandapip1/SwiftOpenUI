@@ -109,6 +109,7 @@ static inline GtkWidget *swift_adw_tab_overview_new(GtkWidget *view, GtkWidget *
 static inline GtkWidget *swift_adw_tab_button_new(GtkWidget *view) {
     AdwTabButton *button = ADW_TAB_BUTTON(adw_tab_button_new());
     adw_tab_button_set_view(button, ADW_TAB_VIEW(view));
+    gtk_actionable_set_action_name(GTK_ACTIONABLE(button), "overview.open");
     return GTK_WIDGET(button);
 }
 

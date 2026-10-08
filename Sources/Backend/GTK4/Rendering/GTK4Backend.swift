@@ -61,6 +61,38 @@ func gtkFindTitlebar(in widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutabl
     return nil
 }
 
+/// Suppress GtkWindow's automatically generated titlebar when the root view
+/// owns all of its chrome inside the content hierarchy. This mirrors
+/// AdwWindow: an invisible titlebar sentinel tells GTK that client-side chrome
+/// is already provided while retaining the normal decorated-window resize
+/// behavior.
+@_spi(SwiftOpenUIBackend)
+@discardableResult
+public func gtkConfigureSelfContainedWindowChrome(
+    _ window: UnsafeMutablePointer<GtkWindow>,
+    content: UnsafeMutablePointer<GtkWidget>
+) -> Bool {
+    guard gtkContainsSelfContainedWindowChrome(content) else { return false }
+
+    let sentinel = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
+    gtk_widget_set_visible(sentinel, 0)
+    let sentinelObject = UnsafeMutableRawPointer(sentinel).assumingMemoryBound(to: GObject.self)
+    g_object_set_data(sentinelObject, "gtk-swift-window-chrome-sentinel", gpointer(sentinel))
+    gtk_window_set_titlebar(window, sentinel)
+    return true
+}
+
+private func gtkContainsSelfContainedWindowChrome(_ widget: UnsafeMutablePointer<GtkWidget>) -> Bool {
+    let object = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
+    if g_object_get_data(object, "gtk-swift-self-contained-window-chrome") != nil { return true }
+    var child = gtk_widget_get_first_child(widget)
+    while let current = child {
+        if gtkContainsSelfContainedWindowChrome(current) { return true }
+        child = gtk_widget_get_next_sibling(current)
+    }
+    return false
+}
+
 /// A departing page can rebuild during its stack transition. Only the
 /// currently visible page may replace the window's navigation chrome.
 func gtkSetVisibleWindowTitlebar(_ widget: UnsafeMutablePointer<GtkWidget>, _ titlebar: UnsafeMutablePointer<GtkWidget>) {
@@ -88,6 +120,10 @@ func gtkSetVisibleWindowTitlebar(_ widget: UnsafeMutablePointer<GtkWidget>, _ ti
         // exactly this.
         child = parent
     }
+    // A structural modifier host can sit outside the AdwTabOverview. A
+    // titlebar notification from another branch of that host must not replace
+    // the invisible sentinel and re-enable GtkWindow's parallel chrome.
+    if gtkContainsSelfContainedWindowChrome(child) { return }
     let needsRelease = gtkPrepareRootWindowTitlebar(widget, titlebar)
     gtk_swift_set_root_window_titlebar(widget, titlebar)
     if needsRelease { g_object_unref(gpointer(titlebar)) }
@@ -236,7 +272,10 @@ extension WindowGroup: GTKWindowRenderable {
         setCurrentEnvironment(wgEnv)
 
         let contentWidget = widgetFromOpaque(gtkRenderView(content))
-        if let titlebarWidget = gtkFindTitlebar(in: contentWidget) {
+        if gtkConfigureSelfContainedWindowChrome(winPtr, content: contentWidget) {
+            // The content hierarchy owns its chrome. In particular, do not
+            // detach a toolbar from an outer modifier host around it.
+        } else if let titlebarWidget = gtkFindTitlebar(in: contentWidget) {
             gtk_window_set_titlebar(winPtr, titlebarWidget)
         }
 
@@ -803,6 +842,7 @@ extension Window: GTKWindowRenderable {
         setCurrentEnvironment(wsEnv)
 
         let contentWidget = widgetFromOpaque(gtkRenderView(content))
+        gtkConfigureSelfContainedWindowChrome(winPtr, content: contentWidget)
 
         if let w = defaultWindowWidth, let h = defaultWindowHeight {
             gtk_window_set_default_size(winPtr, gint(w), gint(h))
