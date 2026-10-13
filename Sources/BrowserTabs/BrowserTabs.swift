@@ -220,22 +220,26 @@ private struct BrowserTabOverviewCard<LivePreview: View>: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Button(action: onSelect) {
-                VStack(spacing: 0) {
-                    HStack(spacing: 8) {
-                        Text(item.title)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        if onClose != nil {
-                            Color.clear.frame(width: 28, height: 28)
+                ZStack {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 8) {
+                            Text(item.title)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            if onClose != nil {
+                                Color.clear.frame(width: 28, height: 28)
+                            }
                         }
-                    }
-                    .padding(.horizontal, 10)
-                    .frame(height: 44)
+                        .padding(.horizontal, 10)
+                        .frame(height: 44)
 
-                    livePreview()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .clipped()
+                        livePreview()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipped()
+                    }
+                    Color.clear
+                        .contentShape(Rectangle())
                 }
             }
             .buttonStyle(.plain)
