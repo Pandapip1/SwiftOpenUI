@@ -218,34 +218,40 @@ private struct BrowserTabOverviewCard<LivePreview: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text(item.title)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: onSelect)
-                if let onClose {
-                    Button(action: onClose) {
-                        Image(systemName: "xmark").font(.caption.weight(.bold))
-                            .frame(width: 28, height: 28).background(Circle().fill(.regularMaterial))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Close \(item.title)")
-                }
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 44)
-
+        ZStack(alignment: .topTrailing) {
             Button(action: onSelect) {
-                livePreview()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
+                VStack(spacing: 0) {
+                    HStack(spacing: 8) {
+                        Text(item.title)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if onClose != nil {
+                            Color.clear.frame(width: 28, height: 28)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 44)
+
+                    livePreview()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                }
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
             .accessibilityLabel("Open \(item.title)")
+
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark").font(.caption.weight(.bold))
+                        .frame(width: 28, height: 28).background(Circle().fill(.regularMaterial))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close \(item.title)")
+                .padding(.top, 8)
+                .padding(.trailing, 10)
+            }
         }
         .frame(width: width, height: width / 0.72)
         .clipped()
