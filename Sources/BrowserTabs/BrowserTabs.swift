@@ -37,6 +37,7 @@ public struct BrowserTabContainer<Content: View>: View {
     public let items: [BrowserTabItem]
     public let selection: Binding<UUID>
     public let onClose: (UUID) -> Void
+    private let newTabControl: AnyView?
     private let content: (BrowserTabItem) -> Content
     private let overviewPresented: Binding<Bool>?
     @State private var showingOverview = false
@@ -48,6 +49,21 @@ public struct BrowserTabContainer<Content: View>: View {
         self.items = items
         self.selection = selection
         self.onClose = onClose
+        self.newTabControl = nil
+        self.overviewPresented = overviewPresented
+        self.content = content
+    }
+
+    public init<NewTabControl: View>(
+        items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
+        overviewPresented: Binding<Bool>? = nil,
+        @ViewBuilder newTabControl: () -> NewTabControl,
+        @ViewBuilder content: @escaping (BrowserTabItem) -> Content
+    ) {
+        self.items = items
+        self.selection = selection
+        self.onClose = onClose
+        self.newTabControl = AnyView(newTabControl())
         self.overviewPresented = overviewPresented
         self.content = content
     }
@@ -62,12 +78,14 @@ public struct BrowserTabContainer<Content: View>: View {
 
     public var body: some View {
         #if os(macOS)
-        Group {
+        ZStack {
+            mountedPages
+                .opacity(isShowingOverview ? 0 : 1)
+                .allowsHitTesting(!isShowingOverview)
+                .accessibilityHidden(isShowingOverview)
             if isShowingOverview {
                 macOverview
                     .transition(.opacity)
-            } else {
-                mountedPages
             }
         }
         .animation(.spring(response: 0.42, dampingFraction: 0.86), value: isShowingOverview)
@@ -78,7 +96,8 @@ public struct BrowserTabContainer<Content: View>: View {
             .fullScreenCover(isPresented: Binding(
                 get: { isShowingOverview }, set: { isShowingOverview = $0 }
             )) {
-                BrowserTabOverview(items: items, selection: selection, onClose: onClose, content: content) {
+                BrowserTabOverview(items: items, selection: selection, onClose: onClose,
+                                   newTabControl: newTabControl, content: content) {
                     isShowingOverview = false
                 }
             }
@@ -142,6 +161,7 @@ private struct BrowserTabOverview<Content: View>: View {
     let items: [BrowserTabItem]
     let selection: Binding<UUID>
     let onClose: (UUID) -> Void
+    let newTabControl: AnyView?
     let content: (BrowserTabItem) -> Content
     let dismiss: () -> Void
 
@@ -172,6 +192,11 @@ private struct BrowserTabOverview<Content: View>: View {
             }
             .navigationTitle("Tabs")
             .toolbar {
+                if let newTabControl {
+                    ToolbarItem(placement: .primaryAction) {
+                        newTabControl
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) { Button("Done", action: dismiss) }
             }
         }
@@ -321,6 +346,7 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
     public let items: [BrowserTabItem]
     public let selection: Binding<UUID>
     public let onClose: (UUID) -> Void
+    private let newTabControl: AnyView?
     public let content: (BrowserTabItem) -> Content
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
@@ -329,6 +355,20 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
         self.items = items
         self.selection = selection
         self.onClose = onClose
+        self.newTabControl = nil
+        self.content = content
+    }
+
+    public init<NewTabControl: View>(
+        items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
+        overviewPresented: Binding<Bool>? = nil,
+        @ViewBuilder newTabControl: () -> NewTabControl,
+        @ViewBuilder content: @escaping (BrowserTabItem) -> Content
+    ) {
+        self.items = items
+        self.selection = selection
+        self.onClose = onClose
+        self.newTabControl = AnyView(newTabControl())
         self.content = content
     }
 
