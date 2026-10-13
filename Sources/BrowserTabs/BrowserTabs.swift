@@ -24,43 +24,192 @@ public struct BrowserTabContainer<Content: View>: View {
     public let items: [BrowserTabItem]
     public let selection: Binding<UUID>
     public let onClose: (UUID) -> Void
-    private let content: Content
+    private let content: (BrowserTabItem) -> Content
+    private let overviewPresented: Binding<Bool>?
     @State private var showingOverview = false
+    @Namespace private var overviewTransition
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
-                @ViewBuilder content: () -> Content) {
+                overviewPresented: Binding<Bool>? = nil,
+                @ViewBuilder content: @escaping (BrowserTabItem) -> Content) {
         self.items = items
         self.selection = selection
         self.onClose = onClose
-        self.content = content()
+        self.overviewPresented = overviewPresented
+        self.content = content
+    }
+
+    private var isShowingOverview: Bool {
+        get { overviewPresented?.wrappedValue ?? showingOverview }
+        nonmutating set {
+            if let overviewPresented { overviewPresented.wrappedValue = newValue }
+            else { showingOverview = newValue }
+        }
     }
 
     public var body: some View {
-        content
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showingOverview = true } label: { Image(systemName: "square.grid.2x2") }
-                        .accessibilityLabel("Tab Overview")
+        #if os(macOS)
+        Group {
+            if isShowingOverview {
+                macOverview
+                    .transition(.opacity)
+            } else {
+                mountedPages
+            }
+        }
+        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: isShowingOverview)
+        .toolbar { overviewToolbar }
+        #else
+        mountedPages
+            .toolbar { overviewToolbar }
+            .fullScreenCover(isPresented: Binding(
+                get: { isShowingOverview }, set: { isShowingOverview = $0 }
+            )) {
+                BrowserTabOverview(items: items, selection: selection, onClose: onClose, content: content) {
+                    isShowingOverview = false
                 }
             }
-            .sheet(isPresented: $showingOverview) {
-                VStack {
+        #endif
+    }
+
+    private var mountedPages: some View {
+        ZStack {
+            ForEach(items) { item in
+                content(item)
+                    .opacity(selection.wrappedValue == item.id ? 1 : 0)
+                    .allowsHitTesting(selection.wrappedValue == item.id)
+                    .accessibilityHidden(selection.wrappedValue != item.id)
+                    .matchedGeometryEffect(id: item.id, in: overviewTransition)
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var overviewToolbar: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button { isShowingOverview.toggle() } label: { Image(systemName: "square.grid.2x2") }
+                .accessibilityLabel(isShowingOverview ? "Close Tab Overview" : "Tab Overview")
+        }
+    }
+
+    #if os(macOS)
+    private var macOverview: some View {
+        GeometryReader { geometry in
+            let columns = max(2, Int(geometry.size.width / 320))
+            let spacing: CGFloat = 24
+            let width = (geometry.size.width - 64 - CGFloat(columns - 1) * spacing) / CGFloat(columns)
+            ScrollView {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(width)), count: columns), spacing: spacing) {
                     ForEach(items) { item in
-                        HStack {
-                            Button(item.title) {
-                                selection.wrappedValue = item.id
-                                showingOverview = false
-                            }
-                            Spacer()
-                            if !item.isPinned {
-                                Button { onClose(item.id) } label: { Image(systemName: "xmark") }
-                                    .accessibilityLabel("Close \(item.title)")
+                        BrowserTabOverviewCard(item: item, width: width,
+                                               isActive: selection.wrappedValue == item.id,
+                                               onSelect: { select(item.id) },
+                                               onClose: item.isPinned ? nil : { onClose(item.id) }) {
+                            content(item)
+                                .allowsHitTesting(false)
+                                .matchedGeometryEffect(id: item.id, in: overviewTransition)
+                        }
+                    }
+                }
+                .padding(32)
+            }
+            .background(Color.secondary.opacity(0.08))
+        }
+    }
+    #endif
+
+    private func select(_ id: UUID) {
+        selection.wrappedValue = id
+        isShowingOverview = false
+    }
+}
+
+private struct BrowserTabOverview<Content: View>: View {
+    let items: [BrowserTabItem]
+    let selection: Binding<UUID>
+    let onClose: (UUID) -> Void
+    let content: (BrowserTabItem) -> Content
+    let dismiss: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            GeometryReader { geometry in
+                let columns = max(2, Int(geometry.size.width / 190))
+                let spacing: CGFloat = 16
+                let width = (geometry.size.width - 32 - CGFloat(columns - 1) * spacing) / CGFloat(columns)
+                ScrollView {
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(width)), count: columns), spacing: spacing) {
+                        ForEach(items) { item in
+                            BrowserTabOverviewCard(item: item, width: width,
+                                                   isActive: selection.wrappedValue == item.id,
+                                                   onSelect: { selection.wrappedValue = item.id; dismiss() },
+                                                   onClose: item.isPinned ? nil : { onClose(item.id) }) {
+                                content(item).allowsHitTesting(false)
                             }
                         }
                     }
-                }.padding()
+                    .padding(16)
+                }
             }
+            .background(Color.secondary.opacity(0.08))
+            .navigationTitle("Tabs")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done", action: dismiss) }
+            }
+        }
     }
+}
+
+private struct BrowserTabOverviewCard<LivePreview: View>: View {
+    let item: BrowserTabItem
+    let width: CGFloat
+    let isActive: Bool
+    let onSelect: () -> Void
+    let onClose: (() -> Void)?
+    @ViewBuilder let livePreview: () -> LivePreview
+
+    init(item: BrowserTabItem, width: CGFloat, isActive: Bool, onSelect: @escaping () -> Void,
+         onClose: (() -> Void)?, @ViewBuilder livePreview: @escaping () -> LivePreview) {
+        self.item = item; self.width = width; self.isActive = isActive
+        self.onSelect = onSelect; self.onClose = onClose; self.livePreview = livePreview
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                Spacer(minLength: 0)
+                if let onClose {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark").font(.caption.weight(.bold))
+                            .frame(width: 28, height: 28).background(Circle().fill(.regularMaterial))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close \(item.title)")
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 44)
+
+            Button(action: onSelect) {
+                livePreview()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open \(item.title)")
+        }
+        .frame(width: width, height: width / 0.72)
+        .clipped()
+        .background(.background)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(isActive ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: isActive ? 3 : 1)
+        }
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+    }
+
 }
 
 public struct BrowserTabBar: View {
@@ -146,14 +295,15 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
     public let items: [BrowserTabItem]
     public let selection: Binding<UUID>
     public let onClose: (UUID) -> Void
-    public let content: Content
+    public let content: (BrowserTabItem) -> Content
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
-                @ViewBuilder content: () -> Content) {
+                overviewPresented: Binding<Bool>? = nil,
+                @ViewBuilder content: @escaping (BrowserTabItem) -> Content) {
         self.items = items
         self.selection = selection
         self.onClose = onClose
-        self.content = content()
+        self.content = content
     }
 
     public var body: Never { fatalError("BrowserTabContainer is a platform-rendered primitive view") }
@@ -188,13 +338,11 @@ private final class BrowserTabCallbacks {
 
 private func makeNativeTabView(items: [BrowserTabItem], selection: Binding<UUID>,
                                onClose: @escaping (UUID) -> Void,
-                               selectedContent: UnsafeMutablePointer<GtkWidget>? = nil) -> UnsafeMutablePointer<GtkWidget> {
+                               contents: [UUID: UnsafeMutablePointer<GtkWidget>] = [:]) -> UnsafeMutablePointer<GtkWidget> {
     let view = swift_adw_tab_view_new()!
     var pages: [(UUID, OpaquePointer)] = []
     for item in items {
-        let pageContent = item.id == selection.wrappedValue
-            ? (selectedContent ?? gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!)
-            : gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        let pageContent = contents[item.id] ?? gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
         let page = swift_adw_tab_view_append(view, pageContent)!
         item.title.withCString { swift_adw_tab_page_set_title(page, $0) }
         swift_adw_tab_view_set_page_pinned(view, page, item.isPinned ? 1 : 0)
@@ -231,10 +379,13 @@ private func makeNativeTabView(items: [BrowserTabItem], selection: Binding<UUID>
 extension BrowserTabContainer: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
         adw_init()
-        let renderedContent = gtkRenderView(content)
-        let contentWidget = UnsafeMutableRawPointer(renderedContent).assumingMemoryBound(to: GtkWidget.self)
+        var contents: [UUID: UnsafeMutablePointer<GtkWidget>] = [:]
+        for item in items {
+            contents[item.id] = UnsafeMutableRawPointer(gtkRenderView(content(item)))
+                .assumingMemoryBound(to: GtkWidget.self)
+        }
         let view = makeNativeTabView(items: items, selection: selection, onClose: onClose,
-                                     selectedContent: contentWidget)
+                                     contents: contents)
         let overview = swift_adw_tab_overview_new(view, view)!
         let bar = swift_adw_tab_bar_new(view)!
         let button = swift_adw_tab_button_new(view)!
