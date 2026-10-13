@@ -19,6 +19,19 @@ public struct BrowserTabItem: Identifiable, Equatable, Sendable {
     }
 }
 
+private struct BrowserTabOverviewPreviewKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+public extension EnvironmentValues {
+    /// True while a tab's live content is rendered inside an overview card.
+    /// Browser chrome should use this to avoid becoming part of the preview.
+    var isBrowserTabOverviewPreview: Bool {
+        get { self[BrowserTabOverviewPreviewKey.self] }
+        set { self[BrowserTabOverviewPreviewKey.self] = newValue }
+    }
+}
+
 #if !BACKEND_GTK
 public struct BrowserTabContainer<Content: View>: View {
     public let items: [BrowserTabItem]
@@ -107,6 +120,7 @@ public struct BrowserTabContainer<Content: View>: View {
                                                onClose: item.isPinned ? nil : { onClose(item.id) }) {
                             content(item)
                                 .allowsHitTesting(false)
+                                .environment(\.isBrowserTabOverviewPreview, true)
                                 .matchedGeometryEffect(id: item.id, in: overviewTransition)
                         }
                     }
@@ -133,25 +147,29 @@ private struct BrowserTabOverview<Content: View>: View {
 
     var body: some View {
         NavigationStack {
-            GeometryReader { geometry in
-                let columns = max(2, Int(geometry.size.width / 190))
-                let spacing: CGFloat = 16
-                let width = (geometry.size.width - 32 - CGFloat(columns - 1) * spacing) / CGFloat(columns)
-                ScrollView {
-                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(width)), count: columns), spacing: spacing) {
-                        ForEach(items) { item in
-                            BrowserTabOverviewCard(item: item, width: width,
-                                                   isActive: selection.wrappedValue == item.id,
-                                                   onSelect: { selection.wrappedValue = item.id; dismiss() },
-                                                   onClose: item.isPinned ? nil : { onClose(item.id) }) {
-                                content(item).allowsHitTesting(false)
+            ZStack {
+                Rectangle().fill(.ultraThickMaterial).ignoresSafeArea()
+                GeometryReader { geometry in
+                    let columns = max(2, Int(geometry.size.width / 190))
+                    let spacing: CGFloat = 16
+                    let width = (geometry.size.width - 32 - CGFloat(columns - 1) * spacing) / CGFloat(columns)
+                    ScrollView {
+                        LazyVGrid(columns: Array(repeating: GridItem(.fixed(width)), count: columns), spacing: spacing) {
+                            ForEach(items) { item in
+                                BrowserTabOverviewCard(item: item, width: width,
+                                                       isActive: selection.wrappedValue == item.id,
+                                                       onSelect: { selection.wrappedValue = item.id; dismiss() },
+                                                       onClose: item.isPinned ? nil : { onClose(item.id) }) {
+                                    content(item)
+                                        .allowsHitTesting(false)
+                                        .environment(\.isBrowserTabOverviewPreview, true)
+                                }
                             }
                         }
+                        .padding(16)
                     }
-                    .padding(16)
                 }
             }
-            .background(Color.secondary.opacity(0.08))
             .navigationTitle("Tabs")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done", action: dismiss) }
@@ -177,8 +195,12 @@ private struct BrowserTabOverviewCard<LivePreview: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Spacer(minLength: 0)
+                Text(item.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onSelect)
                 if let onClose {
                     Button(action: onClose) {
                         Image(systemName: "xmark").font(.caption.weight(.bold))
@@ -193,10 +215,11 @@ private struct BrowserTabOverviewCard<LivePreview: View>: View {
 
             Button(action: onSelect) {
                 livePreview()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
             }
             .buttonStyle(.plain)
+            .contentShape(Rectangle())
             .accessibilityLabel("Open \(item.title)")
         }
         .frame(width: width, height: width / 0.72)
@@ -208,6 +231,9 @@ private struct BrowserTabOverviewCard<LivePreview: View>: View {
                 .stroke(isActive ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: isActive ? 3 : 1)
         }
         .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+        #if os(tvOS)
+        .focusSection()
+        #endif
     }
 
 }
