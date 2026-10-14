@@ -15,6 +15,17 @@ let gtkSwiftSettings: [SwiftSetting] = [
 ] + (gtkBackendEnabled ? [.define("BACKEND_GTK")] : [])
 
 var targets: [Target] = [
+    .target(
+        name: "CredentialStorage",
+        dependencies: {
+            #if os(Linux)
+            return ["Security"]
+            #else
+            return []
+            #endif
+        }(),
+        path: "Sources/CredentialStorage"
+    ),
     // Portable declarative UI model consumed by non-SwiftUI renderers.
     .target(
         name: "SwiftOpenUICore",
@@ -36,6 +47,11 @@ var targets: [Target] = [
         name: "SwiftOpenUITests",
         dependencies: ["SwiftOpenUICore"],
         path: "Tests/SwiftOpenUITests"
+    ),
+    .testTarget(
+        name: "CredentialStorageTests",
+        dependencies: ["CredentialStorage"],
+        path: "Tests/CredentialStorageTests"
     ),
 
     // Layout parity — shared snapshot model (platform-independent)
@@ -569,6 +585,7 @@ let package = Package(
     products: {
         var p: [Product] = [
             .library(name: "SwiftOpenUI", targets: ["SwiftOpenUI"]),
+            .library(name: "CredentialStorage", targets: ["CredentialStorage"]),
         ]
         if gtkBackendEnabled {
         p.append(.library(name: "WebKit", targets: ["WebKit"]))

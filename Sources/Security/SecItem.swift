@@ -25,6 +25,7 @@ public let kSecAttrAccessibleAfterFirstUnlock = "ak" as CFString
 public let kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly = "akpu" as CFString
 public let kSecAttrAccessibleWhenUnlocked = "ck" as CFString
 public let kSecAttrAccessibleWhenUnlockedThisDeviceOnly = "cku" as CFString
+public let kSecUseDataProtectionKeychain = "u_DPK" as CFString
 
 private struct Query {
     let service: String
