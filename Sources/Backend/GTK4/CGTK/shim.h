@@ -228,6 +228,13 @@ gtk_swift_image_set_pixel_size(GtkWidget *image, int size) {
     gtk_image_set_pixel_size(GTK_IMAGE(image), size);
 }
 
+static inline gboolean
+gtk_swift_icon_theme_has_icon(const char *name) {
+    GdkDisplay *display = gdk_display_get_default();
+    if (!display) return FALSE;
+    return gtk_icon_theme_has_icon(gtk_icon_theme_get_for_display(display), name);
+}
+
 // --- GtkPasswordEntry ---
 
 static inline void
@@ -1439,19 +1446,6 @@ gtk_swift_prefers_dark_theme(void) {
     }
     g_free(theme_name);
     return dark;
-}
-
-/// Tell GTK to use the dark variant of its theme.
-///
-/// Needed alongside the SwiftOpenUI-side color scheme: GTK draws its own
-/// widget chrome from GtkSettings, which does not learn the portal preference
-/// on its own. Without this, resolving the scheme to dark would paint dark
-/// SwiftOpenUI colors onto light GTK chrome.
-static inline void
-gtk_swift_set_prefer_dark_theme(int dark) {
-    GtkSettings *settings = gtk_settings_get_default();
-    if (!settings) return;
-    g_object_set(settings, "gtk-application-prefer-dark-theme", dark ? TRUE : FALSE, NULL);
 }
 
 // --- Theme palette ---

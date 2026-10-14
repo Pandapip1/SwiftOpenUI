@@ -1,6 +1,7 @@
 import CGTK
 import CAdwaita
 import CGTKBridge
+import CGTKWidgets
 @_spi(SwiftOpenUIBackend) import SwiftOpenUICore
 import SwiftOpenUISymbols
 import Foundation
@@ -2420,8 +2421,13 @@ extension AspectRatioView: GTKRenderable {
         //
         // obey_child = false uses the ratio given; with no explicit ratio it is
         // true, meaning "keep the child's own ratio".
-        let frame = gtk_aspect_frame_new(0.5, 0.5, Float(ratio ?? 1), ratio == nil ? 1 : 0)!
-        gtk_aspect_frame_set_child(OpaquePointer(frame), widget)
+        let frame: UnsafeMutablePointer<GtkWidget>
+        if let ratio {
+            frame = gtk_swift_aspect_layout_new(widget, ratio)
+        } else {
+            frame = gtk_aspect_frame_new(0.5, 0.5, 1, 1)!
+            gtk_aspect_frame_set_child(OpaquePointer(frame), widget)
+        }
 
         // The frame is the thing that stretches; the ratio keeps the child in
         // proportion inside whatever it is given. An explicit ratio derives
@@ -4240,11 +4246,27 @@ extension TextEditor: GTKRenderable {
 
 extension ProgressView: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
-        let bar = gtk_progress_bar_new()!
-        if let value = value {
-            gtk_progress_bar_set_fraction(OpaquePointer(bar), max(0, min(1, value / total)))
+        guard let value else {
+            let spinner = gtk_spinner_new()!
+            gtk_spinner_start(OpaquePointer(spinner))
+            gtk_widget_set_halign(spinner, GTK_ALIGN_CENTER)
+            gtk_widget_set_valign(spinner, GTK_ALIGN_CENTER)
+            guard let title else { return opaqueFromWidget(spinner) }
+
+            // Adwaita presents an activity spinner and its short status on a
+            // single compact line. A progress-bar trough implies measurable
+            // completion and must only be used by determinate ProgressView.
+            let box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8)!
+            let label = gtk_label_new(title)!
+            gtk_box_append(boxPointer(box), spinner)
+            gtk_box_append(boxPointer(box), label)
+            gtk_widget_set_halign(box, GTK_ALIGN_CENTER)
+            gtk_widget_set_valign(box, GTK_ALIGN_CENTER)
+            return opaqueFromWidget(box)
         }
-        // TODO: indeterminate mode (pulse) when value is nil
+
+        let bar = gtk_progress_bar_new()!
+        gtk_progress_bar_set_fraction(OpaquePointer(bar), max(0, min(1, value / total)))
         gtk_widget_set_hexpand(bar, 1)
         guard let title else { return opaqueFromWidget(bar) }
         // Titled form (ProgressView("Loading…")): label above the indicator,
@@ -4315,7 +4337,14 @@ extension Label: GTKRenderable {
         let box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6)!
 
         if let iconName = systemImage {
-            let img = gtk_image_new_from_icon_name(iconName)!
+            let img: UnsafeMutablePointer<GtkWidget>
+            if let nativeName = gtkNativeIconName(for: iconName) {
+                img = gtk_image_new_from_icon_name(nativeName)!
+            } else {
+                let materialName = SFSymbolCompatibility.materialName(for: iconName)
+                    ?? SFSymbolCompatibility.missingSymbolPlaceholderName
+                img = gtkRenderMaterialSymbolLabel(materialName, scale: .medium)
+            }
             gtk_box_append(boxPointer(box), img)
         } else if let path = imagePath {
             let img = gtk_image_new_from_file(path)!
@@ -4833,18 +4862,14 @@ extension Image: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
         switch source {
         case .systemName(let sfName):
-            // M-Symbols-3: route Image(systemName:) through the curated
-            // SF→Material compatibility map. Mapped names render the
-            // corresponding Material glyph (uniform across all GTK4
-            // themes/distros); unmapped names render the "missing icon"
-            // placeholder glyph so the gap is visible rather than silent.
-            //
-            // This replaces the previous `gtk_image_new_from_icon_name`
-            // path. Any app that was passing a freedesktop-style icon
-            // name (e.g. "folder-new-symbolic") — not SwiftUI-canonical —
-            // will now see the placeholder; it should switch to a real
-            // SF name or use `Image(material:)` for direct Material
-            // names.
+            // SF Symbols remain the semantic application vocabulary. Prefer
+            // the desktop's native symbolic icon when GTK has an equivalent,
+            // and retain Material Symbols as the portable fallback.
+            if let iconName = gtkNativeIconName(for: sfName) {
+                let image = gtk_image_new_from_icon_name(iconName)!
+                gtk_swift_image_set_pixel_size(image, Int32(scale.pointSize))
+                return opaqueFromWidget(image)
+            }
             let materialName = SFSymbolCompatibility.materialName(for: sfName)
                 ?? SFSymbolCompatibility.missingSymbolPlaceholderName
             #if DEBUG
@@ -4976,6 +5001,25 @@ private func gtkRenderMaterialSymbolLabel(
 /// to keep the Pango markup construction tight.
 private let MaterialSymbolsRoundedFamilyName: String =
     MaterialSymbolsResources.roundedRegularFamilyName
+
+/// Resolve an SF semantic name through the active Freedesktop icon theme.
+/// GtkImage fails silently for missing names, so validate and diagnose before
+/// falling back to the bundled Material equivalent.
+private func gtkNativeIconName(for sfName: String) -> String? {
+    guard let iconName = SFSymbolCompatibility.freedesktopName(for: sfName) else {
+        FileHandle.standardError.write(Data(
+            "[SwiftOpenUI] Image(systemName: \"\(sfName)\") has no GTK icon mapping; using Material fallback\n".utf8
+        ))
+        return nil
+    }
+    guard iconName.withCString({ gtk_swift_icon_theme_has_icon($0) }) != 0 else {
+        FileHandle.standardError.write(Data(
+            "[SwiftOpenUI] Image(systemName: \"\(sfName)\") maps to missing GTK icon \"\(iconName)\"; using Material fallback\n".utf8
+        ))
+        return nil
+    }
+    return iconName
+}
 
 /// Minimal Pango-markup-safe escape. Pango's markup parser treats these
 /// characters specially; escape the four that show up in user-supplied icon
@@ -7141,6 +7185,13 @@ extension ToolbarView: GTKRenderable {
 
         let headerBar = gtk_header_bar_new()!
         let headerBarOp = OpaquePointer(headerBar)
+        gtk_widget_set_vexpand(headerBar, 0)
+        #if canImport(AppKit)
+        // The Quartz GDK backend keeps the native AppKit titlebar and traffic
+        // lights. GtkHeaderBar title buttons would create a second set of
+        // minimize/maximize/close controls inside application content.
+        gtk_header_bar_set_show_title_buttons(headerBarOp, 0)
+        #endif
         // Only a title applied to the toolbar's own content is a window
         // title. Recursively extracting here would incorrectly promote a
         // title from a nested NavigationStack or an inactive tab.
@@ -7158,6 +7209,22 @@ extension ToolbarView: GTKRenderable {
         let nativeBrowserButton = browserContentObject.flatMap { g_object_get_data($0, "gtk-swift-browser-tab-button") }
             .map { UnsafeMutableRawPointer($0).assumingMemoryBound(to: GtkWidget.self) }
         if let nativeBrowserButton { gtk_header_bar_pack_end(headerBarOp, nativeBrowserButton) }
+
+        // Browser-tab accessories belong to the selected tab but are window
+        // chrome, not a nested NavigationStack toolbar. BrowserTabs publishes
+        // the selected tab's semantic slots on its native chrome owner.
+        if let browserContentObject {
+            for (key, leading) in [
+                ("gtk-swift-browser-toolbar-leading", true),
+                ("gtk-swift-browser-toolbar-trailing", false),
+            ] {
+                guard let data = g_object_get_data(browserContentObject, key) else { continue }
+                let accessory = UnsafeMutableRawPointer(data).assumingMemoryBound(to: GtkWidget.self)
+                if gtk_widget_get_parent(accessory) != nil { gtk_widget_unparent(accessory) }
+                if leading { gtk_header_bar_pack_start(headerBarOp, accessory) }
+                else { gtk_header_bar_pack_end(headerBarOp, accessory) }
+            }
+        }
 
         for item in items {
             let itemWidget = widgetFromOpaque(gtkRenderAnyView(item.wrapped))
@@ -7219,7 +7286,10 @@ extension ToolbarView: GTKRenderable {
         // below the header remain visually inside the CSD area.
         gtk_widget_add_css_class(titlebarBox, "titlebar")
         gtk_box_append(boxPointer(titlebarBox), headerBar)
-        if let principalWidget = nativeBrowserBar ?? principalWidget {
+        let browserPrincipal = browserContentObject
+            .flatMap { g_object_get_data($0, "gtk-swift-browser-toolbar-principal") }
+            .map { UnsafeMutableRawPointer($0).assumingMemoryBound(to: GtkWidget.self) }
+        if let principalWidget = browserPrincipal ?? nativeBrowserBar ?? principalWidget {
             // Use a second native header bar for browser-style principal
             // content. GtkBox with the `toolbar` CSS class does not receive
             // the theme's header-bar minimum height or vertical padding.
@@ -7227,6 +7297,7 @@ extension ToolbarView: GTKRenderable {
             // those metrics, just as it does for the controls row above.
             let principalRow = gtk_header_bar_new()!
             let principalRowOp = OpaquePointer(principalRow)
+            gtk_widget_set_vexpand(principalRow, 0)
             gtk_header_bar_set_show_title_buttons(principalRowOp, 0)
             gtk_widget_add_css_class(principalRow, "toolbar")
             gtk_widget_set_hexpand(principalRow, 1)
@@ -7240,7 +7311,7 @@ extension ToolbarView: GTKRenderable {
         // remains attached so nested toolbar actions/back controls stay
         // reachable; gtkInstallNestedTitlebar hides its duplicate title and
         // collapses the row when there are no controls to show.
-        if !windowTitle.isEmpty {
+        if !windowTitle.isEmpty || browserChromeOwner != nil {
             g_object_set_data(nestedSlotObject, "gtk-swift-suppress-nested-title", gpointer(bitPattern: 1))
             gtk_widget_set_visible(nestedSlot, 0)
         }

@@ -557,18 +557,25 @@ public extension View {
         id: String, placement: BrowserTabToolbarPlacement,
         @ViewBuilder content: @escaping () -> Accessory
     ) -> some View {
-        toolbar {
-            ToolbarItem(placement: placement.toolbarPlacement, content: content)
-        }
+        GTKBrowserTabToolbarItem(content: self, placement: placement, accessory: content())
     }
 }
 
+private struct GTKBrowserTabToolbarItem<Content: View, Accessory: View>: View, PrimitiveView {
+    typealias Body = Never
+    let content: Content
+    let placement: BrowserTabToolbarPlacement
+    let accessory: Accessory
+
+    var body: Never { fatalError("GTKBrowserTabToolbarItem is a platform-rendered primitive view") }
+}
+
 private extension BrowserTabToolbarPlacement {
-    var toolbarPlacement: ToolbarItemPlacement {
+    var gtkDataKey: String {
         switch self {
-        case .leading: .leading
-        case .principal: .principal
-        case .trailing: .trailing
+        case .leading: "gtk-swift-browser-toolbar-leading"
+        case .principal: "gtk-swift-browser-toolbar-principal"
+        case .trailing: "gtk-swift-browser-toolbar-trailing"
         }
     }
 }
@@ -674,6 +681,20 @@ private func makeNativeTabView(items: [BrowserTabItem], selection: Binding<UUID>
     return view
 }
 
+private func browserToolbarData(
+    _ key: String,
+    in widget: UnsafeMutablePointer<GtkWidget>
+) -> gpointer? {
+    let object = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
+    if let data = g_object_get_data(object, key) { return data }
+    var child = gtk_widget_get_first_child(widget)
+    while let current = child {
+        if let data = browserToolbarData(key, in: current) { return data }
+        child = gtk_widget_get_next_sibling(current)
+    }
+    return nil
+}
+
 extension BrowserTabContainer: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
         adw_init()
@@ -688,6 +709,8 @@ extension BrowserTabContainer: GTKRenderable {
         let bar = swift_adw_tab_bar_new(view)!
         let button = swift_adw_tab_button_new(view)!
         gtk_widget_set_hexpand(bar, 1)
+        gtk_widget_set_vexpand(bar, 0)
+        gtk_widget_set_valign(bar, GTK_ALIGN_CENTER)
         let object = UnsafeMutableRawPointer(overview).assumingMemoryBound(to: GObject.self)
         g_object_set_data(object, "gtk-swift-self-contained-window-chrome", gpointer(overview))
         g_object_set_data(object, "gtk-swift-browser-tab-view", gpointer(view))
@@ -697,7 +720,35 @@ extension BrowserTabContainer: GTKRenderable {
         g_object_set_data_full(object, "gtk-swift-browser-tab-button", g_object_ref_sink(gpointer(button))) {
             g_object_unref($0)
         }
+        if let selectedContent = contents[selection.wrappedValue] {
+            for key in ["gtk-swift-browser-toolbar-leading", "gtk-swift-browser-toolbar-principal",
+                        "gtk-swift-browser-toolbar-trailing"] {
+                if let accessory = browserToolbarData(key, in: selectedContent) {
+                    g_object_set_data_full(object, key, g_object_ref(accessory)) { g_object_unref($0) }
+                }
+            }
+        }
         return OpaquePointer(overview)
+    }
+}
+
+extension GTKBrowserTabToolbarItem: GTKRenderable {
+    public func gtkCreateWidget() -> OpaquePointer {
+        let contentWidget = UnsafeMutableRawPointer(gtkRenderView(content))
+            .assumingMemoryBound(to: GtkWidget.self)
+        let object = UnsafeMutableRawPointer(contentWidget).assumingMemoryBound(to: GObject.self)
+        let key = placement.gtkDataKey
+        let box: UnsafeMutablePointer<GtkWidget>
+        if let existing = g_object_get_data(object, key) {
+            box = UnsafeMutableRawPointer(existing).assumingMemoryBound(to: GtkWidget.self)
+        } else {
+            box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6)!
+            g_object_set_data_full(object, key, g_object_ref_sink(gpointer(box))) { g_object_unref($0) }
+        }
+        gtk_box_append(UnsafeMutableRawPointer(box).assumingMemoryBound(to: GtkBox.self),
+                       UnsafeMutableRawPointer(gtkRenderView(accessory))
+            .assumingMemoryBound(to: GtkWidget.self))
+        return OpaquePointer(contentWidget)
     }
 }
 

@@ -222,7 +222,10 @@ public struct ToolbarItemGroup<Content: View>: ToolbarContent, _ToolbarContentPr
     public var body: Never { fatalError("ToolbarItemGroup is a primitive toolbar content") }
 
     fileprivate var _toolbarItems: [AnyToolbarItem] {
-        [AnyToolbarItem(placement: placement, wrapped: content)]
+        // A toolbar group is a single horizontal cluster. Backends should not
+        // inherit the generic TupleView fallback (which is vertical because it
+        // represents ordinary block content).
+        [AnyToolbarItem(placement: placement, wrapped: HStack { content })]
     }
 }
 

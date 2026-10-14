@@ -37,6 +37,48 @@ public enum SFSymbolCompatibility {
         map[sfName]
     }
 
+    /// Native Freedesktop icon for GTK, where one carries the same semantic
+    /// meaning as the SF Symbol. Applications continue to use SF names.
+    public static func freedesktopName(for sfName: String) -> String? {
+        freedesktopMap[sfName]
+    }
+
+    private static let freedesktopMap: [String: String] = [
+        "arrow.backward": "go-previous-symbolic", "arrow.clockwise": "view-refresh-symbolic",
+        "arrow.forward": "go-next-symbolic", "arrow.left": "go-previous-symbolic",
+        "arrow.right": "go-next-symbolic", "bell": "preferences-system-notifications-symbolic",
+        "bell.fill": "preferences-system-notifications-symbolic", "bookmark": "user-bookmarks-symbolic",
+        "checkmark": "object-select-symbolic", "checkmark.circle": "object-select-symbolic",
+        "checkmark.circle.fill": "object-select-symbolic", "chevron.backward": "go-previous-symbolic",
+        "chevron.down": "go-down-symbolic", "chevron.forward": "go-next-symbolic",
+        "chevron.left": "go-previous-symbolic", "chevron.right": "go-next-symbolic",
+        "chevron.up": "go-up-symbolic", "doc": "text-x-generic-symbolic",
+        "doc.fill": "text-x-generic-symbolic", "doc.on.doc": "edit-copy-symbolic",
+        "doc.text": "text-x-generic-symbolic", "ellipsis": "view-more-symbolic",
+        "ellipsis.circle": "view-more-symbolic", "ellipsis.circle.fill": "view-more-symbolic",
+        "exclamationmark.triangle": "dialog-warning-symbolic",
+        "exclamationmark.triangle.fill": "dialog-warning-symbolic", "eye": "view-reveal-symbolic",
+        "eye.slash": "view-conceal-symbolic", "folder": "folder-symbolic",
+        "folder.fill": "folder-symbolic", "gear": "emblem-system-symbolic",
+        "gearshape": "emblem-system-symbolic", "gearshape.fill": "emblem-system-symbolic",
+        "house": "go-home-symbolic", "house.fill": "go-home-symbolic",
+        "info.circle": "dialog-information-symbolic", "info.circle.fill": "dialog-information-symbolic",
+        "link": "insert-link-symbolic", "lock": "system-lock-screen-symbolic",
+        "lock.fill": "system-lock-screen-symbolic", "lock.open": "changes-allow-symbolic",
+        "magnifyingglass": "system-search-symbolic", "magnifyingglass.circle": "system-search-symbolic",
+        "minus": "list-remove-symbolic", "minus.circle": "list-remove-symbolic",
+        "pause.fill": "media-playback-pause-symbolic", "pencil": "document-edit-symbolic",
+        "person": "avatar-default-symbolic", "person.crop.circle": "avatar-default-symbolic",
+        "person.crop.circle.badge.plus": "contact-new-symbolic",
+        "person.fill": "avatar-default-symbolic", "play.fill": "media-playback-start-symbolic",
+        "plus": "list-add-symbolic", "plus.circle": "list-add-symbolic",
+        "plus.circle.fill": "list-add-symbolic", "questionmark": "help-about-symbolic",
+        "questionmark.circle": "help-about-symbolic", "square.and.arrow.down": "document-save-symbolic",
+        "trash": "user-trash-symbolic", "trash.fill": "user-trash-symbolic",
+        "xmark": "window-close-symbolic", "xmark.circle": "window-close-symbolic",
+        "xmark.circle.fill": "window-close-symbolic",
+    ]
+
     /// The curated SF→Material map. Keep alphabetized within each
     /// thematic section to make merge conflicts easy to resolve.
     public static let map: [String: String] = [

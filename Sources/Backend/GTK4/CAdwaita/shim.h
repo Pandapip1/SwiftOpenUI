@@ -2,6 +2,13 @@
 
 #include <adwaita.h>
 
+static inline void swift_adw_set_color_scheme(int dark) {
+    adw_style_manager_set_color_scheme(
+        adw_style_manager_get_default(),
+        dark ? ADW_COLOR_SCHEME_FORCE_DARK : ADW_COLOR_SCHEME_FORCE_LIGHT
+    );
+}
+
 static inline GtkWidget *swift_adw_view_stack_new(void) {
     return GTK_WIDGET(adw_view_stack_new());
 }

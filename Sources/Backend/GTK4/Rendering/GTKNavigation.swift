@@ -382,25 +382,15 @@ func gtkExtractToolbarItems<V: View>(from view: V) -> [AnyToolbarItem] {
 private func gtkExtractToolbarItemsAny(from view: Any, depth: Int = 0) -> [AnyToolbarItem] {
     guard depth < 20 else { return [] }
 
-    if let provider = view as? ToolbarProvider {
-        return provider.toolbarItems
+    var result = (view as? ToolbarProvider)?.toolbarItems ?? []
+    // Toolbar modifiers separated by another structural modifier do not form
+    // one concrete ToolbarView at compile time. They still contribute to the
+    // same toolbar preference stream, so collect every provider down the view
+    // spine instead of returning the first one encountered.
+    for child in Mirror(reflecting: view).children where child.value is any View {
+        result += gtkExtractToolbarItemsAny(from: child.value, depth: depth + 1)
     }
-
-    let mirror = Mirror(reflecting: view)
-    for child in mirror.children {
-        if let provider = child.value as? ToolbarProvider {
-            return provider.toolbarItems
-        }
-    }
-
-    for child in mirror.children {
-        if child.value is any View {
-            let result = gtkExtractToolbarItemsAny(from: child.value, depth: depth + 1)
-            if !result.isEmpty { return result }
-        }
-    }
-
-    return []
+    return result
 }
 
 /// Extract toolbar configuration from a view tree via ToolbarConfigurationProvider.

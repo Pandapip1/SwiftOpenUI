@@ -4,6 +4,9 @@ import CGTKBridge
 @_spi(SwiftOpenUIBackend) import SwiftOpenUICore
 import SwiftOpenUISymbols
 import Foundation
+#if canImport(AppKit)
+import AppKit
+#endif
 #if canImport(Observation)
 import Observation
 #endif
@@ -775,10 +778,10 @@ public struct GTK4Backend: RenderBackend {
             // whole tree renders with the default .light scheme regardless of
             // what the desktop asked for.
             let scheme = gtkDetectColorScheme()
-            // GTK draws its own chrome from GtkSettings, which never
-            // learns the portal preference, so both layers have to be
-            // told or dark content lands on light widgets.
-            gtk_swift_set_prefer_dark_theme(scheme == .dark ? 1 : 0)
+            // Libadwaita owns the application colour scheme. Setting the
+            // legacy GtkSettings preference produces a runtime warning and
+            // does not reliably update Adwaita widgets.
+            swift_adw_set_color_scheme(scheme == .dark ? 1 : 0)
             env.colorScheme = scheme
             // Derive the palette from the theme rather than fixed constants,
             // so content sits on the desktop's own colours.
@@ -1018,7 +1021,17 @@ func gtkDetectColorScheme() -> ColorScheme {
         default: break
         }
     }
+    #if canImport(AppKit)
+    // GTK's macOS backend does not receive the XDG portal preference and its
+    // GtkSettings theme name remains plain "Adwaita" in Dark Mode. AppKit is
+    // the authoritative appearance source when GTK is hosted on macOS.
+    let appearance = NSApplication.shared.effectiveAppearance.bestMatch(
+        from: [.darkAqua, .aqua]
+    )
+    return appearance == .darkAqua ? .dark : .light
+    #else
     return gtk_swift_prefers_dark_theme() != 0 ? .dark : .light
+    #endif
 }
 
 /// The palette SwiftOpenUI should render with, sampled from the GTK theme.
@@ -1039,22 +1052,54 @@ func gtkSampleThemePalette(scheme: ColorScheme) -> ThemePalette {
 
     var fr = 0.0, fg = 0.0, fb = 0.0, fa = 0.0
     gtk_swift_theme_foreground(&fr, &fg, &fb, &fa)
+    let foreground = Color(red: fr, green: fg, blue: fb, opacity: fa)
+    let fallbackWindow = Material.thickMaterial.approximatedColor(for: scheme)
+    let fallbackCard = Material.regularMaterial.approximatedColor(for: scheme)
+
+    // Some GTK ports expose a partially switched palette: the computed label
+    // color follows `gtk-application-prefer-dark-theme`, while legacy named
+    // colors remain from the light variant (or vice versa). Trusting that
+    // internally inconsistent palette produces white-on-white content. Keep
+    // native colors when they are usable, but fall back as a coherent set when
+    // either surface cannot provide readable primary text.
+    let sampledWindow = firstDefined(
+        ["window_bg_color", "theme_bg_color"],
+        fallback: fallbackWindow
+    )
+    let sampledCard = firstDefined(
+        ["card_bg_color", "theme_base_color"],
+        fallback: fallbackCard
+    )
+    let windowBackground = gtkContrastRatio(foreground, sampledWindow) >= 3
+        ? sampledWindow : fallbackWindow
+    let cardBackground = gtkContrastRatio(foreground, sampledCard) >= 3
+        ? sampledCard : fallbackCard
 
     return ThemePalette(
-        foreground: Color(red: fr, green: fg, blue: fb, opacity: fa),
-        windowBackground: firstDefined(
-            ["window_bg_color", "theme_bg_color"],
-            fallback: Material.thickMaterial.approximatedColor(for: scheme)
-        ),
-        cardBackground: firstDefined(
-            ["card_bg_color", "theme_base_color"],
-            fallback: Material.regularMaterial.approximatedColor(for: scheme)
-        ),
+        foreground: foreground,
+        windowBackground: windowBackground,
+        cardBackground: cardBackground,
         accent: firstDefined(
             ["accent_color", "theme_selected_bg_color"],
             fallback: Color(red: 0.0, green: 0.48, blue: 1.0)
         )
     )
+}
+
+private func gtkContrastRatio(_ lhs: Color, _ rhs: Color) -> Double {
+    func luminance(_ color: Color) -> Double {
+        func linear(_ component: Double) -> Double {
+            component <= 0.04045
+                ? component / 12.92
+                : pow((component + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(color.red)
+            + 0.7152 * linear(color.green)
+            + 0.0722 * linear(color.blue)
+    }
+    let first = luminance(lhs)
+    let second = luminance(rhs)
+    return (max(first, second) + 0.05) / (min(first, second) + 0.05)
 }
 
 /// Paints a window with the desktop's declared window background.

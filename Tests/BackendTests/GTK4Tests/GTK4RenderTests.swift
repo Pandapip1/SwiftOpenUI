@@ -1593,6 +1593,19 @@ final class GTK4RenderTests: XCTestCase {
         XCTAssertEqual(items[0].placement, .leading)
     }
 
+    func testToolbarExtractionCombinesProvidersSeparatedByModifier() throws {
+        try requireGTK()
+
+        let view = Text("Content")
+            .toolbar { ToolbarItem(placement: .leading) { Text("Leading") } }
+            .padding()
+            .toolbar { ToolbarItem(placement: .trailing) { Text("Trailing") } }
+
+        let items = gtkExtractToolbarItems(from: view)
+        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(items.map(\.placement), [.trailing, .leading])
+    }
+
     func testToolbarRendersContentPassthrough() throws {
         try requireGTK()
 

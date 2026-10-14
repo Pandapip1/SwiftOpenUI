@@ -39,7 +39,6 @@ var targets: [Target] = [
         swiftSettings: gtkSwiftSettings
     ),
 
-    // Small helper module for macOS example launch boilerplate.
     .target(
         name: "MacExampleSupport",
         dependencies: ["SwiftOpenUI"],
@@ -133,7 +132,7 @@ targets += [
 // GTK4 backend. Linux selects it by default; macOS can opt in for backend development.
 if gtkBackendEnabled {
 var gtkBackendDependencies: [Target.Dependency] = [
-    "SwiftOpenUICore", "CGTK", "CAdwaita", "CGTKBridge", "CGStreamer", "CFontconfig", "SwiftOpenUISymbols",
+    "SwiftOpenUICore", "CGTK", "CAdwaita", "CGTKBridge", "CGTKWidgets", "CGStreamer", "CFontconfig", "SwiftOpenUISymbols",
 ]
 var gtkBackendExclude: [String] = []
 if gtkWebKitEnabled { gtkBackendDependencies += ["WebKit", "CWebKitGTK"] }
@@ -173,6 +172,12 @@ targets += [
         name: "CGTKBridge",
         dependencies: ["CGTK"],
         path: "Sources/Backend/GTK4/CGTKBridge"
+    ),
+    .target(
+        name: "CGTKWidgets",
+        dependencies: ["CGTK"],
+        path: "Sources/Backend/GTK4/CGTKWidgets",
+        publicHeadersPath: "include"
     ),
     .target(
         name: "BackendGTK4",
