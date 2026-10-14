@@ -23,6 +23,10 @@ private struct BrowserTabOverviewPreviewKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct BrowserTabToolbarActiveKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
 public extension EnvironmentValues {
     /// True while a tab's live content is rendered inside an overview card.
     /// Browser chrome should use this to avoid becoming part of the preview.
@@ -30,9 +34,80 @@ public extension EnvironmentValues {
         get { self[BrowserTabOverviewPreviewKey.self] }
         set { self[BrowserTabOverviewPreviewKey.self] = newValue }
     }
+
+
+    /// True only for the selected tab while the normal browser view is shown.
+    /// Tab content should conditionally contribute its contextual toolbar items
+    /// using this value because inactive tabs remain mounted.
+    var isBrowserTabToolbarActive: Bool {
+        get { self[BrowserTabToolbarActiveKey.self] }
+        set { self[BrowserTabToolbarActiveKey.self] = newValue }
+    }
 }
 
 #if !BACKEND_GTK
+public enum BrowserTabToolbarPlacement: Sendable {
+    case leading, principal, trailing
+}
+
+@MainActor
+private final class BrowserTabToolbarCoordinator: ObservableObject {
+    struct Item: Identifiable {
+        let id: String
+        let tabID: UUID
+        let placement: BrowserTabToolbarPlacement
+        let content: AnyView
+    }
+    @Published var items: [String: Item] = [:]
+    func set(_ item: Item) { items[item.id + item.tabID.uuidString] = item }
+    func remove(id: String, tabID: UUID) { items[id + tabID.uuidString] = nil }
+}
+
+private struct BrowserTabToolbarCoordinatorKey: EnvironmentKey {
+    static let defaultValue: BrowserTabToolbarCoordinator? = nil
+}
+private struct BrowserTabIdentityKey: EnvironmentKey { static let defaultValue: UUID? = nil }
+
+private struct BrowserTabToolbarRegistration<Accessory: View>: ViewModifier {
+    @Environment(\.browserTabToolbarCoordinator) private var coordinator
+    @Environment(\.browserTabIdentity) private var tabID
+    let id: String
+    let placement: BrowserTabToolbarPlacement
+    @ViewBuilder let accessory: () -> Accessory
+    func body(content: Content) -> some View {
+        content
+            .onAppear { register() }
+            .onDisappear {
+                if let coordinator, let tabID { coordinator.remove(id: id, tabID: tabID) }
+            }
+    }
+    private func register() {
+        guard let coordinator, let tabID else { return }
+        coordinator.set(.init(id: id, tabID: tabID, placement: placement,
+                              content: AnyView(accessory())))
+    }
+}
+
+private extension EnvironmentValues {
+    var browserTabToolbarCoordinator: BrowserTabToolbarCoordinator? {
+        get { self[BrowserTabToolbarCoordinatorKey.self] }
+        set { self[BrowserTabToolbarCoordinatorKey.self] = newValue }
+    }
+    var browserTabIdentity: UUID? {
+        get { self[BrowserTabIdentityKey.self] }
+        set { self[BrowserTabIdentityKey.self] = newValue }
+    }
+}
+
+public extension View {
+    func browserTabToolbarItem<Accessory: View>(
+        id: String, placement: BrowserTabToolbarPlacement,
+        @ViewBuilder content: @escaping () -> Accessory
+    ) -> some View {
+        modifier(BrowserTabToolbarRegistration(id: id, placement: placement, accessory: content))
+    }
+}
+
 public struct BrowserTabContainer<Content: View>: View {
     public let items: [BrowserTabItem]
     public let selection: Binding<UUID>
@@ -42,6 +117,7 @@ public struct BrowserTabContainer<Content: View>: View {
     private let overviewPresented: Binding<Bool>?
     @State private var showingOverview = false
     @Namespace private var overviewTransition
+    @StateObject private var toolbarCoordinator = BrowserTabToolbarCoordinator()
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
                 overviewPresented: Binding<Bool>? = nil,
@@ -111,6 +187,10 @@ public struct BrowserTabContainer<Content: View>: View {
                     .opacity(selection.wrappedValue == item.id ? 1 : 0)
                     .allowsHitTesting(selection.wrappedValue == item.id)
                     .accessibilityHidden(selection.wrappedValue != item.id)
+                    .environment(\.isBrowserTabToolbarActive,
+                                 selection.wrappedValue == item.id && !isShowingOverview)
+                    .environment(\.browserTabToolbarCoordinator, toolbarCoordinator)
+                    .environment(\.browserTabIdentity, item.id)
                     .matchedGeometryEffect(id: item.id, in: overviewTransition)
             }
         }
@@ -118,10 +198,58 @@ public struct BrowserTabContainer<Content: View>: View {
 
     @ToolbarContentBuilder
     private var overviewToolbar: some ToolbarContent {
+        #if os(tvOS)
         ToolbarItem(placement: .primaryAction) {
-            Button { isShowingOverview.toggle() } label: { Image(systemName: "square.grid.2x2") }
+            Button { isShowingOverview.toggle() } label: { Image(systemName: "square.on.square") }
                 .accessibilityLabel(isShowingOverview ? "Close Tab Overview" : "Tab Overview")
         }
+        #else
+        let contextualItems = toolbarCoordinator.items.values.filter {
+            $0.tabID == selection.wrappedValue && !isShowingOverview
+        }
+        let leadingItems = contextualItems.filter { $0.placement == .leading }
+        let principalItems = contextualItems.filter { $0.placement == .principal }
+        let trailingItems = contextualItems.filter { $0.placement == .trailing }
+        if !leadingItems.isEmpty {
+            if #available(macOS 26.0, iOS 26.0, *) { ToolbarSpacer(.fixed, placement: .navigation) }
+            ToolbarItem(placement: .automatic) {
+                ControlGroup { ForEach(leadingItems) { $0.content } }
+                    .controlGroupStyle(.navigation)
+            }
+        }
+        if !principalItems.isEmpty {
+            ToolbarItem(placement: .principal) {
+                HStack { ForEach(principalItems) { $0.content } }
+            }
+        }
+        if !trailingItems.isEmpty {
+            ToolbarItem(placement: .primaryAction) {
+                ControlGroup { ForEach(trailingItems) { $0.content } }
+                    .controlGroupStyle(.navigation)
+            }
+            if #available(macOS 26.0, iOS 26.0, *) { ToolbarSpacer(.fixed, placement: .primaryAction) }
+        }
+        #if os(iOS)
+        ToolbarItem(placement: .topBarTrailing) {
+            tabManagementControl
+        }
+        #else
+        ToolbarItem(placement: .primaryAction) {
+            tabManagementControl
+        }
+        #endif
+        #endif
+    }
+
+    private var tabManagementControl: some View {
+        ControlGroup {
+            if let newTabControl {
+                newTabControl
+            }
+            Button { isShowingOverview.toggle() } label: { Image(systemName: "square.on.square") }
+                .accessibilityLabel(isShowingOverview ? "Close Tab Overview" : "Tab Overview")
+        }
+        .controlGroupStyle(.navigation)
     }
 
     #if os(macOS)
@@ -130,16 +258,18 @@ public struct BrowserTabContainer<Content: View>: View {
             let columns = max(2, Int(geometry.size.width / 320))
             let spacing: CGFloat = 24
             let width = (geometry.size.width - 64 - CGFloat(columns - 1) * spacing) / CGFloat(columns)
+            let contentAspectRatio = max(0.1, geometry.size.width / max(1, geometry.size.height))
             ScrollView {
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(width)), count: columns), spacing: spacing) {
                     ForEach(items) { item in
-                        BrowserTabOverviewCard(item: item, width: width,
+                        BrowserTabOverviewCard(item: item, width: width, aspectRatio: contentAspectRatio,
                                                isActive: selection.wrappedValue == item.id,
                                                onSelect: { select(item.id) },
                                                onClose: item.isPinned ? nil : { onClose(item.id) }) {
                             content(item)
                                 .allowsHitTesting(false)
                                 .environment(\.isBrowserTabOverviewPreview, true)
+                                .environment(\.isBrowserTabToolbarActive, false)
                                 .matchedGeometryEffect(id: item.id, in: overviewTransition)
                         }
                     }
@@ -173,16 +303,18 @@ private struct BrowserTabOverview<Content: View>: View {
                     let columns = max(2, Int(geometry.size.width / 190))
                     let spacing: CGFloat = 16
                     let width = (geometry.size.width - 32 - CGFloat(columns - 1) * spacing) / CGFloat(columns)
+                    let contentAspectRatio = max(0.1, geometry.size.width / max(1, geometry.size.height))
                     ScrollView {
                         LazyVGrid(columns: Array(repeating: GridItem(.fixed(width)), count: columns), spacing: spacing) {
                             ForEach(items) { item in
-                                BrowserTabOverviewCard(item: item, width: width,
+                                BrowserTabOverviewCard(item: item, width: width, aspectRatio: contentAspectRatio,
                                                        isActive: selection.wrappedValue == item.id,
                                                        onSelect: { selection.wrappedValue = item.id; dismiss() },
                                                        onClose: item.isPinned ? nil : { onClose(item.id) }) {
                                     content(item)
                                         .allowsHitTesting(false)
                                         .environment(\.isBrowserTabOverviewPreview, true)
+                                        .environment(\.isBrowserTabToolbarActive, false)
                                 }
                             }
                         }
@@ -206,33 +338,34 @@ private struct BrowserTabOverview<Content: View>: View {
 private struct BrowserTabOverviewCard<LivePreview: View>: View {
     let item: BrowserTabItem
     let width: CGFloat
+    let aspectRatio: CGFloat
     let isActive: Bool
     let onSelect: () -> Void
     let onClose: (() -> Void)?
     @ViewBuilder let livePreview: () -> LivePreview
+    @State private var closeHovered = false
 
-    init(item: BrowserTabItem, width: CGFloat, isActive: Bool, onSelect: @escaping () -> Void,
+    init(item: BrowserTabItem, width: CGFloat, aspectRatio: CGFloat, isActive: Bool, onSelect: @escaping () -> Void,
          onClose: (() -> Void)?, @ViewBuilder livePreview: @escaping () -> LivePreview) {
-        self.item = item; self.width = width; self.isActive = isActive
+        self.item = item; self.width = width; self.aspectRatio = aspectRatio; self.isActive = isActive
         self.onSelect = onSelect; self.onClose = onClose; self.livePreview = livePreview
     }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .topLeading) {
             Button(action: onSelect) {
                 ZStack {
                     VStack(spacing: 0) {
                         HStack(spacing: 8) {
+                            Color.clear.frame(width: 28, height: 28)
                             Text(item.title)
                                 .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            if onClose != nil {
-                                Color.clear.frame(width: 28, height: 28)
-                            }
+                                .frame(maxWidth: .infinity, alignment: .center)
+                            Color.clear.frame(width: 28, height: 28)
                         }
                         .padding(.horizontal, 10)
-                        .frame(height: 44)
+                        .frame(height: 36)
 
                         livePreview()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -247,27 +380,41 @@ private struct BrowserTabOverviewCard<LivePreview: View>: View {
             .accessibilityLabel("Open \(item.title)")
 
             if let onClose {
-                Button(action: onClose) {
-                    Image(systemName: "xmark").font(.caption.weight(.bold))
-                        .frame(width: 28, height: 28).background(Circle().fill(.regularMaterial))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close \(item.title)")
-                .padding(.top, 8)
-                .padding(.trailing, 10)
+                overviewCloseButton(action: onClose)
+                    .accessibilityLabel("Close \(item.title)")
+                    .padding(.top, 9)
+                    .padding(.leading, 10)
             }
         }
-        .frame(width: width, height: width / 0.72)
+        .frame(width: width, height: width / aspectRatio)
         .clipped()
         .background(.background)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isActive ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: isActive ? 3 : 1)
+                .stroke(Color.primary.opacity(0.10), lineWidth: 0.5)
         }
-        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+        .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
         #if os(tvOS)
         .focusSection()
+        #endif
+    }
+
+    @ViewBuilder
+    private func overviewCloseButton(action: @escaping () -> Void) -> some View {
+        let button = Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: 9, weight: .semibold))
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(closeHovered ? Color.primary.opacity(0.10) : .clear))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+
+        #if os(tvOS)
+        button
+        #else
+        button.onHover { closeHovered = $0 }
         #endif
     }
 
@@ -278,6 +425,7 @@ public struct BrowserTabBar: View {
     public let selection: Binding<UUID>
     public let onClose: (UUID) -> Void
     @State private var hoveredID: UUID?
+    @State private var hoveredCloseID: UUID?
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void) {
         self.items = items
@@ -313,18 +461,30 @@ public struct BrowserTabBar: View {
         let button = Button { selection.wrappedValue = item.id } label: {
             ZStack(alignment: .leading) {
                 if separator { Rectangle().fill(Color.secondary.opacity(0.35)).frame(width: 1, height: 14) }
-                HStack(spacing: 6) {
-                    if item.isPinned { Image(systemName: "house.fill") }
-                    Text(item.title).lineLimit(1)
-                    Spacer(minLength: 0)
-                    if !item.isPinned && hovered {
-                        Button { onClose(item.id) } label: { Image(systemName: "xmark") }
-                            .buttonStyle(.plain)
+                ZStack {
+                    Text(item.title)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.horizontal, 30)
+                    HStack(spacing: 0) {
+                        Group {
+                            if item.isPinned {
+                                Image(systemName: "house.fill")
+                            } else if hovered {
+                                closeButton(for: item)
+                            } else {
+                                Color.clear
+                            }
+                        }
+                        .frame(width: 18, height: 18)
+                        Spacer(minLength: 0)
+                        Color.clear.frame(width: 18, height: 18)
                     }
-                }.padding(.horizontal, 10).padding(.vertical, 5)
+                    .padding(.horizontal, 10)
+                }
+                .padding(.vertical, 5)
             }
-            .background(Capsule().fill(active ? Color.primary.opacity(0.14) :
-                                        (hovered ? Color.primary.opacity(0.07) : .clear)))
+            .background(Capsule().fill(!active && hovered ? Color.primary.opacity(0.07) : .clear))
         }
         .buttonStyle(.plain)
         .modifier(BrowserTabActiveStyle(isActive: active))
@@ -334,6 +494,26 @@ public struct BrowserTabBar: View {
         return button.onHover { hoveredID = $0 ? item.id : nil }
         #endif
     }
+
+    @ViewBuilder
+    private func closeButton(for item: BrowserTabItem) -> some View {
+        let button = Button { onClose(item.id) } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 9, weight: .semibold))
+                .frame(width: 16, height: 16)
+                .background(Circle().fill(
+                    hoveredCloseID == item.id ? Color.primary.opacity(0.10) : .clear
+                ))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+
+        #if os(tvOS)
+        button
+        #else
+        button.onHover { hoveredCloseID = $0 ? item.id : nil }
+        #endif
+    }
 }
 
 private struct BrowserTabActiveStyle: ViewModifier {
@@ -341,16 +521,33 @@ private struct BrowserTabActiveStyle: ViewModifier {
 
     func body(content: Content) -> some View {
         if #available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *) {
-            if isActive { content.glassEffect(.clear) } else { content }
+            if isActive {
+                content.glassEffect(.regular)
+            } else {
+                content
+            }
         } else if isActive {
             content.background(Capsule().fill(.regularMaterial)
-                .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 0.5)))
+                .overlay(Capsule().stroke(Color.secondary.opacity(0.18), lineWidth: 0.5)))
         } else {
             content
         }
     }
 }
 #else
+public enum BrowserTabToolbarPlacement: Sendable {
+    case leading, principal, trailing
+}
+
+public extension View {
+    func browserTabToolbarItem<Accessory: View>(
+        id: String, placement: BrowserTabToolbarPlacement,
+        @ViewBuilder content: @escaping () -> Accessory
+    ) -> some View {
+        self
+    }
+}
+
 public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
     public typealias Body = Never
     public let items: [BrowserTabItem]
