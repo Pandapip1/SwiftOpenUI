@@ -249,7 +249,7 @@ public struct BrowserTabContainer<Content: View>: View {
             Button { isShowingOverview.toggle() } label: { Image(systemName: "square.on.square") }
                 .accessibilityLabel(isShowingOverview ? "Close Tab Overview" : "Tab Overview")
         }
-        .controlGroupStyle(.navigation)
+        .modifier(BrowserNavigationControlGroupStyle())
     }
 
     #if os(macOS)
@@ -284,6 +284,19 @@ public struct BrowserTabContainer<Content: View>: View {
     private func select(_ id: UUID) {
         selection.wrappedValue = id
         isShowingOverview = false
+    }
+}
+
+/// Uses the compact navigation control-group treatment where SwiftUI exposes
+/// it, while preserving the native focus-driven control group on tvOS.
+private struct BrowserNavigationControlGroupStyle: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if os(tvOS)
+        content
+        #else
+        content.controlGroupStyle(.navigation)
+        #endif
     }
 }
 
