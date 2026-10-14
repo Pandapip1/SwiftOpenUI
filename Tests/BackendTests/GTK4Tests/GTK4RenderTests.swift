@@ -5,6 +5,7 @@ import CGTK
 import CGTKBridge
 import SwiftOpenUISymbols
 
+@MainActor
 final class GTK4RenderTests: XCTestCase {
     override class func setUp() {
         super.setUp()
@@ -2660,6 +2661,7 @@ private struct GTKDelayedEnvMenuView: View {
     }
 }
 
+@MainActor
 private func requireGTK(
     file: StaticString = #filePath,
     line: UInt = #line
@@ -2669,6 +2671,7 @@ private func requireGTK(
     }
 }
 
+@MainActor
 private func unwrapFirstChild(
     of widget: UnsafeMutablePointer<GtkWidget>,
     file: StaticString = #filePath,
@@ -2681,6 +2684,7 @@ private func unwrapFirstChild(
     return child
 }
 
+@MainActor
 private func unwrapFirstDescendant(
     ofType typeName: String,
     in widget: UnsafeMutablePointer<GtkWidget>,
@@ -2703,6 +2707,7 @@ private func unwrapFirstDescendant(
     throw XCTSkip()
 }
 
+@MainActor
 private func unwrapNextSibling(
     of widget: UnsafeMutablePointer<GtkWidget>,
     file: StaticString = #filePath,
@@ -2715,6 +2720,7 @@ private func unwrapNextSibling(
     return sibling
 }
 
+@MainActor
 private func measuredSize(of widget: UnsafeMutablePointer<GtkWidget>) -> ViewSize {
     var widthMin: Int32 = 0
     var widthNat: Int32 = 0
@@ -2728,10 +2734,12 @@ private func measuredSize(of widget: UnsafeMutablePointer<GtkWidget>) -> ViewSiz
     )
 }
 
+@MainActor
 private func allocate(widget: UnsafeMutablePointer<GtkWidget>, size: ViewSize) {
     gtk_widget_allocate(widget, Int32(size.width), Int32(size.height), -1, nil)
 }
 
+@MainActor
 private func allocatedSize(of widget: UnsafeMutablePointer<GtkWidget>) -> ViewSize {
     ViewSize(
         width: Double(gtk_widget_get_width(widget)),
@@ -2739,6 +2747,7 @@ private func allocatedSize(of widget: UnsafeMutablePointer<GtkWidget>) -> ViewSi
     )
 }
 
+@MainActor
 private func translatedChildOrigin(
     child: UnsafeMutablePointer<GtkWidget>,
     in wrapper: UnsafeMutablePointer<GtkWidget>
@@ -2750,10 +2759,12 @@ private func translatedChildOrigin(
     return ViewPoint(x: Double(translatedPoint.x), y: Double(translatedPoint.y))
 }
 
+@MainActor
 private func gtkWidgetTypeName(_ widget: UnsafeMutablePointer<GtkWidget>) -> String {
     String(cString: g_type_name(gtk_swift_get_widget_type(widget)))
 }
 
+@MainActor
 private func gtkCountLayoutHelpers(in widget: UnsafeMutablePointer<GtkWidget>) -> Int {
     var count = 0
     let gobject = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
@@ -2768,6 +2779,7 @@ private func gtkCountLayoutHelpers(in widget: UnsafeMutablePointer<GtkWidget>) -
     return count
 }
 
+@MainActor
 private func gtkCollectLabels(
     in widget: UnsafeMutablePointer<GtkWidget>,
     into labels: inout [UnsafeMutablePointer<GtkWidget>]

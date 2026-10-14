@@ -8,6 +8,7 @@ import CGTKBridge
 /// String(describing:) for a destination with no title put the whole debug
 /// dump of the pushed value in the header -- one unbreakable line that grew
 /// the window to several screens wide.
+@MainActor
 final class GTK4NavigationTitleTests: XCTestCase {
     override class func setUp() {
         super.setUp()

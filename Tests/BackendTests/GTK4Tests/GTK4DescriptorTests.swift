@@ -2,6 +2,7 @@ import XCTest
 @testable import SwiftOpenUICore
 @testable import BackendGTK4
 
+@MainActor
 final class GTK4DescriptorTests: XCTestCase {
 
     // MARK: - Describe

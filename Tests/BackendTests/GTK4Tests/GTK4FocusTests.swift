@@ -9,6 +9,7 @@ import CGTKBridge
 /// The focus save/restore implementation lives in GTKViewHost (private).
 /// These tests exercise it through rendered widgets and the public
 /// GTKViewHost API.
+@MainActor
 final class GTK4FocusTests: XCTestCase {
     override class func setUp() {
         super.setUp()

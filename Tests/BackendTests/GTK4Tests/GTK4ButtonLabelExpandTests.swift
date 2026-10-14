@@ -8,6 +8,7 @@ import Foundation
 /// Regression guard for the scattered-list bug: a `Button` wrapping a
 /// `maxWidth:.infinity` label must propagate horizontal expansion so a parent
 /// VStack routes it through the fill layout instead of the fixed/centered path.
+@MainActor
 final class GTK4ButtonLabelExpandTests: XCTestCase {
     override class func setUp() {
         super.setUp()

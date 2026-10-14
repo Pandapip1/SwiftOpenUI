@@ -39,13 +39,6 @@ var targets: [Target] = [
         swiftSettings: gtkSwiftSettings
     ),
 
-    .target(
-        name: "MacExampleSupport",
-        dependencies: ["SwiftOpenUI"],
-        path: "Sources/MacExampleSupport",
-        swiftSettings: gtkSwiftSettings
-    ),
-
     // Core tests
     .testTarget(
         name: "SwiftOpenUITests",
@@ -113,7 +106,16 @@ targets += [
 // Example runner dependencies:
 // - SwiftOpenUI for the core framework
 // - Backend libraries on their native platforms
-var exampleDeps: [Target.Dependency] = ["SwiftOpenUI", "MacExampleSupport"]
+var exampleDeps: [Target.Dependency] = ["SwiftOpenUI"]
+if !gtkBackendEnabled {
+    targets.append(.target(
+        name: "MacExampleSupport",
+        dependencies: ["SwiftOpenUI"],
+        path: "Sources/MacExampleSupport",
+        swiftSettings: gtkSwiftSettings
+    ))
+    exampleDeps.append("MacExampleSupport")
+}
 
 // WebKit abstraction — platform-independent; the GTK backend wires up the concrete
 // implementation on Linux, and Apple platforms use the system WebKit framework instead.
@@ -137,6 +139,12 @@ var gtkBackendDependencies: [Target.Dependency] = [
 var gtkBackendExclude: [String] = []
 if gtkWebKitEnabled { gtkBackendDependencies += ["WebKit", "CWebKitGTK"] }
 else { gtkBackendExclude.append("GTKWebView.swift") }
+var gtkTestExclude: [String] = []
+if !gtkWebKitEnabled { gtkTestExclude.append("GTK4WebViewTests.swift") }
+var gtkTestDependencies: [Target.Dependency] = [
+    "SwiftOpenUICore", "BackendGTK4", "CGTK", "CAdwaita", "CGTKBridge", "SwiftOpenUISymbols",
+]
+if gtkWebKitEnabled { gtkTestDependencies.append("WebKit") }
 targets += [
     .systemLibrary(
         name: "CWebKitGTK",
@@ -207,13 +215,14 @@ targets += [
         // SwiftOpenUISymbols is a DIRECT dependency: the symbol-mapping
         // tests import it (declared, not leaked transitively — see the
         // librano NIOFoundationCompat cold-build lesson).
-        dependencies: ["SwiftOpenUICore", "WebKit", "BackendGTK4", "CGTK", "CAdwaita", "CGTKBridge", "SwiftOpenUISymbols"],
-        path: "Tests/BackendTests/GTK4Tests"
+        dependencies: gtkTestDependencies,
+        path: "Tests/BackendTests/GTK4Tests",
+        exclude: gtkTestExclude
     ),
     // Layout parity — GTK comparison against macOS reference
     .testTarget(
         name: "GTKLayoutParityTests",
-        dependencies: ["SwiftOpenUICore", "BackendGTK4", "CGTK", "CGTKBridge", "LayoutParityShared"],
+        dependencies: ["SwiftOpenUI", "SwiftOpenUICore", "BackendGTK4", "CGTK", "CGTKBridge", "LayoutParityShared"],
         path: "Tests/LayoutParityTests/GTKComparison"
     ),
 ]
@@ -299,6 +308,9 @@ targets += [
         dependencies: ["SwiftOpenUICore", "BackendAndroid"],
         path: "Tests/BackendTests/AndroidTests"
     ),
+]
+if !gtkBackendEnabled {
+targets += [
     .testTarget(
         name: "SwiftUIBackendTests",
         dependencies: ["SwiftOpenUI"],
@@ -311,6 +323,7 @@ targets += [
         path: "Tests/LayoutParityTests/MacOSReference"
     ),
 ]
+}
 #endif
 
 // Web backend (WebAssembly)
@@ -345,7 +358,17 @@ var exampleLinkerSettings: [LinkerSetting] = [
     ], .when(platforms: [.wasi]))
 ]
 
-// Examples — thin runners that wire Examples views to platform entry points
+// Examples — thin runners that wire Examples views to platform entry points.
+// On a macOS-hosted GTK validation build, these sources would select their
+// native SwiftUI branches from `os(macOS)` and mix two backends in one target.
+// Linux GTK and ordinary macOS builds still expose the complete catalog.
+#if os(macOS)
+let includeExampleTargets = !gtkBackendEnabled
+#else
+let includeExampleTargets = true
+#endif
+
+if includeExampleTargets {
 targets += [
     .executableTarget(
         name: "GradientDemo",
@@ -513,6 +536,7 @@ targets += [
         linkerSettings: exampleLinkerSettings
     ),
 ]
+}
 
 #if os(macOS)
 let deps: [Package.Dependency] = [

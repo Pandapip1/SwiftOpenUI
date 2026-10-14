@@ -8,6 +8,7 @@ import CGTKBridge
 /// Pagination in a List is driven by `.onAppear` on the last row. If that
 /// re-fires every time the list rebuilds, appending a page triggers the next
 /// one and the feed fetches forever on its own — which is what Home does.
+@MainActor
 final class GTK4OnAppearRepeatTests: XCTestCase {
     override class func setUp() {
         super.setUp()
@@ -19,6 +20,7 @@ final class GTK4OnAppearRepeatTests: XCTestCase {
         nonisolated(unsafe) static var cap = 25
     }
 
+    @MainActor
     struct Paginating: View {
         @State private var items: [Int] = [1, 2, 3]
 
@@ -39,6 +41,7 @@ final class GTK4OnAppearRepeatTests: XCTestCase {
     }
 
 
+    @MainActor
     @Observable
     final class Feed {
         var items: [Int] = [1, 2, 3]
@@ -53,6 +56,7 @@ final class GTK4OnAppearRepeatTests: XCTestCase {
         }
     }
 
+    @MainActor
     struct PaginatingObservable: View {
         let feed: Feed
 

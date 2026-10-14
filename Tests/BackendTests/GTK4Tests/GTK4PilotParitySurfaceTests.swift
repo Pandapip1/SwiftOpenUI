@@ -10,6 +10,7 @@ import CGTKBridge
 /// ProgressView, .task/.listStyle/.monospacedDigit acceptance, and the
 /// ShapeStyles approximations. Reviewer condition for merging the pilot
 /// branch to develop.
+@MainActor
 final class GTK4PilotParitySurfaceTests: XCTestCase {
     override class func setUp() {
         super.setUp()

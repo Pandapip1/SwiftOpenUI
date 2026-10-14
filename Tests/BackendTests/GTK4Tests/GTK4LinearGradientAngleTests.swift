@@ -5,6 +5,7 @@ import SwiftOpenUICore
 /// Guards the GTK4 LinearGradient CSS-angle mapping. The prior bug emitted an
 /// invalid `linear-gradient(from X% Y% to X% Y%, …)` that GTK silently dropped
 /// (nothing rendered); the fix emits a real CSS angle.
+@MainActor
 final class GTK4LinearGradientAngleTests: XCTestCase {
     func testAngles() {
         XCTAssertEqual(gtkLinearGradientAngle(from: .leading, to: .trailing), 90)   // to right

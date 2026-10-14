@@ -9,6 +9,7 @@ import CGTKBridge
 /// so nothing constrains it. Clicking a video turns the whole window black with
 /// the decorations pushed off screen, which is what an unbounded expanding
 /// rectangle looks like.
+@MainActor
 final class GTK4PlayerSizingTests: XCTestCase {
     override class func setUp() {
         super.setUp()

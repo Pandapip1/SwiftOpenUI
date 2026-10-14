@@ -5,6 +5,7 @@ import CGTK
 import CGTKBridge
 import Foundation
 
+@MainActor
 final class GTK4ImageDecodedTests: XCTestCase {
     override class func setUp() {
         super.setUp()

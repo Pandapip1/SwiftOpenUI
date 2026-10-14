@@ -4,6 +4,7 @@ import SwiftOpenUICore
 import CGTK
 import CGTKBridge
 
+@MainActor
 struct GTKWidgetSnapshot: Equatable {
     let typeName: String
     let origin: ViewPoint
@@ -31,6 +32,7 @@ struct GTKWidgetSnapshot: Equatable {
     }
 }
 
+@MainActor
 func gtkSnapshotTree(
     root: UnsafeMutablePointer<GtkWidget>,
     size: ViewSize? = nil
@@ -40,6 +42,7 @@ func gtkSnapshotTree(
     return gtkSnapshotSubtree(widget: root, relativeTo: root)
 }
 
+@MainActor
 func gtkFindFirstSnapshot(
     in root: GTKWidgetSnapshot,
     where predicate: (GTKWidgetSnapshot) -> Bool
@@ -53,6 +56,7 @@ func gtkFindFirstSnapshot(
     return nil
 }
 
+@MainActor
 private func gtkSnapshotSubtree(
     widget: UnsafeMutablePointer<GtkWidget>,
     relativeTo root: UnsafeMutablePointer<GtkWidget>
@@ -92,6 +96,7 @@ private func fmt(_ value: Double) -> String {
     String(format: "%.1f", value)
 }
 
+@MainActor
 func gtkMeasuredSize(of widget: UnsafeMutablePointer<GtkWidget>) -> ViewSize {
     var widthMin: Int32 = 0
     var widthNat: Int32 = 0
@@ -105,10 +110,12 @@ func gtkMeasuredSize(of widget: UnsafeMutablePointer<GtkWidget>) -> ViewSize {
     )
 }
 
+@MainActor
 func gtkAllocate(widget: UnsafeMutablePointer<GtkWidget>, size: ViewSize) {
     gtk_widget_allocate(widget, Int32(size.width), Int32(size.height), -1, nil)
 }
 
+@MainActor
 func gtkAllocatedSize(of widget: UnsafeMutablePointer<GtkWidget>) -> ViewSize {
     ViewSize(
         width: Double(gtk_widget_get_width(widget)),
@@ -116,6 +123,7 @@ func gtkAllocatedSize(of widget: UnsafeMutablePointer<GtkWidget>) -> ViewSize {
     )
 }
 
+@MainActor
 func gtkTranslatedOrigin(
     child: UnsafeMutablePointer<GtkWidget>,
     in root: UnsafeMutablePointer<GtkWidget>
@@ -130,6 +138,7 @@ func gtkTranslatedOrigin(
     return ViewPoint(x: Double(translatedPoint.x), y: Double(translatedPoint.y))
 }
 
+@MainActor
 func gtkTestWidgetTypeName(_ widget: UnsafeMutablePointer<GtkWidget>) -> String {
     String(cString: g_type_name(gtk_swift_get_widget_type(widget)))
 }

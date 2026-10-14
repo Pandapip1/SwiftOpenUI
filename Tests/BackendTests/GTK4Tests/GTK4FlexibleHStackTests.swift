@@ -10,6 +10,7 @@ import CGTKBridge
 /// function shared by the allocate and height-for-width measure callbacks.
 ///
 /// See docs/proposals/gtk4-flexible-hstack-layout.md.
+@MainActor
 final class GTK4FlexibleHStackTests: XCTestCase {
     override class func setUp() {
         super.setUp()

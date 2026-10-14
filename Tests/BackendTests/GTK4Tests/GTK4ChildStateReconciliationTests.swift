@@ -25,6 +25,7 @@ private struct TaggedChild: View {
     }
 }
 
+@MainActor
 final class GTK4ChildStateReconciliationTests: XCTestCase {
     override class func setUp() {
         super.setUp()

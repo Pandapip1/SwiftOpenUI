@@ -10,6 +10,7 @@ import Foundation
 /// measures to contain children), which forced the window open when a child was
 /// wide (a long wrapped label). A GtkBox reports the child's negotiable minimum,
 /// matching SwiftLinuxUI and SwiftUI proposal semantics.
+@MainActor
 final class GTK4VStackWidthTests: XCTestCase {
     override class func setUp() {
         super.setUp()

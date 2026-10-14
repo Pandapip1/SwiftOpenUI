@@ -7,6 +7,7 @@ import CGTKBridge
 /// GTK rendering of conditionals inside stacks (the librano issue-list
 /// summary-bar regression): branch children must become DIRECT children
 /// of the stack's box, on the stack's axis — not one nested vertical box.
+@MainActor
 final class GTK4ConditionalInStackTests: XCTestCase {
     override class func setUp() {
         super.setUp()

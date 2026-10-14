@@ -5,12 +5,14 @@ import SwiftOpenUICore
 import CGTK
 import CGTKBridge
 
+@MainActor
 final class GTK4NavigationDismissTests: XCTestCase {
     @Observable
     final class TitleState {
         var revision = 0
     }
 
+    @MainActor
     final class Probe {
         var dismiss = DismissAction()
         let state = TitleState()

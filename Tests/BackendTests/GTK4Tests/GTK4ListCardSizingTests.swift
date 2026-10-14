@@ -8,6 +8,7 @@ import CGTKBridge
 /// fills whatever its viewport allocates, so inside a scrolled window stretched
 /// to the window it covered the entire viewport, and a single-row list looked
 /// enormous until an unrelated rebuild happened to shrink it.
+@MainActor
 final class GTK4ListCardSizingTests: XCTestCase {
     override class func setUp() {
         super.setUp()

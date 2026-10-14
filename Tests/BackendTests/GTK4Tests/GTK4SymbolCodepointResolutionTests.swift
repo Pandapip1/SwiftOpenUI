@@ -6,6 +6,7 @@ import CGTK
 
 /// Codepoints are read out of the bundled font rather than kept in a table, so
 /// these check the reader actually resolves what the SF map promises.
+@MainActor
 final class GTK4SymbolCodepointResolutionTests: XCTestCase {
     func testEveryMappedNameResolvesInTheFont() {
         var unresolved: [String] = []

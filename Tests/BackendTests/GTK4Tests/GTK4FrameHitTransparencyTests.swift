@@ -14,6 +14,7 @@ import Foundation
 /// flags (the original flag-reading tests passed while the button was
 /// dead, because a child's own `can_target` doesn't govern picking when
 /// an ancestor prunes).
+@MainActor
 final class GTK4FrameHitTransparencyTests: XCTestCase {
     override class func setUp() {
         super.setUp()

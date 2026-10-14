@@ -5,6 +5,7 @@ import WebKit
 import CGTK
 import CGTKBridge
 
+@MainActor
 final class GTK4WebViewTests: XCTestCase {
     override class func setUp() {
         super.setUp()

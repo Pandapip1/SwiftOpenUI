@@ -10,6 +10,7 @@ import CGTKBridge
 /// a container that expands only because a descendant does reports as 0. Any
 /// view host in the chain therefore truncated it, and content sat at its natural
 /// height with the rest of the window empty below.
+@MainActor
 final class GTK4ExpansionPropagationTests: XCTestCase {
     override class func setUp() {
         super.setUp()

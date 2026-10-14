@@ -1,5 +1,5 @@
 /// A size proposal for layout.
-public struct ProposedViewSize: Equatable {
+public struct ProposedViewSize: nonisolated Equatable {
     public var width: Double?
     public var height: Double?
 
@@ -14,7 +14,7 @@ public struct ProposedViewSize: Equatable {
 }
 
 /// A concrete size value.
-public struct ViewSize: Equatable {
+public struct ViewSize: nonisolated Equatable {
     public var width: Double
     public var height: Double
 
@@ -27,7 +27,7 @@ public struct ViewSize: Equatable {
 }
 
 /// A concrete origin point in a container coordinate space.
-public struct ViewPoint: Equatable {
+public struct ViewPoint: nonisolated Equatable {
     public var x: Double
     public var y: Double
 
@@ -40,7 +40,7 @@ public struct ViewPoint: Equatable {
 }
 
 /// The resolved size and placement of a child within a container.
-public struct LayoutPlacement: Equatable {
+public struct LayoutPlacement: nonisolated Equatable {
     public var origin: ViewPoint
     public var size: ViewSize
 
@@ -51,7 +51,7 @@ public struct LayoutPlacement: Equatable {
 }
 
 /// Shared layout result for a fixed/flexible frame.
-public struct FrameLayoutResult: Equatable {
+public struct FrameLayoutResult: nonisolated Equatable {
     public var containerSize: ViewSize
     public var childPlacement: LayoutPlacement
 
@@ -62,7 +62,7 @@ public struct FrameLayoutResult: Equatable {
 }
 
 /// Shared layout result for stack containers.
-public struct StackLayoutResult: Equatable {
+public struct StackLayoutResult: nonisolated Equatable {
     public var containerSize: ViewSize
     public var childPlacements: [LayoutPlacement]
 
@@ -432,7 +432,7 @@ public func computeExplicitGridLayout(
 }
 
 /// Shared layout result for lazy grid configuration.
-public struct LazyGridConfiguration: Equatable {
+public struct LazyGridConfiguration: nonisolated Equatable {
     public var minColumns: Int
     public var maxColumns: Int
     public var adaptiveMinimum: Int

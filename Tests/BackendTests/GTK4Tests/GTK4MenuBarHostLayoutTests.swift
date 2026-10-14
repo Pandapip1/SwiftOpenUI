@@ -21,6 +21,7 @@ import CGTKBridge
 ///
 /// Linux-only: macOS and Windows native menus live outside the window's
 /// content widget, so there's no analog wrapper to test.
+@MainActor
 final class GTK4MenuBarHostLayoutTests: XCTestCase {
 
     override class func setUp() {

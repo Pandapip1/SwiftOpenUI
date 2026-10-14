@@ -9,6 +9,7 @@ import SwiftOpenUISymbols
 /// dependency belong to the symbols commit, separate from the core
 /// conditional-flattening commit (review condition: each commit compiles
 /// and passes independently).
+@MainActor
 final class GTK4SymbolMappingTests: XCTestCase {
     func testPilotCatalogSymbolsResolve() {
         for sfName in ["building.2", "building.2.fill", "books.vertical", "books.vertical.fill",

@@ -4,6 +4,7 @@ import SwiftOpenUICore
 import CGTK
 import CGTKBridge
 
+@MainActor
 final class GTK4TextFormattingTests: XCTestCase {
     override class func setUp() {
         super.setUp()

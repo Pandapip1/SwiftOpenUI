@@ -8,6 +8,7 @@ import CGTKBridge
 /// (nothing rendered), while the parity matrix claimed "Y". A unit test on the
 /// angle math alone can't catch that. This loads the generated CSS into a real
 /// GtkCssProvider and asserts it *parses* — the guard that was missing.
+@MainActor
 final class GTK4GradientCSSTests: XCTestCase {
     override class func setUp() {
         super.setUp()

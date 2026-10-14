@@ -19,7 +19,7 @@ let parityRootWidth: Double = 400
 let parityRootHeight: Double = 600
 
 /// All scenarios, keyed by name.
-let allLayoutScenarios: [(name: String, view: AnyView)] = [
+@MainActor let allLayoutScenarios: [(name: String, view: AnyView)] = [
     // === Basic Views ===
     ("text-single", AnyView(scenario_textSingle)),
     ("text-long-wrap", AnyView(scenario_textLongWrap)),
@@ -99,19 +99,19 @@ let allLayoutScenarios: [(name: String, view: AnyView)] = [
 
 // MARK: - Basic Views
 
-var scenario_textSingle: some View {
+@MainActor var scenario_textSingle: some View {
     Text("Hello")
 }
 
-var scenario_textLongWrap: some View {
+@MainActor var scenario_textLongWrap: some View {
     Text("This is a longer piece of text that should wrap across multiple lines in the given width")
 }
 
-var scenario_colorFill: some View {
+@MainActor var scenario_colorFill: some View {
     Color.red
 }
 
-var scenario_spacerVertical: some View {
+@MainActor var scenario_spacerVertical: some View {
     VStack {
         Spacer()
     }
@@ -119,7 +119,7 @@ var scenario_spacerVertical: some View {
 
 // MARK: - VStack Scenarios
 
-var scenario_vstackDefault: some View {
+@MainActor var scenario_vstackDefault: some View {
     VStack {
         Text("First")
         Text("Second")
@@ -127,7 +127,7 @@ var scenario_vstackDefault: some View {
     }
 }
 
-var scenario_vstackLeading: some View {
+@MainActor var scenario_vstackLeading: some View {
     VStack(alignment: .leading) {
         Text("Short")
         Text("A longer text")
@@ -135,7 +135,7 @@ var scenario_vstackLeading: some View {
     }
 }
 
-var scenario_vstackTrailing: some View {
+@MainActor var scenario_vstackTrailing: some View {
     VStack(alignment: .trailing) {
         Text("Short")
         Text("A longer text")
@@ -143,7 +143,7 @@ var scenario_vstackTrailing: some View {
     }
 }
 
-var scenario_vstackSpacing20: some View {
+@MainActor var scenario_vstackSpacing20: some View {
     VStack(spacing: 20) {
         Text("First")
         Text("Second")
@@ -151,7 +151,7 @@ var scenario_vstackSpacing20: some View {
     }
 }
 
-var scenario_vstackWithSpacer: some View {
+@MainActor var scenario_vstackWithSpacer: some View {
     VStack {
         Text("Top")
         Spacer()
@@ -159,7 +159,7 @@ var scenario_vstackWithSpacer: some View {
     }
 }
 
-var scenario_vstackNested: some View {
+@MainActor var scenario_vstackNested: some View {
     VStack(spacing: 10) {
         VStack(spacing: 4) {
             Text("Group 1 - A")
@@ -174,35 +174,35 @@ var scenario_vstackNested: some View {
 
 // MARK: - HStack Scenarios
 
-var scenario_hstackDefault: some View {
+@MainActor var scenario_hstackDefault: some View {
     HStack {
         Text("Left")
         Text("Right")
     }
 }
 
-var scenario_hstackTop: some View {
+@MainActor var scenario_hstackTop: some View {
     HStack(alignment: .top) {
         Text("Short")
         Text("Tall\nMultiline\nText")
     }
 }
 
-var scenario_hstackBottom: some View {
+@MainActor var scenario_hstackBottom: some View {
     HStack(alignment: .bottom) {
         Text("Short")
         Text("Tall\nMultiline\nText")
     }
 }
 
-var scenario_hstackSpacing20: some View {
+@MainActor var scenario_hstackSpacing20: some View {
     HStack(spacing: 20) {
         Text("Left")
         Text("Right")
     }
 }
 
-var scenario_hstackWithSpacer: some View {
+@MainActor var scenario_hstackWithSpacer: some View {
     HStack {
         Text("Left")
         Spacer()
@@ -212,7 +212,7 @@ var scenario_hstackWithSpacer: some View {
 
 // MARK: - ZStack Scenarios
 
-var scenario_zstackDefault: some View {
+@MainActor var scenario_zstackDefault: some View {
     ZStack {
         Color.blue
             .frame(width: 200, height: 200)
@@ -220,7 +220,7 @@ var scenario_zstackDefault: some View {
     }
 }
 
-var scenario_zstackTopLeading: some View {
+@MainActor var scenario_zstackTopLeading: some View {
     ZStack(alignment: .topLeading) {
         Color.blue
             .frame(width: 200, height: 200)
@@ -228,7 +228,7 @@ var scenario_zstackTopLeading: some View {
     }
 }
 
-var scenario_zstackBottomTrailing: some View {
+@MainActor var scenario_zstackBottomTrailing: some View {
     ZStack(alignment: .bottomTrailing) {
         Color.blue
             .frame(width: 200, height: 200)
@@ -238,54 +238,54 @@ var scenario_zstackBottomTrailing: some View {
 
 // MARK: - Frame Scenarios
 
-var scenario_frameFixed: some View {
+@MainActor var scenario_frameFixed: some View {
     Text("Framed")
         .frame(width: 200, height: 100)
 }
 
-var scenario_frameMinMax: some View {
+@MainActor var scenario_frameMinMax: some View {
     Text("Constrained")
         .frame(minWidth: 100, maxWidth: 300, minHeight: 50, maxHeight: 150)
 }
 
-var scenario_frameMaxWidthInfinity: some View {
+@MainActor var scenario_frameMaxWidthInfinity: some View {
     Text("Full Width")
         .frame(maxWidth: .infinity)
 }
 
-var scenario_frameAlignmentTopLeading: some View {
+@MainActor var scenario_frameAlignmentTopLeading: some View {
     Text("TL")
         .frame(width: 200, height: 200, alignment: .topLeading)
 }
 
-var scenario_frameAlignmentBottomTrailing: some View {
+@MainActor var scenario_frameAlignmentBottomTrailing: some View {
     Text("BR")
         .frame(width: 200, height: 200, alignment: .bottomTrailing)
 }
 
-var scenario_frameAlignmentCenter: some View {
+@MainActor var scenario_frameAlignmentCenter: some View {
     Text("C")
         .frame(width: 200, height: 200, alignment: .center)
 }
 
 // MARK: - Padding Scenarios
 
-var scenario_paddingDefault: some View {
+@MainActor var scenario_paddingDefault: some View {
     Text("Padded")
         .padding()
 }
 
-var scenario_paddingCustom: some View {
+@MainActor var scenario_paddingCustom: some View {
     Text("Custom Pad")
         .padding(20)
 }
 
-var scenario_paddingHorizontal: some View {
+@MainActor var scenario_paddingHorizontal: some View {
     Text("H-Padded")
         .padding(.horizontal, 24)
 }
 
-var scenario_paddingNested: some View {
+@MainActor var scenario_paddingNested: some View {
     Text("Double Padded")
         .padding(8)
         .padding(16)
@@ -293,7 +293,7 @@ var scenario_paddingNested: some View {
 
 // MARK: - Combined Layout Scenarios
 
-var scenario_vstackFramePadding: some View {
+@MainActor var scenario_vstackFramePadding: some View {
     VStack(spacing: 8) {
         Text("Title")
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -305,7 +305,7 @@ var scenario_vstackFramePadding: some View {
     .padding(.vertical, 12)
 }
 
-var scenario_hstackInVstack: some View {
+@MainActor var scenario_hstackInVstack: some View {
     VStack(spacing: 12) {
         HStack {
             Text("Label")
@@ -322,7 +322,7 @@ var scenario_hstackInVstack: some View {
     }
 }
 
-var scenario_complexNested: some View {
+@MainActor var scenario_complexNested: some View {
     VStack(spacing: 16) {
         HStack(spacing: 12) {
             Color.red
@@ -350,7 +350,7 @@ var scenario_complexNested: some View {
     }
 }
 
-var scenario_spacerBetweenTexts: some View {
+@MainActor var scenario_spacerBetweenTexts: some View {
     VStack {
         Text("Header")
         Spacer()
@@ -360,7 +360,7 @@ var scenario_spacerBetweenTexts: some View {
     }
 }
 
-var scenario_twoColumnHstack: some View {
+@MainActor var scenario_twoColumnHstack: some View {
     HStack(spacing: 0) {
         Color.blue
             .frame(width: 120)
@@ -375,19 +375,19 @@ var scenario_twoColumnHstack: some View {
 
 // MARK: - Edge Cases
 
-var scenario_emptyVstack: some View {
+@MainActor var scenario_emptyVstack: some View {
     VStack {
         // empty
     }
 }
 
-var scenario_singleChildVstack: some View {
+@MainActor var scenario_singleChildVstack: some View {
     VStack {
         Text("Only child")
     }
 }
 
-var scenario_deeplyNestedFrames: some View {
+@MainActor var scenario_deeplyNestedFrames: some View {
     Text("Deep")
         .frame(width: 100, height: 40)
         .frame(width: 200, height: 100)
@@ -396,7 +396,7 @@ var scenario_deeplyNestedFrames: some View {
 
 // MARK: - App Pattern Scenarios
 
-var scenario_appHeaderContentFooter: some View {
+@MainActor var scenario_appHeaderContentFooter: some View {
     VStack(spacing: 0) {
         Text("Header")
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -413,7 +413,7 @@ var scenario_appHeaderContentFooter: some View {
     }
 }
 
-var scenario_sidebarDetailSplit: some View {
+@MainActor var scenario_sidebarDetailSplit: some View {
     HStack(spacing: 0) {
         VStack(alignment: .leading, spacing: 4) {
             Text("Item 1")
@@ -437,7 +437,7 @@ var scenario_sidebarDetailSplit: some View {
     }
 }
 
-var scenario_toolbarContentLayout: some View {
+@MainActor var scenario_toolbarContentLayout: some View {
     VStack(spacing: 0) {
         HStack {
             Text("Back")
@@ -458,19 +458,19 @@ var scenario_toolbarContentLayout: some View {
 
 // MARK: - Modifier Composition Scenarios
 
-var scenario_frameInsidePadding: some View {
+@MainActor var scenario_frameInsidePadding: some View {
     Text("X")
         .frame(width: 100, height: 50)
         .padding(20)
 }
 
-var scenario_paddingInsideFrame: some View {
+@MainActor var scenario_paddingInsideFrame: some View {
     Text("X")
         .padding(20)
         .frame(width: 200, height: 100)
 }
 
-var scenario_nestedAlignmentOverride: some View {
+@MainActor var scenario_nestedAlignmentOverride: some View {
     VStack(alignment: .leading) {
         HStack {
             Text("A")
@@ -483,7 +483,7 @@ var scenario_nestedAlignmentOverride: some View {
     }
 }
 
-var scenario_stackedFramesWithAlignment: some View {
+@MainActor var scenario_stackedFramesWithAlignment: some View {
     Text("Z")
         .frame(width: 50, height: 30, alignment: .bottomTrailing)
         .frame(width: 150, height: 80, alignment: .topLeading)
@@ -491,7 +491,7 @@ var scenario_stackedFramesWithAlignment: some View {
 
 // MARK: - Flex Distribution Scenarios
 
-var scenario_unequalFlexSpacers: some View {
+@MainActor var scenario_unequalFlexSpacers: some View {
     VStack {
         Text("Top")
         Spacer()
@@ -502,7 +502,7 @@ var scenario_unequalFlexSpacers: some View {
     }
 }
 
-var scenario_mixedFixedFlexibleHstack: some View {
+@MainActor var scenario_mixedFixedFlexibleHstack: some View {
     HStack(spacing: 0) {
         Text("Fixed")
             .frame(width: 80)
@@ -515,7 +515,7 @@ var scenario_mixedFixedFlexibleHstack: some View {
 
 // MARK: - Edge Cases (new)
 
-var scenario_zeroSpacingVstack: some View {
+@MainActor var scenario_zeroSpacingVstack: some View {
     VStack(spacing: 0) {
         Text("A")
         Text("B")
@@ -523,7 +523,7 @@ var scenario_zeroSpacingVstack: some View {
     }
 }
 
-var scenario_deeplyNestedPaddingFrame: some View {
+@MainActor var scenario_deeplyNestedPaddingFrame: some View {
     Text("X")
         .padding(4)
         .frame(width: 80, height: 40)
@@ -543,7 +543,7 @@ var scenario_deeplyNestedPaddingFrame: some View {
 /// spacers around the child when alignment is `.center` (the default).
 /// Mirrors the macOS SwiftUI behavior where `.frame(minHeight:)` with a
 /// default-center alignment centers content vertically.
-var scenario_frameMinHeightCentersContent: some View {
+@MainActor var scenario_frameMinHeightCentersContent: some View {
     Text("Centered")
         .frame(maxWidth: .infinity, minHeight: 180)
 }
@@ -555,7 +555,7 @@ var scenario_frameMinHeightCentersContent: some View {
 /// centering fix — if the else-branch of that function goes back to
 /// raw `gtk_box_append`, this scenario's rendered output would shift
 /// the inner VStack to the top of the frame.
-var scenario_frameMaxWidthInfinityMinHeight: some View {
+@MainActor var scenario_frameMaxWidthInfinityMinHeight: some View {
     VStack {
         Text("Top")
         Text("Bottom")
@@ -574,7 +574,7 @@ var scenario_frameMaxWidthInfinityMinHeight: some View {
 /// fragments. If this scenario's rendered leaf ever shows a label
 /// width close to 0 / a single ellipsis, the workaround has
 /// regressed or the underlying hexpand-chain bug re-surfaced.
-var scenario_textMiddleTruncationNarrow: some View {
+@MainActor var scenario_textMiddleTruncationNarrow: some View {
     Text("/home/kyoshikawa/Documents/projects/synca-test/synca-test/source")
         .lineLimit(1)
         .truncationMode(.middle)

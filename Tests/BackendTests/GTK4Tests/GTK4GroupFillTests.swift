@@ -11,6 +11,7 @@ import Foundation
 /// (default `.center` alignment) fills instead of centering the whole block
 /// at natural size (the centered issue-list bug: rows fixed, but the list sat
 /// in a narrow centered column because `Group` swallowed the expand flags).
+@MainActor
 final class GTK4GroupFillTests: XCTestCase {
     override class func setUp() {
         super.setUp()

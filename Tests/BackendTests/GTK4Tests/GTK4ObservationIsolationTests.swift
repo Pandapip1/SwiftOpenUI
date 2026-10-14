@@ -5,6 +5,7 @@ import SwiftOpenUICore
 import CGTK
 import CGTKBridge
 
+@MainActor
 final class GTK4ObservationIsolationTests: XCTestCase {
     @Observable final class Model { var history = 0; var name = "before" }
     final class Counts { var parent = 0; var child = 0 }

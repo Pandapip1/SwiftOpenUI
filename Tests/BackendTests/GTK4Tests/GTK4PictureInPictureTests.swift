@@ -4,6 +4,7 @@ import Foundation
 @testable import BackendGTK4
 import CGTK
 
+@MainActor
 final class GTK4PictureInPictureTests: XCTestCase {
     func testControllerMovesVideoIntoFloatingWindowAndBack() async throws {
         try await MainActor.run {

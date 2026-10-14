@@ -4,6 +4,7 @@ import Foundation
 @testable import BackendGTK4
 import CGTK
 
+@MainActor
 final class GTK4MediaPrerequisiteTests: XCTestCase {
     @MainActor
     func testRenderedAVPlayerSeekMovesActivePipeline() async throws {

@@ -5,6 +5,7 @@ import CGTK
 import CAdwaita
 import CGTKBridge
 
+@MainActor
 final class GTK4WindowTitleBarTests: XCTestCase {
     struct RootWithWindowTitleAndNestedAction: View {
         var body: some View {

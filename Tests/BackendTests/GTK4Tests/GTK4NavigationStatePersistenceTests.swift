@@ -9,6 +9,7 @@ import CGTKBridge
 /// writes watch history once playback passes 1s, mutating an observable the
 /// tree reads. If a rebuild from that loses view state, the navigation path
 /// goes with it.
+@MainActor
 final class GTK4NavigationStatePersistenceTests: XCTestCase {
     override class func setUp() {
         super.setUp()

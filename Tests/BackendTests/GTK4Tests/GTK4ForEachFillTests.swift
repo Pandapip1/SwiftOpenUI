@@ -9,6 +9,7 @@ import Foundation
 /// fill width, the box it produces must itself report `hexpand`, so a
 /// surrounding `.center` stack lets the rows span the width rather than
 /// centering the whole narrow block (the centered issue-list-rows bug).
+@MainActor
 final class GTK4ForEachFillTests: XCTestCase {
     override class func setUp() {
         super.setUp()
