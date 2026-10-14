@@ -527,7 +527,9 @@ final class GTK4MenuBarHost {
                 let groups = self.factory()
                 self.updateMenu(groups)
             } onChange: { [weak self] in
-                self?.scheduleReevaluation()
+                Task { @MainActor [weak self] in
+                    self?.scheduleReevaluation()
+                }
             }
             return
         }

@@ -721,16 +721,18 @@ extension NavigationLink: GTKRenderable {
         // at dispatch time). See deferred-callback-environment-binding.md.
         let capturedEnv = getCurrentEnvironment()
 
-        let box = Unmanaged.passRetained(ClosureBox {
+        let navigationContext = context
+        let box = Unmanaged.passRetained(ClosureBox { [weak navigationContext] in
+            guard let navigationContext else { return }
             // Set context for rendering the destination
-            setCurrentNavigationContext(context)
+            setCurrentNavigationContext(navigationContext)
             let prevEnv = getCurrentEnvironment()
             var env = capturedEnv
-            env.dismiss = context.dismissActionForNextEntry()
+            env.dismiss = navigationContext.dismissActionForNextEntry()
             env[NavigateKey.self] = NavigateAction(
-                push: { [weak context] value in context?.pushValue(value) },
-                pop: { [weak context] in context?.pop() },
-                popToRoot: { [weak context] in context?.popToRoot() }
+                push: { [weak navigationContext] value in navigationContext?.pushValue(value) },
+                pop: { [weak navigationContext] in navigationContext?.pop() },
+                popToRoot: { [weak navigationContext] in navigationContext?.popToRoot() }
             )
             setCurrentEnvironment(env)
             let destView = dest()
@@ -739,7 +741,7 @@ extension NavigationLink: GTKRenderable {
             let rawItems = gtkExtractToolbarItems(from: destView)
             let destConfig = gtkExtractToolbarConfiguration(from: destView)
             let (toolbarItems, destHidden) = gtkApplyToolbarConfiguration(items: rawItems, configuration: destConfig)
-            context.push(title: finalTitle, toolbarItems: destHidden ? [] : toolbarItems) {
+            navigationContext.push(title: finalTitle, toolbarItems: destHidden ? [] : toolbarItems) {
                 gtkRenderView(destView)
             }
             setCurrentEnvironment(prevEnv)

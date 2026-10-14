@@ -42,6 +42,15 @@ public struct AccessibilityLabelView<Content: View>: View {
     public var body: some View { content }
 }
 
+/// Wrapper produced by `.accessibilityValue(_:)`. Backends may expose this as
+/// the current value of a control; until then it preserves API and view shape.
+public struct AccessibilityValueView<Content: View>: View {
+    public let content: Content
+    public let value: String
+
+    public var body: some View { content }
+}
+
 protocol _AccessibilityLabelProvider {
     var _accessibilityLabel: String { get }
 }
@@ -54,5 +63,9 @@ extension View {
     /// Sets a label a screen reader uses to describe this view.
     public func accessibilityLabel(_ label: String) -> AccessibilityLabelView<Self> {
         AccessibilityLabelView(content: self, label: label)
+    }
+
+    public func accessibilityValue(_ value: String) -> AccessibilityValueView<Self> {
+        AccessibilityValueView(content: self, value: value)
     }
 }

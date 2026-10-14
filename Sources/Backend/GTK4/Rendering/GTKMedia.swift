@@ -13,10 +13,10 @@ import FoundationNetworking
 /// uploaded to a GtkPicture, avoiding GtkVideo's single-stream limitations.
 @MainActor
 final class GTKVideoDriver: _AVPlayerDriver {
-    let widget: UnsafeMutablePointer<GtkWidget>
-    private let videoWidget: UnsafeMutablePointer<GtkWidget>
+    nonisolated(unsafe) let widget: UnsafeMutablePointer<GtkWidget>
+    private nonisolated(unsafe) let videoWidget: UnsafeMutablePointer<GtkWidget>
     private weak var player: AVPlayer?
-    private var gst: UnsafeMutablePointer<SwiftOpenUIGStreamerPlayer>?
+    private nonisolated(unsafe) var gst: UnsafeMutablePointer<SwiftOpenUIGStreamerPlayer>?
     private var pendingSeek: Double?
     private var acceptedSeek: Double?
     private var startSource: guint = 0
@@ -71,7 +71,6 @@ final class GTKVideoDriver: _AVPlayerDriver {
         if let localAudioURL { try? FileManager.default.removeItem(at: localAudioURL) }
         if startSource != 0 { g_source_remove(startSource) }
         MainActor.assumeIsolated { stopPictureInPicture() }
-        if pictureInPictureUpdateSource != 0 { g_source_remove(pictureInPictureUpdateSource) }
         if let gst { swift_openui_gst_player_free(gst) }
         if gtk_widget_get_parent(videoWidget) != nil { gtk_widget_unparent(videoWidget) }
         g_object_unref(gpointer(videoWidget))
@@ -557,7 +556,10 @@ final class GTKVideoDriver: _AVPlayerDriver {
 
 extension VideoPlayer: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
-        MainActor.assumeIsolated { gtkCreateWidgetOnMainActor() }
+        let address = MainActor.assumeIsolated {
+            Int(bitPattern: gtkCreateWidgetOnMainActor())
+        }
+        return OpaquePointer(bitPattern: address)!
     }
 
     @MainActor

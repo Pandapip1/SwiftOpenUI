@@ -104,7 +104,7 @@ targets += [
 // GTK4 backend. Linux selects it by default; macOS can opt in for backend development.
 if gtkBackendEnabled {
 var gtkBackendDependencies: [Target.Dependency] = [
-    "SwiftOpenUICore", "CGTK", "CAdwaita", "CGTKBridge", "CGStreamer", "SwiftOpenUISymbols",
+    "SwiftOpenUICore", "CGTK", "CAdwaita", "CGTKBridge", "CGStreamer", "CFontconfig", "SwiftOpenUISymbols",
 ]
 var gtkBackendExclude: [String] = []
 if gtkWebKitEnabled { gtkBackendDependencies += ["WebKit", "CWebKitGTK"] }
@@ -134,6 +134,12 @@ targets += [
         pkgConfig: "gstreamer-app-1.0",
         providers: [.apt(["libgstreamer1.0-dev", "libgstreamer-plugins-base1.0-dev"])]
     ),
+    .systemLibrary(
+        name: "CFontconfig",
+        path: "Sources/Backend/GTK4/CFontconfig",
+        pkgConfig: "fontconfig",
+        providers: [.apt(["libfontconfig1-dev"])]
+    ),
     .target(
         name: "CGTKBridge",
         dependencies: ["CGTK"],
@@ -152,7 +158,6 @@ targets += [
             // runtime calls but pkg-config's --libs gtk4 doesn't name
             // it explicitly at link time; declare it here to keep the
             // FcConfig* symbols resolvable.
-            .linkedLibrary("fontconfig"),
             .linkedLibrary("gstreamer-1.0"),
             .linkedLibrary("gstapp-1.0"),
         ]

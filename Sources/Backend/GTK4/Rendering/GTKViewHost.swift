@@ -579,7 +579,9 @@ private func findTitlebarInRebuiltTree(_ widget: UnsafeMutablePointer<GtkWidget>
 
 /// Holds state for deferred animation on a rebuilt widget.
 private class AnimationTransitionContext {
-    let widget: UnsafeMutablePointer<GtkWidget>
+    // GTK owns the pointee's synchronization. The explicit ref held by this
+    // context keeps it alive until the nonisolated deinitializer releases it.
+    nonisolated(unsafe) let widget: UnsafeMutablePointer<GtkWidget>
     let targetOpacity: Double?
     let targetTransform: String?
 

@@ -113,7 +113,7 @@ public func gtkRenderChildren<V: View>(_ view: V) -> [OpaquePointer] {
     }
     if let multi = view as? MultiChildView {
         return multi.children.map { child in
-            func render<C: View>(_ c: C) -> OpaquePointer { gtkRenderView(c) }
+            @MainActor func render<C: View>(_ c: C) -> OpaquePointer { gtkRenderView(c) }
             return render(child)
         }
     }
@@ -2274,7 +2274,7 @@ private func gtkDisappearIsForced(for widget: UnsafeMutablePointer<GtkWidget>) -
 
 private final class GTKFullScreenCoverState {
     let window: UnsafeMutablePointer<GtkWidget>
-    let originalChild: UnsafeMutablePointer<GtkWidget>
+    nonisolated(unsafe) let originalChild: UnsafeMutablePointer<GtkWidget>
     let overlay: UnsafeMutablePointer<GtkWidget>
     var currentCover: UnsafeMutablePointer<GtkWidget>?
 
@@ -4663,7 +4663,9 @@ final class GTKSliderState {
     }
 
     deinit {
-        if isEditing { host?.endInteractiveUpdate() }
+        if isEditing {
+            MainActor.assumeIsolated { host?.endInteractiveUpdate() }
+        }
     }
 }
 
@@ -8102,15 +8104,28 @@ private class GTKViewThatFitsContext {
 }
 
 /// Tick callback for ViewThatFits — re-evaluates child selection on size changes.
-private func gtkViewThatFitsTickCallback(
+nonisolated private func gtkViewThatFitsTickCallback(
     _ widget: UnsafeMutablePointer<GtkWidget>?,
     _ frameClock: OpaquePointer?,
     _ userData: gpointer?
 ) -> gboolean {
     guard let userData = userData else { return 1 }
-    let ctx = Unmanaged<GTKViewThatFitsContext>.fromOpaque(userData).takeUnretainedValue()
-    ctx.tickCheck()
-    return 1 // keep running
+    let address = Int(bitPattern: userData)
+    return MainActor.assumeIsolated {
+        let pointer = UnsafeMutableRawPointer(bitPattern: address)!
+        let context = Unmanaged<GTKViewThatFitsContext>.fromOpaque(pointer).takeUnretainedValue()
+        context.tickCheck()
+        return 1 // keep running
+    }
+}
+
+nonisolated private func gtkViewThatFitsDestroyNotify(_ userData: gpointer?) {
+    guard let userData else { return }
+    let address = Int(bitPattern: userData)
+    MainActor.assumeIsolated {
+        let pointer = UnsafeMutableRawPointer(bitPattern: address)!
+        Unmanaged<GTKViewThatFitsContext>.fromOpaque(pointer).release()
+    }
 }
 
 extension ViewThatFits: GTKRenderable {
@@ -8143,7 +8158,7 @@ extension ViewThatFits: GTKRenderable {
             stack,
             gtkViewThatFitsTickCallback,
             contextPtr,
-            { userData in Unmanaged<GTKViewThatFitsContext>.fromOpaque(userData!).release() }
+            gtkViewThatFitsDestroyNotify
         )
 
         return opaqueFromWidget(stack)
