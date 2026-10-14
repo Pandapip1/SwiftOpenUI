@@ -10,6 +10,10 @@ static inline GtkWidget *swift_adw_application_window_new(GtkApplication *applic
     return GTK_WIDGET(adw_application_window_new(application));
 }
 
+static inline GtkWidget *swift_adw_header_bar_new(void) {
+    return GTK_WIDGET(adw_header_bar_new());
+}
+
 static inline void swift_adw_application_window_set_content(GtkWidget *window, GtkWidget *content) {
     adw_application_window_set_content(ADW_APPLICATION_WINDOW(window), content);
 }
@@ -118,11 +122,27 @@ static inline GtkWidget *swift_adw_tab_bar_new(GtkWidget *view) {
     return GTK_WIDGET(bar);
 }
 
+static inline void swift_adw_tab_bar_set_start_action_widget(GtkWidget *bar, GtkWidget *widget) {
+    adw_tab_bar_set_start_action_widget(ADW_TAB_BAR(bar), widget);
+}
+
 static inline GtkWidget *swift_adw_tab_overview_new(GtkWidget *view, GtkWidget *child) {
     AdwTabOverview *overview = ADW_TAB_OVERVIEW(adw_tab_overview_new());
     adw_tab_overview_set_view(overview, ADW_TAB_VIEW(view));
     adw_tab_overview_set_child(overview, child);
     return GTK_WIDGET(overview);
+}
+
+static inline void swift_adw_tab_overview_set_enable_new_tab(GtkWidget *overview, gboolean enabled) {
+    adw_tab_overview_set_enable_new_tab(ADW_TAB_OVERVIEW(overview), enabled);
+}
+
+static inline void swift_adw_tab_page_set_live_thumbnail(AdwTabPage *page, gboolean live) {
+    adw_tab_page_set_live_thumbnail(page, live);
+}
+
+static inline void swift_adw_tab_view_invalidate_thumbnails(GtkWidget *view) {
+    adw_tab_view_invalidate_thumbnails(ADW_TAB_VIEW(view));
 }
 
 static inline GtkWidget *swift_adw_tab_button_new(GtkWidget *view) {
@@ -154,6 +174,14 @@ static inline void swift_adw_toolbar_view_add_top_bar(GtkWidget *toolbar_view, G
 
 static inline void swift_adw_toolbar_view_set_content(GtkWidget *toolbar_view, GtkWidget *content) {
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(toolbar_view), content);
+}
+
+static inline void swift_adw_toolbar_view_set_top_bar_raised(GtkWidget *toolbar_view) {
+    adw_toolbar_view_set_top_bar_style(ADW_TOOLBAR_VIEW(toolbar_view), ADW_TOOLBAR_RAISED);
+}
+
+static inline gboolean swift_adw_toolbar_view_get_top_bar_raised(GtkWidget *toolbar_view) {
+    return adw_toolbar_view_get_top_bar_style(ADW_TOOLBAR_VIEW(toolbar_view)) == ADW_TOOLBAR_RAISED;
 }
 
 static inline GtkWidget *swift_adw_tab_bar_get_view(GtkWidget *bar) {

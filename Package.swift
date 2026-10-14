@@ -76,6 +76,7 @@ var targets: [Target] = [
         path: "Sources/SwiftOpenUISymbols",
         resources: [
             .copy("Resources/MaterialSymbolsRounded-Regular.ttf"),
+            .copy("Resources/fonts.conf"),
             .copy("Resources/LICENSES"),
             .copy("Resources/README.md"),
         ]
@@ -155,7 +156,7 @@ targets += [
 // GTK4 backend. Linux selects it by default; macOS can opt in for backend development.
 if gtkBackendEnabled {
 var gtkBackendDependencies: [Target.Dependency] = [
-    "SwiftOpenUICore", "CGTK", "CAdwaita", "CGTKBridge", "CGTKWidgets", "CGStreamer", "CFontconfig", "SwiftOpenUISymbols",
+    "SwiftOpenUICore", "CGTK", "CAdwaita", "CGTKBridge", "CGTKWidgets", "CGStreamer", "CFontconfig", "CPangoFT2", "SwiftOpenUISymbols",
 ]
 var gtkBackendExclude: [String] = []
 if gtkWebKitEnabled { gtkBackendDependencies += ["WebKit", "CWebKitGTK"] }
@@ -196,6 +197,12 @@ targets += [
         path: "Sources/Backend/GTK4/CFontconfig",
         pkgConfig: "fontconfig",
         providers: [.apt(["libfontconfig1-dev"])]
+    ),
+    .systemLibrary(
+        name: "CPangoFT2",
+        path: "Sources/Backend/GTK4/CPangoFT2",
+        pkgConfig: "pangoft2",
+        providers: [.apt(["libpango1.0-dev"])]
     ),
     .target(
         name: "CGTKBridge",

@@ -1,12 +1,36 @@
 import XCTest
 import SwiftOpenUICore
-@testable import BackendGTK4
+@_spi(SwiftOpenUIBackend) @testable import BackendGTK4
 import CGTK
 import CAdwaita
 import CGTKBridge
 
 @MainActor
 final class GTK4WindowTitleBarTests: XCTestCase {
+    func testContentWithoutDeclaredTitlebarGetsAdwaitaWindowDecorations() throws {
+        guard gtk_is_initialized() != 0 else { throw XCTSkip("no GTK display") }
+        let content = widgetFromOpaque(gtkRenderView(Text("Unlock Hummingbird")))
+        let windowContent = gtkAdwaitaWindowContent(content)
+
+        XCTAssertEqual(String(cString: g_type_name(gtk_swift_get_widget_type(windowContent))), "AdwToolbarView")
+        let header = try XCTUnwrap(findFirstWidget(ofType: "AdwHeaderBar", in: windowContent))
+        XCTAssertTrue(isDescendant(header, of: windowContent))
+        XCTAssertTrue(isDescendant(content, of: windowContent))
+    }
+
+    func testSelfContainedChromeHidesProvisionalWindowHeaderAfterTransition() throws {
+        guard gtk_is_initialized() != 0 else { throw XCTSkip("no GTK display") }
+        let host = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        let windowContent = gtkAdwaitaWindowContent(host)
+        let header = try XCTUnwrap(findFirstWidget(ofType: "AdwHeaderBar", in: windowContent))
+        let browser = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        gtk_box_append(boxPointer(host), browser)
+
+        XCTAssertNotEqual(gtk_widget_get_visible(header), 0)
+        gtkClaimSelfContainedWindowChrome(browser)
+        XCTAssertEqual(gtk_widget_get_visible(header), 0)
+    }
+
     struct RootWithWindowTitleAndNestedAction: View {
         var body: some View {
             NavigationStack {

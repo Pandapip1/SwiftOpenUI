@@ -1522,35 +1522,6 @@ private func gtkSubtreeContainsInteractive(_ widget: UnsafeMutablePointer<GtkWid
     return false
 }
 
-/// Mark a pure-layout container (frame wrapper / alignment spacer) as
-/// hit-transparent. SwiftUI parity: a frame's empty region does not hit-test
-/// (the classic `.contentShape(Rectangle())` gotcha) — but a GtkBox targets
-/// pointer events across its whole allocation by default, so a
-/// `.frame(maxWidth:.infinity)` overlay layer swallows clicks/scrolls/gestures
-/// meant for widgets beneath it (e.g. a paging chevron layered over a scroll
-/// view blocked the scroll view's zoom/pan controllers entirely).
-///
-/// IMPORTANT: `can_target = false` prunes the ENTIRE subtree from GTK
-/// picking, children included (empirically verified with gtk_widget_pick —
-/// a Button inside a pruned box is pointer-dead). So the wrapper is only
-/// made transparent when its subtree contains nothing interactive.
-/// Documented deviation when it does: the wrapper's whole allocation then
-/// hit-tests like a plain GtkBox (a superset of SwiftUI semantics, same
-/// class of deviation as the gesture-modifier re-enable in TapGestureView).
-/// Exact SwiftUI semantics (self-transparent, children pickable) needs a
-/// custom widget class overriding GtkWidget.contains() — tracked follow-up.
-///
-/// `content` is passed explicitly because both call sites mark the wrapper
-/// BEFORE appending the child, so scanning the wrapper itself would always
-/// see an empty box (the bug the pick-based tests exist to catch).
-private func gtkMarkLayoutTransparent(
-    _ widget: UnsafeMutablePointer<GtkWidget>,
-    content: UnsafeMutablePointer<GtkWidget>
-) {
-    if gtkSubtreeContainsInteractive(content) { return }
-    gtk_widget_set_can_target(widget, 0)
-}
-
 extension FrameView: GTKRenderable, GTKDescribable {
     public func gtkDescribeNode() -> GTK4DescriptorNode {
         GTK4DescriptorNode(
@@ -1726,7 +1697,6 @@ extension FrameView: GTKRenderable, GTKDescribable {
         )
 
         let wrapper = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
-        gtkMarkLayoutTransparent(wrapper, content: child)
 
         let widthMayGrowWithParent = width == nil
             && (
@@ -1886,7 +1856,6 @@ extension FrameView: GTKRenderable, GTKDescribable {
         // Use GtkBox as wrapper — child fills the flexible axis via expand.
         let orientation = constrainedWidth ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL
         let wrapper = gtk_box_new(orientation, 0)!
-        gtkMarkLayoutTransparent(wrapper, content: child)
 
         if constrainedWidth {
             // Width constrained, height flexible
@@ -3092,9 +3061,8 @@ extension TapGestureView: GTKRenderable, GTKDescribable {
 
     public func gtkCreateWidget() -> OpaquePointer {
         let widget = widgetFromOpaque(gtkRenderView(content))
-        // The rendered content may be a hit-transparent layout wrapper
-        // (gtkMarkLayoutTransparent); an attached gesture needs its widget
-        // to be a pointer target again (approximates SwiftUI .contentShape).
+        // An attached gesture needs its rendered widget to be a pointer
+        // target (approximates SwiftUI .contentShape).
         gtkMarkInteractive(widget)
         let gesture = gtk_gesture_click_new()!
 
@@ -4514,6 +4482,15 @@ extension OverlayView: GTKRenderable {
         let overlayWantsVExpand = gtkWantsExpand(overlayWidget, GTK_ORIENTATION_VERTICAL)
         gtk_widget_set_halign(overlayWidget, overlayWantsHExpand ? GTK_ALIGN_FILL : hAlign)
         gtk_widget_set_valign(overlayWidget, overlayWantsVExpand ? GTK_ALIGN_FILL : vAlign)
+        // An absent conditional overlay still renders as an empty layout
+        // container. GtkOverlay otherwise makes that full-size container the
+        // pointer target, blocking scrolling and every control in the base
+        // view. Decorative overlays are equally transparent in SwiftUI. Keep
+        // overlays with buttons, gestures, drop targets, or scrolling content
+        // targetable so their interaction remains intact.
+        if !gtkSubtreeContainsInteractive(overlayWidget) {
+            gtk_widget_set_can_target(overlayWidget, 0)
+        }
         gtk_overlay_add_overlay(OpaquePointer(container), overlayWidget)
 
         return opaqueFromWidget(container)
@@ -5062,6 +5039,35 @@ private func gtkEscapeMarkup(_ s: String) -> String {
 
 /// Track which GdkDisplays have had list CSS installed.
 private var listCSSDisplays: Set<ObjectIdentifier> = []
+
+/// AdwTabButton deliberately has its own `tabbutton` CSS node rather than a
+/// GtkButton node. GTK's stock `.linked` rules therefore do not join it to an
+/// adjacent GtkButton, even though both controls belong to one semantic
+/// group. Keep the native styling and only supply the two missing joined-edge
+/// rules.
+private var browserTabControlCSSDisplays: Set<ObjectIdentifier> = []
+
+private func ensureBrowserTabControlCSS(_ widget: UnsafeMutablePointer<GtkWidget>) {
+    let display = gtk_widget_get_display(widget)!
+    let displayId = ObjectIdentifier(display as AnyObject)
+    guard !browserTabControlCSSDisplays.contains(displayId) else { return }
+    browserTabControlCSSDisplays.insert(displayId)
+
+    let provider = gtk_css_provider_new()!
+    let css = """
+        .swiftopenui-browser-tab-controls > tabbutton {
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+        }
+        """
+    gtk_css_provider_load_from_string(provider, css)
+    gtk_swift_add_css_provider_to_display(
+        display,
+        provider,
+        UInt32(GTK_STYLE_PROVIDER_PRIORITY_APPLICATION)
+    )
+    g_object_unref(gpointer(provider))
+}
 
 private func ensureListCSS(_ widget: UnsafeMutablePointer<GtkWidget>) {
     let display = gtk_widget_get_display(widget)!
@@ -7223,7 +7229,24 @@ extension ToolbarView: GTKRenderable {
             .map { UnsafeMutableRawPointer($0).assumingMemoryBound(to: GtkWidget.self) }
         let nativeBrowserButton = browserContentObject.flatMap { g_object_get_data($0, "gtk-swift-browser-tab-button") }
             .map { UnsafeMutableRawPointer($0).assumingMemoryBound(to: GtkWidget.self) }
-        if let nativeBrowserButton { gtk_header_bar_pack_end(headerBarOp, nativeBrowserButton) }
+        let nativeNewTabControl = browserContentObject.flatMap {
+            g_object_get_data($0, "gtk-swift-browser-new-tab-control")
+        }.map { UnsafeMutableRawPointer($0).assumingMemoryBound(to: GtkWidget.self) }
+        if nativeBrowserButton != nil || nativeNewTabControl != nil {
+            let tabControls = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
+            gtk_widget_add_css_class(tabControls, "linked")
+            gtk_widget_add_css_class(tabControls, "swiftopenui-browser-tab-controls")
+            ensureBrowserTabControlCSS(tabControls)
+            if let nativeNewTabControl {
+                if gtk_widget_get_parent(nativeNewTabControl) != nil { gtk_widget_unparent(nativeNewTabControl) }
+                gtk_box_append(boxPointer(tabControls), nativeNewTabControl)
+            }
+            if let nativeBrowserButton {
+                if gtk_widget_get_parent(nativeBrowserButton) != nil { gtk_widget_unparent(nativeBrowserButton) }
+                gtk_box_append(boxPointer(tabControls), nativeBrowserButton)
+            }
+            gtk_header_bar_pack_end(headerBarOp, tabControls)
+        }
 
         // Browser-tab accessories belong to the selected tab but are window
         // chrome, not a nested NavigationStack toolbar. BrowserTabs publishes
@@ -7347,10 +7370,32 @@ extension ToolbarView: GTKRenderable {
            let tabViewData = g_object_get_data(browserContentObject, "gtk-swift-browser-tab-view") {
             let tabView = UnsafeMutableRawPointer(tabViewData).assumingMemoryBound(to: GtkWidget.self)
             let toolbarView = swift_adw_toolbar_view_new()!
+            // Tab content can choose a different background from the chrome.
+            // Libadwaita's canonical tab layout uses a raised top-bar style so
+            // the header and AdwTabBar form one opaque chrome region with the
+            // native separator/shadow beneath it.
+            swift_adw_toolbar_view_set_top_bar_raised(toolbarView)
             // Replacing the overview child first releases the tab view from
             // its old parent so AdwToolbarView can adopt it as content.
             swift_adw_tab_overview_set_child(browserChromeOwner, nil)
-            swift_adw_toolbar_view_add_top_bar(toolbarView, titlebarBox)
+            // AdwTabBar is itself a native toolbar row. Wrapping it in a
+            // second GtkHeaderBar gives every tab the oversized pill/header
+            // treatment and diverges from GNOME Web. Seat each semantic row
+            // directly in AdwToolbarView so libadwaita owns its styling.
+            g_object_ref(gpointer(headerBar))
+            gtk_widget_unparent(headerBar)
+            swift_adw_toolbar_view_add_top_bar(toolbarView, headerBar)
+            g_object_unref(gpointer(headerBar))
+            if let browserBar = browserPrincipal ?? nativeBrowserBar ?? principalWidget {
+                g_object_ref(gpointer(browserBar))
+                if gtk_widget_get_parent(browserBar) != nil { gtk_widget_unparent(browserBar) }
+                swift_adw_toolbar_view_add_top_bar(toolbarView, browserBar)
+                g_object_unref(gpointer(browserBar))
+            }
+            g_object_ref(gpointer(nestedSlot))
+            if gtk_widget_get_parent(nestedSlot) != nil { gtk_widget_unparent(nestedSlot) }
+            swift_adw_toolbar_view_add_top_bar(toolbarView, nestedSlot)
+            g_object_unref(gpointer(nestedSlot))
             swift_adw_toolbar_view_set_content(toolbarView, tabView)
             swift_adw_tab_overview_set_child(browserChromeOwner, toolbarView)
             return opaqueFromWidget(contentWidget)

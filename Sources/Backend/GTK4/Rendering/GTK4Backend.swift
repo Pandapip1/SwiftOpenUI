@@ -1,11 +1,13 @@
 import CGTK
 import CAdwaita
+import CPangoFT2
 import CGTKBridge
 @_spi(SwiftOpenUIBackend) import SwiftOpenUICore
 import SwiftOpenUISymbols
 import Foundation
 #if canImport(AppKit)
 import AppKit
+import CoreText
 #endif
 #if canImport(Observation)
 import Observation
@@ -20,11 +22,57 @@ import Observation
 @_spi(SwiftOpenUIBackend)
 public func gtkRegisterBundledIconFont() {
     let url = MaterialSymbolsResources.roundedRegularFontURL
+    #if os(macOS)
+    // Nix's GTK/Pango stack uses the native CoreText font map on macOS. A
+    // Fontconfig application font alone is therefore invisible to labels.
+    // Process scope makes the bundled face available without installing it.
+    var registrationError: Unmanaged<CFError>?
+    let coreTextRegistered = CTFontManagerRegisterFontsForURL(
+        url as CFURL,
+        .process,
+        &registrationError
+    )
+    if !coreTextRegistered,
+       let error = registrationError?.takeRetainedValue() {
+        // Registration reports an error when this idempotent function is
+        // called again and the face is already present; only diagnose errors
+        // that are not the expected duplicate-registration case.
+        let nsError = error as Error as NSError
+        if nsError.code != CTFontManagerError.alreadyRegistered.rawValue {
+            print("SwiftOpenUI: failed to register bundled Material Symbols with CoreText: \(error)")
+        }
+    }
+
+    // Keep a valid process-local Fontconfig setup as well. Some macOS GTK
+    // distributions use the Fontconfig Pango backend rather than CoreText.
+    let cacheURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("swiftopenui-fontconfig-cache", isDirectory: true)
+    try? FileManager.default.createDirectory(
+        at: cacheURL.appendingPathComponent("fontconfig", isDirectory: true),
+        withIntermediateDirectories: true
+    )
+    setenv("XDG_CACHE_HOME", cacheURL.path, 1)
+    let generatedConfigURL = cacheURL.appendingPathComponent("fonts.conf")
+    if let template = try? String(contentsOf: MaterialSymbolsResources.fontconfigConfigurationURL,
+                                  encoding: .utf8) {
+        let fontDirectory = MaterialSymbolsResources.roundedRegularFontURL
+            .deletingLastPathComponent().path
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+        try? template.replacingOccurrences(of: "__SWIFTOPENUI_FONT_DIR__", with: fontDirectory)
+            .write(to: generatedConfigURL, atomically: true, encoding: .utf8)
+        setenv("FONTCONFIG_FILE", generatedConfigURL.path, 1)
+    }
+    #endif
     let result = url.path.withCString { gtk_swift_fc_app_font_add_file($0) }
     if result == 0 {
         // Non-fatal: icons will render as empty glyphs / fallback text but
         // nothing else breaks. Flag it so a developer notices.
         print("SwiftOpenUI: failed to register bundled Material Symbols font at \(url.path)")
+    } else {
+        gtk_swift_pango_fontconfig_changed()
     }
 }
 
@@ -75,20 +123,39 @@ private func gtkContainsSelfContainedWindowChrome(_ widget: UnsafeMutablePointer
     return false
 }
 
-private func gtkAdwaitaWindowContent(
+@_spi(SwiftOpenUIBackend)
+public func gtkAdwaitaWindowContent(
     _ content: UnsafeMutablePointer<GtkWidget>
 ) -> UnsafeMutablePointer<GtkWidget> {
     if gtkContainsSelfContainedWindowChrome(content) {
         return content
     }
-    guard let titlebar = gtkFindTitlebar(in: content) else {
-        return content
-    }
+    let titlebar = gtkFindTitlebar(in: content) ?? swift_adw_header_bar_new()!
     if gtk_widget_get_parent(titlebar) != nil { gtk_widget_unparent(titlebar) }
     let toolbarView = swift_adw_toolbar_view_new()!
     swift_adw_toolbar_view_add_top_bar(toolbarView, titlebar)
     swift_adw_toolbar_view_set_content(toolbarView, content)
+    let toolbarObject = UnsafeMutableRawPointer(toolbarView).assumingMemoryBound(to: GObject.self)
+    g_object_set_data(toolbarObject, "gtk-swift-provisional-window-header", gpointer(titlebar))
     return toolbarView
+}
+
+/// A window may initially render ordinary content (for example, an unlock
+/// splash) and later replace it with a browser root without recreating the
+/// window. The ordinary content gets a provisional Adwaita header so it has
+/// window controls; once self-contained chrome is rooted, that header must
+/// stop occupying a second row above the browser's own chrome.
+@_spi(SwiftOpenUIBackend)
+public func gtkClaimSelfContainedWindowChrome(_ widget: UnsafeMutablePointer<GtkWidget>) {
+    var ancestor = gtk_widget_get_parent(widget)
+    while let current = ancestor {
+        let object = UnsafeMutableRawPointer(current).assumingMemoryBound(to: GObject.self)
+        if let data = g_object_get_data(object, "gtk-swift-provisional-window-header") {
+            let header = UnsafeMutableRawPointer(data).assumingMemoryBound(to: GtkWidget.self)
+            gtk_widget_set_visible(header, 0)
+        }
+        ancestor = gtk_widget_get_parent(current)
+    }
 }
 
 /// A departing page can rebuild during its stack transition. Only the
@@ -361,6 +428,7 @@ func gtkAttachKeyboardShortcutController(to window: UnsafeMutablePointer<GtkWidg
     // no-match, so non-shortcut keys still propagate to the focused widget.
     gtk_event_controller_set_propagation_phase(controller, GTK_PHASE_CAPTURE)
     gtk_widget_add_controller(window, controller)
+
 }
 
 /// Handler for GtkEventControllerKey "key-pressed" signal.
@@ -822,13 +890,14 @@ public struct GTK4Backend: RenderBackend {
             nil, nil, GConnectFlags(rawValue: 0)
         )
 
-        // Pump Foundation RunLoop sources (Timer, etc.) periodically.
+        // Drain Foundation RunLoop sources (Timer, etc.) periodically.
         // GTK4's g_application_run blocks in GMainLoop, so Foundation
-        // timers (e.g. Timer.scheduledTimer) never fire unless we
-        // explicitly spin RunLoop.main from a GLib timeout source.
+        // timers (e.g. Timer.scheduledTimer) never fire unless we explicitly
+        // spin RunLoop.main from a GLib timeout source. The deadline must be
+        // `now`: a future deadline makes an otherwise idle RunLoop sleep here,
+        // repeatedly blocking GTK input and rendering on the main thread.
         g_timeout_add(5, { _ -> gboolean in
-            let limit = Date(timeIntervalSinceNow: 0.001)
-            _ = RunLoop.main.run(mode: .default, before: limit)
+            _ = RunLoop.main.run(mode: .default, before: Date())
             return 1 // G_SOURCE_CONTINUE
         }, nil)
 

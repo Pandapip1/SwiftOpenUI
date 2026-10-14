@@ -1,0 +1,5 @@
+module CPangoFT2 [system] {
+    header "shim.h"
+    link "pangoft2-1.0"
+    export *
+}

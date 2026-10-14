@@ -15,6 +15,30 @@ final class GTK4StyleTests: XCTestCase {
 
     // MARK: - Button style modifier rendering
 
+    func testEquivalentInlineStylesReuseOneDisplayProvider() throws {
+        try requireGTK()
+        let first = gtk_label_new("First")!
+        let second = gtk_label_new("Second")!
+        let before = gtkSharedCSSRuleCount()
+
+        applyCSSToWidget(first, properties: "min-width: 137.25px;")
+        let afterFirst = gtkSharedCSSRuleCount()
+        applyCSSToWidget(second, properties: "min-width: 137.25px;")
+
+        XCTAssertEqual(afterFirst, before + 1)
+        XCTAssertEqual(gtkSharedCSSRuleCount(), afterFirst,
+                       "equivalent widget styles must not install another display-wide provider")
+
+        g_object_ref_sink(gpointer(first))
+        g_object_ref_sink(gpointer(second))
+        g_object_unref(gpointer(first))
+        XCTAssertEqual(gtkSharedCSSRuleCount(), afterFirst,
+                       "the shared provider must remain while another widget uses it")
+        g_object_unref(gpointer(second))
+        XCTAssertEqual(gtkSharedCSSRuleCount(), before,
+                       "an unused dynamic style must not leak its display provider")
+    }
+
     func testButtonStyleModifierRendersContent() throws {
         try requireGTK()
         let widget = widgetFromOpaque(gtkRenderView(

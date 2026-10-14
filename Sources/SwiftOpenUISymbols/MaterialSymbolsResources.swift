@@ -28,6 +28,16 @@ public enum MaterialSymbolsResources {
         return url
     }()
 
+    /// Minimal process-local Fontconfig configuration for macOS GTK builds,
+    /// where a Nix shell's compiled-in configuration path is not available to
+    /// an app launched later by Xcode or Finder.
+    public static let fontconfigConfigurationURL: URL = {
+        guard let url = Bundle.module.url(forResource: "fonts", withExtension: "conf") else {
+            preconditionFailure("fonts.conf not found in SwiftOpenUISymbols bundle")
+        }
+        return url
+    }()
+
     /// PostScript family name of the bundled font, used by Pango /
     /// DirectWrite / CoreText to look up the registered font once the
     /// backend has added it to its process-local font config.

@@ -45,11 +45,9 @@ final class GTK4FrameHitTransparencyTests: XCTestCase {
             "pick at the button's center must land in the button subtree, got \(widgetTypeName(pickedUnwrapped))")
     }
 
-    /// The original 159745a behavior, now verified through picking: a
-    /// non-interactive infinity frame prunes its WHOLE subtree — the empty
-    /// region AND the content (a bare label receives no input, so pruning
-    /// it with the wrapper is the intended safe-case behavior).
-    func testNonInteractiveFrameSubtreePrunedFromPicking() throws {
+    /// A frame must never prune its subtree. Content can become interactive
+    /// later when a dynamic host rebuilds beneath the same frame wrapper.
+    func testNonInteractiveFrameKeepsSubtreePickable() throws {
         try requireGTK()
         let wrapper = widgetFromOpaque(gtkRenderView(
             Text("chevron").frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -57,28 +55,13 @@ final class GTK4FrameHitTransparencyTests: XCTestCase {
         let window = try hostInRealizedWindow(wrapper, width: 300, height: 40)
         defer { closeWindow(window) }
 
-        // (Functional-pick controls live in the sibling tests — a label
-        // inside a pruned wrapper is unpickable BY DESIGN here: the whole
-        // non-interactive subtree is transparent, which is the intended
-        // safe-case behavior.)
         let label = try XCTUnwrap(
             findDescendant(of: wrapper, typeName: "GtkLabel"), "no label rendered")
         let labelCenter = try centerPoint(of: label, in: window)
-        let pickedAtLabel = gtk_widget_pick(window, labelCenter.x, labelCenter.y, GTK_PICK_DEFAULT)
-        if let pickedAtLabel {
-            XCTAssertFalse(
-                isSelfOrDescendant(pickedAtLabel, of: wrapper),
-                "non-interactive wrapper content should be pruned with it, got \(widgetTypeName(pickedAtLabel))")
-        }
-
-        // Empty trailing region (leading-aligned content, 300 wide):
-        // nothing in the wrapper subtree may claim the pointer there.
-        let picked = gtk_widget_pick(window, 295, 20, GTK_PICK_DEFAULT)
-        if let picked {
-            XCTAssertFalse(
-                isSelfOrDescendant(picked, of: wrapper),
-                "the empty region of a non-interactive frame wrapper must not hit-test, got \(widgetTypeName(picked))")
-        }
+        let pickedAtLabel = try XCTUnwrap(
+            gtk_widget_pick(window, labelCenter.x, labelCenter.y, GTK_PICK_DEFAULT))
+        XCTAssertTrue(isSelfOrDescendant(pickedAtLabel, of: wrapper),
+                      "a frame must not make current or future descendants unreachable")
     }
 
     /// Gesture content: the tap-modified widget must be reachable by
@@ -174,16 +157,46 @@ final class GTK4FrameHitTransparencyTests: XCTestCase {
             "pick over drop-destination content must land in its subtree, got \(widgetTypeName(pickedUnwrapped))")
     }
 
-    /// Flag-level invariant kept from the original tests: a purely
-    /// decorative infinity frame is still marked non-targetable (the
-    /// conditional mark did not silently stop pruning the safe cases).
-    func testNonInteractiveWrapperStillMarkedTransparent() throws {
+    func testNonInteractiveFrameWrapperDoesNotPruneDescendants() throws {
         try requireGTK()
         let widget = widgetFromOpaque(gtkRenderView(
             Text("chevron").frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         ))
-        XCTAssertEqual(gtk_widget_get_can_target(widget), gboolean(0),
-                       "non-interactive layout wrapper must not be a pointer target")
+        XCTAssertNotEqual(gtk_widget_get_can_target(widget), gboolean(0),
+                          "GTK can-target=false would prune dynamically rebuilt descendants")
+    }
+
+    func testEmptyConditionalOverlayDoesNotBlockBaseButton() throws {
+        try requireGTK()
+        let showOverlay = false
+        let wrapper = widgetFromOpaque(gtkRenderView(
+            Button("base") {}.overlay {
+                if showOverlay { Text("overlay") }
+            }
+        ))
+        let window = try hostInRealizedWindow(wrapper, width: 160, height: 44)
+        defer { closeWindow(window) }
+
+        let button = try XCTUnwrap(findDescendant(of: wrapper, typeName: "GtkButton"))
+        let center = try centerPoint(of: button, in: wrapper)
+        let picked = try XCTUnwrap(gtk_widget_pick(wrapper, center.x, center.y, GTK_PICK_DEFAULT))
+        XCTAssertTrue(isSelfOrDescendant(picked, of: button),
+                      "an empty overlay must not intercept its base control")
+    }
+
+    func testInteractiveOverlayRemainsPickable() throws {
+        try requireGTK()
+        let wrapper = widgetFromOpaque(gtkRenderView(
+            Text("base").overlay { Button("overlay") {} }
+        ))
+        let window = try hostInRealizedWindow(wrapper, width: 160, height: 44)
+        defer { closeWindow(window) }
+
+        let button = try XCTUnwrap(findDescendant(of: wrapper, typeName: "GtkButton"))
+        let center = try centerPoint(of: button, in: wrapper)
+        let picked = try XCTUnwrap(gtk_widget_pick(wrapper, center.x, center.y, GTK_PICK_DEFAULT))
+        XCTAssertTrue(isSelfOrDescendant(picked, of: button),
+                      "an interactive overlay must remain a pointer target")
     }
 }
 

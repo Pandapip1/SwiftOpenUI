@@ -2,7 +2,7 @@ import Foundation
 
 import SwiftOpenUI
 #if BACKEND_GTK
-import BackendGTK4
+@_spi(SwiftOpenUIBackend) import BackendGTK4
 import CGTK
 import CAdwaita
 #endif
@@ -18,6 +18,33 @@ public struct BrowserTabItem: Identifiable, Equatable, Sendable {
         self.isPinned = isPinned
     }
 }
+
+#if !BACKEND_GTK
+public struct BrowserHistoryControls: View {
+    private let canGoBack: Bool
+    private let canGoForward: Bool
+    private let goBack: () -> Void
+    private let goForward: () -> Void
+
+    public init(canGoBack: Bool, canGoForward: Bool,
+                goBack: @escaping () -> Void, goForward: @escaping () -> Void) {
+        self.canGoBack = canGoBack
+        self.canGoForward = canGoForward
+        self.goBack = goBack
+        self.goForward = goForward
+    }
+
+    public var body: some View {
+        ControlGroup {
+            Button(action: goBack) { Image(systemName: "chevron.left") }
+                .disabled(!canGoBack).accessibilityLabel("Back")
+            Button(action: goForward) { Image(systemName: "chevron.right") }
+                .disabled(!canGoForward).accessibilityLabel("Forward")
+        }
+        .controlGroupStyle(.navigation)
+    }
+}
+#endif
 
 private struct BrowserTabOverviewPreviewKey: EnvironmentKey {
     static let defaultValue = false
@@ -113,6 +140,7 @@ public struct BrowserTabContainer<Content: View>: View {
     public let selection: Binding<UUID>
     public let onClose: (UUID) -> Void
     private let newTabControl: AnyView?
+    private let onNewTab: (() -> Void)?
     private let content: (BrowserTabItem) -> Content
     private let overviewPresented: Binding<Bool>?
     @State private var showingOverview = false
@@ -120,19 +148,20 @@ public struct BrowserTabContainer<Content: View>: View {
     @StateObject private var toolbarCoordinator = BrowserTabToolbarCoordinator()
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
-                overviewPresented: Binding<Bool>? = nil,
+                overviewPresented: Binding<Bool>? = nil, onNewTab: (() -> Void)? = nil,
                 @ViewBuilder content: @escaping (BrowserTabItem) -> Content) {
         self.items = items
         self.selection = selection
         self.onClose = onClose
         self.newTabControl = nil
+        self.onNewTab = onNewTab
         self.overviewPresented = overviewPresented
         self.content = content
     }
 
     public init<NewTabControl: View>(
         items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
-        overviewPresented: Binding<Bool>? = nil,
+        overviewPresented: Binding<Bool>? = nil, onNewTab: (() -> Void)? = nil,
         @ViewBuilder newTabControl: () -> NewTabControl,
         @ViewBuilder content: @escaping (BrowserTabItem) -> Content
     ) {
@@ -140,6 +169,7 @@ public struct BrowserTabContainer<Content: View>: View {
         self.selection = selection
         self.onClose = onClose
         self.newTabControl = AnyView(newTabControl())
+        self.onNewTab = onNewTab
         self.overviewPresented = overviewPresented
         self.content = content
     }
@@ -586,21 +616,23 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
     public let selection: Binding<UUID>
     public let onClose: (UUID) -> Void
     private let newTabControl: AnyView?
+    private let onNewTab: (() -> Void)?
     public let content: (BrowserTabItem) -> Content
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
-                overviewPresented: Binding<Bool>? = nil,
+                overviewPresented: Binding<Bool>? = nil, onNewTab: (() -> Void)? = nil,
                 @ViewBuilder content: @escaping (BrowserTabItem) -> Content) {
         self.items = items
         self.selection = selection
         self.onClose = onClose
         self.newTabControl = nil
+        self.onNewTab = onNewTab
         self.content = content
     }
 
     public init<NewTabControl: View>(
         items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
-        overviewPresented: Binding<Bool>? = nil,
+        overviewPresented: Binding<Bool>? = nil, onNewTab: (() -> Void)? = nil,
         @ViewBuilder newTabControl: () -> NewTabControl,
         @ViewBuilder content: @escaping (BrowserTabItem) -> Content
     ) {
@@ -608,6 +640,7 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
         self.selection = selection
         self.onClose = onClose
         self.newTabControl = AnyView(newTabControl())
+        self.onNewTab = onNewTab
         self.content = content
     }
 
@@ -641,6 +674,16 @@ private final class BrowserTabCallbacks {
     }
 }
 
+private final class BrowserNewTabCallbacks {
+    let view: UnsafeMutablePointer<GtkWidget>
+    let action: () -> Void
+
+    init(view: UnsafeMutablePointer<GtkWidget>, action: @escaping () -> Void) {
+        self.view = view
+        self.action = action
+    }
+}
+
 private func makeNativeTabView(items: [BrowserTabItem], selection: Binding<UUID>,
                                onClose: @escaping (UUID) -> Void,
                                contents: [UUID: UnsafeMutablePointer<GtkWidget>] = [:]) -> UnsafeMutablePointer<GtkWidget> {
@@ -651,10 +694,13 @@ private func makeNativeTabView(items: [BrowserTabItem], selection: Binding<UUID>
         let page = swift_adw_tab_view_append(view, pageContent)!
         item.title.withCString { swift_adw_tab_page_set_title(page, $0) }
         swift_adw_tab_view_set_page_pinned(view, page, item.isPinned ? 1 : 0)
+        swift_adw_tab_page_set_live_thumbnail(page, 1)
         pages.append((item.id, page))
         if item.id == selection.wrappedValue { swift_adw_tab_view_set_selected_page(view, page) }
     }
-    let callbacks = Unmanaged.passRetained(BrowserTabCallbacks(pages: pages, selection: selection, onClose: onClose)).toOpaque()
+    let callbacks = Unmanaged.passRetained(BrowserTabCallbacks(
+        pages: pages, selection: selection, onClose: onClose
+    )).toOpaque()
     g_object_set_data_full(UnsafeMutableRawPointer(view).assumingMemoryBound(to: GObject.self),
                            "swift-browser-tab-callbacks", callbacks) { pointer in
         if let pointer { Unmanaged<BrowserTabCallbacks>.fromOpaque(pointer).release() }
@@ -678,6 +724,7 @@ private func makeNativeTabView(items: [BrowserTabItem], selection: Binding<UUID>
             state.onClose(match.0); return 1
         } as @convention(c) (gpointer?, OpaquePointer?, gpointer?) -> gboolean, to: GCallback.self), callbacks, nil,
         GConnectFlags(rawValue: 0))
+    swift_adw_tab_view_invalidate_thumbnails(view)
     return view
 }
 
@@ -708,11 +755,42 @@ extension BrowserTabContainer: GTKRenderable {
         let overview = swift_adw_tab_overview_new(view, view)!
         let bar = swift_adw_tab_bar_new(view)!
         let button = swift_adw_tab_button_new(view)!
+        let object = UnsafeMutableRawPointer(overview).assumingMemoryBound(to: GObject.self)
+        if let newTabControl {
+            let newTabWidget = UnsafeMutableRawPointer(gtkRenderAnyView(newTabControl))
+                .assumingMemoryBound(to: GtkWidget.self)
+            g_object_set_data_full(object, "gtk-swift-browser-new-tab-control",
+                                   g_object_ref_sink(gpointer(newTabWidget))) { g_object_unref($0) }
+        }
+        if let onNewTab {
+            swift_adw_tab_overview_set_enable_new_tab(overview, 1)
+            let action = Unmanaged.passRetained(BrowserNewTabCallbacks(view: view, action: onNewTab)).toOpaque()
+            g_object_set_data_full(object, "gtk-swift-new-tab-action", action) { pointer in
+                if let pointer { Unmanaged<BrowserNewTabCallbacks>.fromOpaque(pointer).release() }
+            }
+            g_signal_connect_data(gpointer(overview), "create-tab",
+                unsafeBitCast({ (_: gpointer?, data: gpointer?) -> OpaquePointer? in
+                    guard let data else { return nil }
+                    let state = Unmanaged<BrowserNewTabCallbacks>.fromOpaque(data).takeUnretainedValue()
+                    let placeholder = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+                    let page = swift_adw_tab_view_append(state.view, placeholder)
+                    "New Tab".withCString { swift_adw_tab_page_set_title(page, $0) }
+                    swift_adw_tab_page_set_live_thumbnail(page, 1)
+                    state.action()
+                    return page
+                } as @convention(c) (gpointer?, gpointer?) -> OpaquePointer?, to: GCallback.self),
+                action, nil, GConnectFlags(rawValue: 0))
+        }
         gtk_widget_set_hexpand(bar, 1)
         gtk_widget_set_vexpand(bar, 0)
-        gtk_widget_set_valign(bar, GTK_ALIGN_CENTER)
-        let object = UnsafeMutableRawPointer(overview).assumingMemoryBound(to: GObject.self)
         g_object_set_data(object, "gtk-swift-self-contained-window-chrome", gpointer(overview))
+        g_signal_connect_data(gpointer(overview), "notify::root",
+            unsafeBitCast({ (object: gpointer?, _: gpointer?, _: gpointer?) in
+                guard let object else { return }
+                let widget = UnsafeMutableRawPointer(object).assumingMemoryBound(to: GtkWidget.self)
+                gtkClaimSelfContainedWindowChrome(widget)
+            } as @convention(c) (gpointer?, gpointer?, gpointer?) -> Void, to: GCallback.self),
+            nil, nil, GConnectFlags(rawValue: 0))
         g_object_set_data(object, "gtk-swift-browser-tab-view", gpointer(view))
         g_object_set_data_full(object, "gtk-swift-browser-tab-bar", g_object_ref_sink(gpointer(bar))) {
             g_object_unref($0)
@@ -729,6 +807,43 @@ extension BrowserTabContainer: GTKRenderable {
             }
         }
         return OpaquePointer(overview)
+    }
+}
+
+public struct BrowserHistoryControls: View, PrimitiveView {
+    public typealias Body = Never
+    let canGoBack: Bool
+    let canGoForward: Bool
+    let goBack: () -> Void
+    let goForward: () -> Void
+
+    public init(canGoBack: Bool, canGoForward: Bool,
+                goBack: @escaping () -> Void, goForward: @escaping () -> Void) {
+        self.canGoBack = canGoBack
+        self.canGoForward = canGoForward
+        self.goBack = goBack
+        self.goForward = goForward
+    }
+
+    public var body: Never { fatalError("BrowserHistoryControls is a platform-rendered primitive view") }
+}
+
+extension BrowserHistoryControls: GTKRenderable {
+    public func gtkCreateWidget() -> OpaquePointer {
+        let box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
+        gtk_widget_add_css_class(box, "linked")
+        let back = UnsafeMutableRawPointer(gtkRenderView(
+            Button(action: goBack) { Image(systemName: "chevron.left") }
+                .disabled(!canGoBack).accessibilityLabel("Back")
+        )).assumingMemoryBound(to: GtkWidget.self)
+        let forward = UnsafeMutableRawPointer(gtkRenderView(
+            Button(action: goForward) { Image(systemName: "chevron.right") }
+                .disabled(!canGoForward).accessibilityLabel("Forward")
+        )).assumingMemoryBound(to: GtkWidget.self)
+        let gtkBox = UnsafeMutableRawPointer(box).assumingMemoryBound(to: GtkBox.self)
+        gtk_box_append(gtkBox, back)
+        gtk_box_append(gtkBox, forward)
+        return OpaquePointer(box)
     }
 }
 

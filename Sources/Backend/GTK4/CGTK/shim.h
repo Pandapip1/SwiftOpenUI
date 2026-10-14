@@ -5,6 +5,8 @@
 #include <gdk/macos/gdkmacos.h>
 #endif
 #include <fontconfig/fontconfig.h>
+#include <limits.h>
+#include <stdio.h>
 #ifdef __linux__
 #include <dlfcn.h>
 #endif
@@ -19,8 +21,31 @@
 /// exits.
 static inline int
 gtk_swift_fc_app_font_add_file(const char *path) {
-    return (int)FcConfigAppFontAddFile(
-        FcConfigGetCurrent(), (const FcChar8 *)path);
+#ifdef __APPLE__
+    // Nix-launched macOS applications do not inherit a FONTCONFIG_FILE and
+    // Fontconfig's compiled-in Nix store path may no longer exist. Build a
+    // process-local configuration from the standard macOS font directories
+    // instead of emitting an error and leaving Pango unable to find the
+    // bundled Material Symbols family.
+    FcConfig *config = FcConfigCreate();
+    if (config == NULL) return 0;
+    const char *config_file = getenv("FONTCONFIG_FILE");
+    if (config_file == NULL ||
+        !FcConfigParseAndLoad(config, (const FcChar8 *)config_file, FcTrue)) {
+        FcConfigDestroy(config);
+        return 0;
+    }
+    if (!FcConfigSetCurrent(config)) {
+        FcConfigDestroy(config);
+        return 0;
+    }
+#else
+    FcConfig *config = FcConfigGetCurrent();
+    if (config == NULL) return 0;
+#endif
+    int result = (int)FcConfigAppFontAddFile(config, (const FcChar8 *)path);
+    FcConfigBuildFonts(config);
+    return result;
 }
 
 // --- CSS provider shims ---
