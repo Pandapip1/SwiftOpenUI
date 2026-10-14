@@ -2,6 +2,18 @@
 
 #include <adwaita.h>
 
+static inline GtkApplication *swift_adw_application_new(const char *application_id, GApplicationFlags flags) {
+    return GTK_APPLICATION(adw_application_new(application_id, flags));
+}
+
+static inline GtkWidget *swift_adw_application_window_new(GtkApplication *application) {
+    return GTK_WIDGET(adw_application_window_new(application));
+}
+
+static inline void swift_adw_application_window_set_content(GtkWidget *window, GtkWidget *content) {
+    adw_application_window_set_content(ADW_APPLICATION_WINDOW(window), content);
+}
+
 static inline void swift_adw_set_color_scheme(int dark) {
     adw_style_manager_set_color_scheme(
         adw_style_manager_get_default(),

@@ -7204,10 +7204,8 @@ extension ToolbarView: GTKRenderable {
         let headerBarOp = OpaquePointer(headerBar)
         gtk_widget_set_vexpand(headerBar, 0)
         #if canImport(AppKit)
-        // The Quartz GDK backend keeps the native AppKit titlebar and traffic
-        // lights. GtkHeaderBar title buttons would create a second set of
-        // minimize/maximize/close controls inside application content.
-        gtk_header_bar_set_show_title_buttons(headerBarOp, 0)
+        gtk_header_bar_set_use_native_controls(headerBarOp, 1)
+        gtk_header_bar_set_decoration_layout(headerBarOp, "close,minimize,maximize:")
         #endif
         // Only a title applied to the toolbar's own content is a window
         // title. Recursively extracting here would incorrectly promote a

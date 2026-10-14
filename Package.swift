@@ -22,14 +22,6 @@ var targets: [Target] = [
         swiftSettings: gtkSwiftSettings
     ),
 
-    // Native Apple renderer. The public SwiftOpenUI facade re-exports this
-    // backend wherever the system SwiftUI framework is available.
-    .target(
-        name: "BackendSwiftUI",
-        path: "Sources/Backend/SwiftUI",
-        swiftSettings: gtkSwiftSettings
-    ),
-
     // Stable application-facing module. Applications import SwiftOpenUI on
     // every platform; this facade chooses the available backend surface.
     .target(
@@ -73,6 +65,19 @@ var targets: [Target] = [
         ]
     ),
 ]
+
+if !gtkBackendEnabled {
+    // Native Apple renderer. Do not construct this target for a GTK build on
+    // macOS: the package's portable `WebKit` module intentionally has the same
+    // API name as Apple's framework and would shadow it in that build graph.
+    targets.append(.target(
+        name: "BackendSwiftUI",
+        dependencies: ["SwiftOpenUICore"],
+        path: "Sources/Backend/SwiftUI",
+        swiftSettings: gtkSwiftSettings,
+        linkerSettings: [.linkedFramework("WebKit")]
+    ))
+}
 
 // Compatibility modules use the same module and declaration names as Apple's
 // frameworks. Apple builds import the system frameworks; Linux builds receive
@@ -587,8 +592,8 @@ let package = Package(
         p.append(.library(name: "SwiftOpenUISymbols", targets: ["SwiftOpenUISymbols"]))
         #endif
         #if os(macOS)
-        p.append(.library(name: "BackendSwiftUI", targets: ["BackendSwiftUI"]))
         if !gtkBackendEnabled {
+        p.append(.library(name: "BackendSwiftUI", targets: ["BackendSwiftUI"]))
         p.append(.library(name: "WebKit", targets: ["WebKit"]))
         p.append(.library(name: "CAdwaita", targets: ["CAdwaita"]))
         p.append(.library(name: "BackendGTK4", targets: ["BackendGTK4"]))

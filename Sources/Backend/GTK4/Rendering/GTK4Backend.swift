@@ -64,27 +64,6 @@ func gtkFindTitlebar(in widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutabl
     return nil
 }
 
-/// Suppress GtkWindow's automatically generated titlebar when the root view
-/// owns all of its chrome inside the content hierarchy. This mirrors
-/// AdwWindow: an invisible titlebar sentinel tells GTK that client-side chrome
-/// is already provided while retaining the normal decorated-window resize
-/// behavior.
-@_spi(SwiftOpenUIBackend)
-@discardableResult
-public func gtkConfigureSelfContainedWindowChrome(
-    _ window: UnsafeMutablePointer<GtkWindow>,
-    content: UnsafeMutablePointer<GtkWidget>
-) -> Bool {
-    guard gtkContainsSelfContainedWindowChrome(content) else { return false }
-
-    let sentinel = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
-    gtk_widget_set_visible(sentinel, 0)
-    let sentinelObject = UnsafeMutableRawPointer(sentinel).assumingMemoryBound(to: GObject.self)
-    g_object_set_data(sentinelObject, "gtk-swift-window-chrome-sentinel", gpointer(sentinel))
-    gtk_window_set_titlebar(window, sentinel)
-    return true
-}
-
 private func gtkContainsSelfContainedWindowChrome(_ widget: UnsafeMutablePointer<GtkWidget>) -> Bool {
     let object = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GObject.self)
     if g_object_get_data(object, "gtk-swift-self-contained-window-chrome") != nil { return true }
@@ -96,43 +75,20 @@ private func gtkContainsSelfContainedWindowChrome(_ widget: UnsafeMutablePointer
     return false
 }
 
-#if canImport(AppKit)
-/// GTK's Quartz backend retains an AppKit titlebar even when GTK supplies its
-/// own client-side chrome. Extend the content view through that titlebar so
-/// the GtkHeaderBar occupies the window chrome instead of appearing beneath
-/// a second, empty titlebar. AppKit continues to own the traffic lights.
-@discardableResult
-private func gtkConfigureMacOSClientSideDecorations(_ window: UnsafeMutablePointer<GtkWindow>) -> Bool {
-    guard let nativeWindow = gtk_swift_get_native_macos_window(window) else { return false }
-    let window = Unmanaged<NSWindow>.fromOpaque(nativeWindow).takeUnretainedValue()
-    window.styleMask.insert(.fullSizeContentView)
-    window.titlebarAppearsTransparent = true
-    window.titleVisibility = .hidden
-    return true
-}
-#endif
-
-private func gtkPresentWindow(
-    _ window: UnsafeMutablePointer<GtkWindow>,
-    usesClientSideDecorations: Bool
-) {
-    gtk_window_present(window)
-
-    #if canImport(AppKit)
-    if usesClientSideDecorations {
-        if !gtkConfigureMacOSClientSideDecorations(window) {
-            // Quartz creates the GdkMacosSurface during presentation. If it
-            // was not available synchronously, finish the bridge on the next
-            // main-loop turn using only the stable pointer value as the
-            // Sendable capture.
-            let windowAddress = Int(bitPattern: window)
-            DispatchQueue.main.async {
-                guard let rawWindow = UnsafeMutableRawPointer(bitPattern: windowAddress) else { return }
-                gtkConfigureMacOSClientSideDecorations(rawWindow.assumingMemoryBound(to: GtkWindow.self))
-            }
-        }
+private func gtkAdwaitaWindowContent(
+    _ content: UnsafeMutablePointer<GtkWidget>
+) -> UnsafeMutablePointer<GtkWidget> {
+    if gtkContainsSelfContainedWindowChrome(content) {
+        return content
     }
-    #endif
+    guard let titlebar = gtkFindTitlebar(in: content) else {
+        return content
+    }
+    if gtk_widget_get_parent(titlebar) != nil { gtk_widget_unparent(titlebar) }
+    let toolbarView = swift_adw_toolbar_view_new()!
+    swift_adw_toolbar_view_add_top_bar(toolbarView, titlebar)
+    swift_adw_toolbar_view_set_content(toolbarView, content)
+    return toolbarView
 }
 
 /// A departing page can rebuild during its stack transition. Only the
@@ -310,7 +266,7 @@ extension WindowGroup: GTKWindowRenderable {
                 window.gtkCreateWindow(app: app)
             }
         }
-        let window = gtk_application_window_new(gtkApplicationPointer(app))!
+        let window = swift_adw_application_window_new(gtkApplicationPointer(app))!
         let winPtr = windowPointer(window)
         gtkApplyWindowBackground(window)
         gtk_window_set_title(winPtr, title)
@@ -321,17 +277,7 @@ extension WindowGroup: GTKWindowRenderable {
         setCurrentEnvironment(wgEnv)
 
         let contentWidget = widgetFromOpaque(gtkRenderView(content))
-        let usesClientSideDecorations: Bool
-        if gtkConfigureSelfContainedWindowChrome(winPtr, content: contentWidget) {
-            // The content hierarchy owns its chrome. In particular, do not
-            // detach a toolbar from an outer modifier host around it.
-            usesClientSideDecorations = true
-        } else if let titlebarWidget = gtkFindTitlebar(in: contentWidget) {
-            gtk_window_set_titlebar(winPtr, titlebarWidget)
-            usesClientSideDecorations = true
-        } else {
-            usesClientSideDecorations = false
-        }
+        let windowContent = gtkAdwaitaWindowContent(contentWidget)
 
         // Apply minimum content size where configured. GTK4 window sizing is
         // largely content-driven, so min constraints are expressed on the root.
@@ -380,12 +326,12 @@ extension WindowGroup: GTKWindowRenderable {
 
         gtkConfigureRootContentToFillWindow(contentWidget)
 
-        gtk_window_set_child(winPtr, contentWidget)
+        swift_adw_application_window_set_content(window, windowContent)
         let winWidget = widgetPointer(winPtr)
         gtkSetupMenuBarIfNeeded(winPtr: winWidget, contentWidget: contentWidget, windowID: Int(bitPattern: winPtr))
         gtkAttachKeyboardShortcutController(to: winWidget)
         gtkAttachWindowActivationHandler(to: winWidget)
-        gtkPresentWindow(winPtr, usesClientSideDecorations: usesClientSideDecorations)
+        gtk_window_present(winPtr)
     }
 }
 
@@ -811,7 +757,7 @@ public struct GTK4Backend: RenderBackend {
             ?? Bundle.main.bundleIdentifier ?? "dev.swiftopenui.application"
         let applicationID = g_application_id_is_valid(candidateID) != 0
             ? candidateID : "dev.swiftopenui.application"
-        let gtkApp = gtk_application_new(applicationID, GApplicationFlags(rawValue: 1 << 2))!
+        let gtkApp = swift_adw_application_new(applicationID, GApplicationFlags(rawValue: 1 << 2))!
         let appPtr = OpaquePointer(gtkApp)
 
         let factory: (OpaquePointer) -> Void = { appPtr in
@@ -915,7 +861,7 @@ extension Window: GTKWindowRenderable {
     }
 
     func gtkCreateWindow(app: OpaquePointer) {
-        let window = gtk_application_window_new(gtkApplicationPointer(app))!
+        let window = swift_adw_application_window_new(gtkApplicationPointer(app))!
         let winPtr = windowPointer(window)
         gtkApplyWindowBackground(window)
         gtk_window_set_title(winPtr, title)
@@ -926,7 +872,7 @@ extension Window: GTKWindowRenderable {
         setCurrentEnvironment(wsEnv)
 
         let contentWidget = widgetFromOpaque(gtkRenderView(content))
-        let usesClientSideDecorations = gtkConfigureSelfContainedWindowChrome(winPtr, content: contentWidget)
+        let windowContent = gtkAdwaitaWindowContent(contentWidget)
 
         if let w = defaultWindowWidth, let h = defaultWindowHeight {
             gtk_window_set_default_size(winPtr, gint(w), gint(h))
@@ -940,12 +886,12 @@ extension Window: GTKWindowRenderable {
 
         gtkConfigureRootContentToFillWindow(contentWidget)
 
-        gtk_window_set_child(winPtr, contentWidget)
+        swift_adw_application_window_set_content(window, windowContent)
         let winWidget = widgetPointer(winPtr)
         gtkSetupMenuBarIfNeeded(winPtr: winWidget, contentWidget: contentWidget, windowID: Int(bitPattern: winPtr))
         gtkAttachKeyboardShortcutController(to: winWidget)
         gtkAttachWindowActivationHandler(to: winWidget)
-        gtkPresentWindow(winPtr, usesClientSideDecorations: usesClientSideDecorations)
+        gtk_window_present(winPtr)
 
         // Track the live window so repeated openWindow(id:) refocuses
         // instead of creating duplicates. Hook the destroy signal to
