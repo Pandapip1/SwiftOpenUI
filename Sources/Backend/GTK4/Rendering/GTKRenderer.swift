@@ -5002,20 +5002,37 @@ private func gtkRenderMaterialSymbolLabel(
 private let MaterialSymbolsRoundedFamilyName: String =
     MaterialSymbolsResources.roundedRegularFamilyName
 
+private final class GTKIconWarningRegistry: @unchecked Sendable {
+    private let lock = NSLock()
+    private var emitted: Set<String> = []
+
+    func emitOnce(key: String, message: String) {
+        lock.lock()
+        let isNew = emitted.insert(key).inserted
+        lock.unlock()
+        guard isNew else { return }
+        FileHandle.standardError.write(Data(message.utf8))
+    }
+}
+
+private let gtkIconWarningRegistry = GTKIconWarningRegistry()
+
 /// Resolve an SF semantic name through the active Freedesktop icon theme.
 /// GtkImage fails silently for missing names, so validate and diagnose before
 /// falling back to the bundled Material equivalent.
 private func gtkNativeIconName(for sfName: String) -> String? {
     guard let iconName = SFSymbolCompatibility.freedesktopName(for: sfName) else {
-        FileHandle.standardError.write(Data(
-            "[SwiftOpenUI] Image(systemName: \"\(sfName)\") has no GTK icon mapping; using Material fallback\n".utf8
-        ))
+        gtkIconWarningRegistry.emitOnce(
+            key: "unmapped:\(sfName)",
+            message: "[SwiftOpenUI] Image(systemName: \"\(sfName)\") has no GTK icon mapping; using Material fallback\n"
+        )
         return nil
     }
     guard iconName.withCString({ gtk_swift_icon_theme_has_icon($0) }) != 0 else {
-        FileHandle.standardError.write(Data(
-            "[SwiftOpenUI] Image(systemName: \"\(sfName)\") maps to missing GTK icon \"\(iconName)\"; using Material fallback\n".utf8
-        ))
+        gtkIconWarningRegistry.emitOnce(
+            key: "missing:\(sfName):\(iconName)",
+            message: "[SwiftOpenUI] Image(systemName: \"\(sfName)\") maps to missing GTK icon \"\(iconName)\"; using Material fallback\n"
+        )
         return nil
     }
     return iconName
