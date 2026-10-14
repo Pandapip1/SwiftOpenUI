@@ -30,4 +30,11 @@ final class GTK4SymbolMappingTests: XCTestCase {
                 "map entry \(sfName) → \(material) has no Win32 codepoint — add it to MaterialSymbolsCodepoints")
         }
     }
+
+    func testSyncUsesTheNativeDesktopRefreshIcon() {
+        XCTAssertEqual(
+            SFSymbolCompatibility.freedesktopName(for: "arrow.triangle.2.circlepath"),
+            "view-refresh-symbolic"
+        )
+    }
 }

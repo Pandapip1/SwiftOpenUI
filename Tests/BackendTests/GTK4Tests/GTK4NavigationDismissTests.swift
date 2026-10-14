@@ -124,7 +124,7 @@ final class GTK4NavigationDismissTests: XCTestCase {
         let window = gtk_window_new()!
         gtk_window_set_child(windowPointer(window), widget)
         gtk_widget_set_visible(window, 1)
-        weak var context = try XCTUnwrap(findContext(in: widget))
+        weak let context = try XCTUnwrap(findContext(in: widget))
         let registry = try XCTUnwrap(context?.destinationRegistry)
 
         gtk_window_destroy(windowPointer(window))

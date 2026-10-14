@@ -45,6 +45,7 @@ public enum SFSymbolCompatibility {
 
     private static let freedesktopMap: [String: String] = [
         "arrow.backward": "go-previous-symbolic", "arrow.clockwise": "view-refresh-symbolic",
+        "arrow.triangle.2.circlepath": "view-refresh-symbolic",
         "arrow.forward": "go-next-symbolic", "arrow.left": "go-previous-symbolic",
         "arrow.right": "go-next-symbolic", "bell": "preferences-system-notifications-symbolic",
         "bell.fill": "preferences-system-notifications-symbolic", "bookmark": "user-bookmarks-symbolic",

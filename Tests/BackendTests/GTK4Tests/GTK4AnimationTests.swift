@@ -110,9 +110,7 @@ final class GTK4AnimationTests: XCTestCase {
         try requireGTK()
 
         let view = Text("Hi").opacity(0.7)
-        guard let describable = view as? GTKDescribable else {
-            return XCTFail("OpacityView should conform to GTKDescribable")
-        }
+        let describable: any GTKDescribable = view
         let node = describable.gtkDescribeNode()
         XCTAssertEqual(node.kind, .opacity)
         XCTAssertEqual(node.typeName, "OpacityView")
@@ -127,9 +125,7 @@ final class GTK4AnimationTests: XCTestCase {
         try requireGTK()
 
         let view = Text("Hi").offset(x: 3, y: 4)
-        guard let describable = view as? GTKDescribable else {
-            return XCTFail("OffsetView should conform to GTKDescribable")
-        }
+        let describable: any GTKDescribable = view
         let node = describable.gtkDescribeNode()
         XCTAssertEqual(node.kind, .offset)
         if case .offset(let desc) = node.props {
@@ -144,9 +140,7 @@ final class GTK4AnimationTests: XCTestCase {
         try requireGTK()
 
         let view = Text("Hi").scaleEffect(2.0)
-        guard let describable = view as? GTKDescribable else {
-            return XCTFail("ScaleEffectView should conform to GTKDescribable")
-        }
+        let describable: any GTKDescribable = view
         let node = describable.gtkDescribeNode()
         XCTAssertEqual(node.kind, .scale)
         if case .scale(let desc) = node.props {
@@ -161,9 +155,7 @@ final class GTK4AnimationTests: XCTestCase {
         try requireGTK()
 
         let view = Text("Hi").rotationEffect(45.0)
-        guard let describable = view as? GTKDescribable else {
-            return XCTFail("RotationView should conform to GTKDescribable")
-        }
+        let describable: any GTKDescribable = view
         let node = describable.gtkDescribeNode()
         XCTAssertEqual(node.kind, .rotation)
         if case .rotation(let desc) = node.props {
@@ -177,9 +169,7 @@ final class GTK4AnimationTests: XCTestCase {
         try requireGTK()
 
         let view = Text("Hi").animation(.linear)
-        guard let describable = view as? GTKDescribable else {
-            return XCTFail("AnimatedView should conform to GTKDescribable")
-        }
+        let describable: any GTKDescribable = view
         let node = describable.gtkDescribeNode()
         XCTAssertEqual(node.kind, .animated)
         XCTAssertEqual(node.typeName, "AnimatedView")
@@ -195,9 +185,7 @@ final class GTK4AnimationTests: XCTestCase {
         try requireGTK()
 
         let view = Text("Hi").animation(nil)
-        guard let describable = view as? GTKDescribable else {
-            return XCTFail("AnimatedView should conform to GTKDescribable")
-        }
+        let describable: any GTKDescribable = view
         let node = describable.gtkDescribeNode()
         XCTAssertEqual(node.props, .none)
     }
@@ -207,8 +195,8 @@ final class GTK4AnimationTests: XCTestCase {
 
         let linearView = Text("Hi").animation(.linear)
         let easeInView = Text("Hi").animation(.easeIn)
-        let linearNode = (linearView as! GTKDescribable).gtkDescribeNode()
-        let easeInNode = (easeInView as! GTKDescribable).gtkDescribeNode()
+        let linearNode = (linearView as any GTKDescribable).gtkDescribeNode()
+        let easeInNode = (easeInView as any GTKDescribable).gtkDescribeNode()
         XCTAssertNotEqual(linearNode.props, easeInNode.props)
     }
 }
