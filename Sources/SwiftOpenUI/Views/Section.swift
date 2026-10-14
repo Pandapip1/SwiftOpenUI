@@ -24,6 +24,14 @@ public struct Section<Content: View>: View {
         self.headerView = AnyView(header())
     }
 
+    /// SwiftUI's trailing-footer form: `Section { rows } footer: { view }`.
+    public init<F: View>(@ViewBuilder content: () -> Content, @ViewBuilder footer: () -> F) {
+        self.header = nil
+        self.footer = Self.text(of: footer())
+        self.content = content()
+        self.headerView = nil
+    }
+
     public init(header: String? = nil, footer: String? = nil, @ViewBuilder content: () -> Content) {
         self.header = header
         self.footer = footer
@@ -32,4 +40,8 @@ public struct Section<Content: View>: View {
     }
 
     public var body: Never { fatalError("Section is a primitive view") }
+
+    private static func text(of view: any View) -> String {
+        AlertActions.flatten(view).compactMap { ($0 as? Text)?.content }.joined(separator: "\n")
+    }
 }

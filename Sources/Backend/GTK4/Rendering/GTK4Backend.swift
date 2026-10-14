@@ -261,6 +261,13 @@ extension WindowGroup: GTKWindowRenderable {
     }
 
     func gtkRender(app: OpaquePointer) {
+        if let valueTypeName, let valueContent {
+            GTK4ValueWindowRegistry.shared.register(type: valueTypeName) { data in
+                let id = "value-" + data.map { String(format: "%02x", $0) }.joined()
+                let window = Window(title, id: id) { valueContent(data) }
+                window.gtkCreateWindow(app: app)
+            }
+        }
         let window = gtk_application_window_new(gtkApplicationPointer(app))!
         let winPtr = windowPointer(window)
         gtkApplyWindowBackground(window)
@@ -776,9 +783,12 @@ public struct GTK4Backend: RenderBackend {
             // Derive the palette from the theme rather than fixed constants,
             // so content sits on the desktop's own colours.
             env.themePalette = gtkSampleThemePalette(scheme: scheme)
-            env.openWindow = OpenWindowAction { id in
-                GTK4WindowRegistry.shared.open(id: id)
-            }
+            env.openWindow = OpenWindowAction(
+                handler: { id in GTK4WindowRegistry.shared.open(id: id) },
+                valueHandler: { type, data in
+                    GTK4ValueWindowRegistry.shared.open(type: type, data: data)
+                }
+            )
             setCurrentEnvironment(env)
 
             let instance = A()
@@ -956,6 +966,13 @@ class GTK4WindowRegistry {
         // Window was closed or never created — invoke the factory.
         factories[id]?()
     }
+}
+
+private final class GTK4ValueWindowRegistry {
+    static let shared = GTK4ValueWindowRegistry()
+    private var factories: [String: (Data) -> Void] = [:]
+    func register(type: String, factory: @escaping (Data) -> Void) { factories[type] = factory }
+    func open(type: String, data: Data) { factories[type]?(data) }
 }
 
 /// Recursively render a Scene. Terminal scenes (WindowGroup, Window) render

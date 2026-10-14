@@ -1,3 +1,5 @@
+import Foundation
+
 /// A type that represents the structure and behavior of an app.
 ///
 /// Platform backends provide the concrete app lifecycle (GTK application,
@@ -32,9 +34,24 @@ public struct WindowGroup<Content: View>: Scene {
     public let windowSizing: WindowSizing?
     public let windowResizeBehavior: WindowResizeBehavior?
     public let windowResizability: WindowResizability?
+    public let valueTypeName: String?
+    public let valueContent: (@MainActor (Data) -> AnyView)?
 
     public init(_ title: String, @ViewBuilder content: () -> Content) {
         self.init(title: title, content: content())
+    }
+
+    public init<Value: Codable & Hashable, Inner: View>(
+        _ title: String = "", for valueType: Value.Type,
+        @ViewBuilder content: @escaping (Binding<Value?>) -> Inner
+    ) where Content == AnyView {
+        self.init(
+            title: title, content: AnyView(content(.constant(nil))),
+            valueTypeName: String(reflecting: valueType),
+            valueContent: { data in
+                AnyView(content(.constant(try? JSONDecoder().decode(Value.self, from: data))))
+            }
+        )
     }
 
     init(
@@ -48,7 +65,9 @@ public struct WindowGroup<Content: View>: Scene {
         maxWindowHeight: Double? = nil,
         windowSizing: WindowSizing? = nil,
         windowResizeBehavior: WindowResizeBehavior? = nil,
-        windowResizability: WindowResizability? = nil
+        windowResizability: WindowResizability? = nil,
+        valueTypeName: String? = nil,
+        valueContent: (@MainActor (Data) -> AnyView)? = nil
     ) {
         self.title = title
         self.content = content
@@ -61,6 +80,8 @@ public struct WindowGroup<Content: View>: Scene {
         self.windowSizing = windowSizing
         self.windowResizeBehavior = windowResizeBehavior
         self.windowResizability = windowResizability
+        self.valueTypeName = valueTypeName
+        self.valueContent = valueContent
     }
 
     public var body: Never { fatalError("WindowGroup is a primitive scene") }

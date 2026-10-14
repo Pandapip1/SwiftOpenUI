@@ -4,6 +4,35 @@ import Foundation
 
 final class AppBundleTests: XCTestCase {
 
+    @MainActor func testValueWindowGroupDecodesTheRequestedWindowValue() throws {
+        var received: [UUID?] = []
+        let id = UUID()
+        let scene = WindowGroup("Profile", for: UUID.self) { value in
+            received.append(value.wrappedValue)
+            return EmptyView()
+        }
+
+        XCTAssertEqual(scene.valueTypeName, String(reflecting: UUID.self))
+        XCTAssertEqual(received, [nil])
+        _ = scene.valueContent?(try JSONEncoder().encode(id))
+        XCTAssertEqual(received, [nil, id])
+    }
+
+    @MainActor func testOpenWindowValuePreservesTypeAndPayload() throws {
+        let id = UUID()
+        var receivedType: String?
+        var receivedData: Data?
+        let action = OpenWindowAction(valueHandler: { type, data in
+            receivedType = type
+            receivedData = data
+        })
+
+        action(value: id)
+
+        XCTAssertEqual(receivedType, String(reflecting: UUID.self))
+        XCTAssertEqual(try receivedData.map { try JSONDecoder().decode(UUID.self, from: $0) }, id)
+    }
+
     // MARK: - BundleInfo Codable
 
     @MainActor func testBundleInfoDecodesFullJSON() throws {

@@ -65,7 +65,9 @@ extension WindowGroup {
             maxWindowHeight: maxWindowHeight,
             windowSizing: windowSizing,
             windowResizeBehavior: windowResizeBehavior,
-            windowResizability: windowResizability
+            windowResizability: windowResizability,
+            valueTypeName: valueTypeName,
+            valueContent: valueContent
         )
     }
 
@@ -87,7 +89,9 @@ extension WindowGroup {
             maxWindowHeight: maxHeight ?? maxWindowHeight,
             windowSizing: windowSizing,
             windowResizeBehavior: windowResizeBehavior,
-            windowResizability: windowResizability
+            windowResizability: windowResizability,
+            valueTypeName: valueTypeName,
+            valueContent: valueContent
         )
     }
 
@@ -104,7 +108,9 @@ extension WindowGroup {
             maxWindowHeight: maxWindowHeight,
             windowSizing: sizing,
             windowResizeBehavior: windowResizeBehavior,
-            windowResizability: windowResizability
+            windowResizability: windowResizability,
+            valueTypeName: valueTypeName,
+            valueContent: valueContent
         )
     }
 
@@ -121,7 +127,9 @@ extension WindowGroup {
             maxWindowHeight: maxWindowHeight,
             windowSizing: windowSizing,
             windowResizeBehavior: behavior,
-            windowResizability: windowResizability
+            windowResizability: windowResizability,
+            valueTypeName: valueTypeName,
+            valueContent: valueContent
         )
     }
 
@@ -141,7 +149,9 @@ extension WindowGroup {
             maxWindowHeight: maxWindowHeight,
             windowSizing: windowSizing,
             windowResizeBehavior: windowResizeBehavior,
-            windowResizability: resizability
+            windowResizability: resizability,
+            valueTypeName: valueTypeName,
+            valueContent: valueContent
         )
     }
 }

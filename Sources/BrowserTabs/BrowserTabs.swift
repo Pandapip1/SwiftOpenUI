@@ -557,7 +557,19 @@ public extension View {
         id: String, placement: BrowserTabToolbarPlacement,
         @ViewBuilder content: @escaping () -> Accessory
     ) -> some View {
-        self
+        toolbar {
+            ToolbarItem(placement: placement.toolbarPlacement, content: content)
+        }
+    }
+}
+
+private extension BrowserTabToolbarPlacement {
+    var toolbarPlacement: ToolbarItemPlacement {
+        switch self {
+        case .leading: .leading
+        case .principal: .principal
+        case .trailing: .trailing
+        }
     }
 }
 

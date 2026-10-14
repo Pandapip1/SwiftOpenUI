@@ -85,6 +85,13 @@ protocol Win32WindowRenderable {
 
 extension WindowGroup: Win32WindowRenderable {
     func win32Render(hInstance: HINSTANCE) {
+        if let valueTypeName, let valueContent {
+            Win32ValueWindowRegistry.shared.register(type: valueTypeName) { data in
+                let id = "value-" + data.map { String(format: "%02x", $0) }.joined()
+                let window = Window(title, id: id) { valueContent(data) }
+                window.win32CreateWindow(hInstance: hInstance)
+            }
+        }
         // Register the main window class
         let className: [WCHAR] = Array("SwiftOpenUIMainWindow".utf16) + [0]
 
@@ -686,9 +693,14 @@ public struct Win32Backend: RenderBackend {
         // Inject openWindow action into the environment so views
         // can programmatically open Window scenes by id.
         var env = getCurrentEnvironment()
-        env.openWindow = OpenWindowAction { id in
-            Win32WindowRegistry.shared.open(id: id, hInstance: hInstance)
-        }
+        env.openWindow = OpenWindowAction(
+            handler: { id in
+                Win32WindowRegistry.shared.open(id: id, hInstance: hInstance)
+            },
+            valueHandler: { type, data in
+                Win32ValueWindowRegistry.shared.open(type: type, data: data)
+            }
+        )
         setCurrentEnvironment(env)
 
         let instance = A()
@@ -1014,4 +1026,11 @@ class Win32WindowRegistry {
         }
         factories[id]?()
     }
+}
+
+private final class Win32ValueWindowRegistry {
+    static let shared = Win32ValueWindowRegistry()
+    private var factories: [String: (Data) -> Void] = [:]
+    func register(type: String, factory: @escaping (Data) -> Void) { factories[type] = factory }
+    func open(type: String, data: Data) { factories[type]?(data) }
 }
