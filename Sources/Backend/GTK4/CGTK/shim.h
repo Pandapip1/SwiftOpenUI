@@ -1,6 +1,9 @@
 #pragma once
 
 #include <gtk/gtk.h>
+#ifdef __APPLE__
+#include <gdk/macos/gdkmacos.h>
+#endif
 #include <fontconfig/fontconfig.h>
 #ifdef __linux__
 #include <dlfcn.h>
@@ -933,6 +936,21 @@ gtk_swift_cairo_set_source_surface(cairo_t *cr, cairo_surface_t *surface,
 }
 
 // --- Window titlebar helpers ---
+
+#ifdef __APPLE__
+/// Return the NSWindow owned by GTK's Quartz surface. The result is an
+/// unretained Objective-C object and must not be released by the caller.
+static inline gpointer
+gtk_swift_get_native_macos_window(GtkWindow *window) {
+    GtkNative *native = gtk_widget_get_native(GTK_WIDGET(window));
+    if (!native)
+        return NULL;
+    GdkSurface *surface = gtk_native_get_surface(native);
+    if (!surface || !GDK_IS_MACOS_SURFACE(surface))
+        return NULL;
+    return gdk_macos_surface_get_native_window(GDK_MACOS_SURFACE(surface));
+}
+#endif
 
 /// Set or clear the window titlebar. Pass NULL to remove a custom titlebar.
 static inline void

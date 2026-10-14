@@ -96,6 +96,45 @@ private func gtkContainsSelfContainedWindowChrome(_ widget: UnsafeMutablePointer
     return false
 }
 
+#if canImport(AppKit)
+/// GTK's Quartz backend retains an AppKit titlebar even when GTK supplies its
+/// own client-side chrome. Extend the content view through that titlebar so
+/// the GtkHeaderBar occupies the window chrome instead of appearing beneath
+/// a second, empty titlebar. AppKit continues to own the traffic lights.
+@discardableResult
+private func gtkConfigureMacOSClientSideDecorations(_ window: UnsafeMutablePointer<GtkWindow>) -> Bool {
+    guard let nativeWindow = gtk_swift_get_native_macos_window(window) else { return false }
+    let window = Unmanaged<NSWindow>.fromOpaque(nativeWindow).takeUnretainedValue()
+    window.styleMask.insert(.fullSizeContentView)
+    window.titlebarAppearsTransparent = true
+    window.titleVisibility = .hidden
+    return true
+}
+#endif
+
+private func gtkPresentWindow(
+    _ window: UnsafeMutablePointer<GtkWindow>,
+    usesClientSideDecorations: Bool
+) {
+    gtk_window_present(window)
+
+    #if canImport(AppKit)
+    if usesClientSideDecorations {
+        if !gtkConfigureMacOSClientSideDecorations(window) {
+            // Quartz creates the GdkMacosSurface during presentation. If it
+            // was not available synchronously, finish the bridge on the next
+            // main-loop turn using only the stable pointer value as the
+            // Sendable capture.
+            let windowAddress = Int(bitPattern: window)
+            DispatchQueue.main.async {
+                guard let rawWindow = UnsafeMutableRawPointer(bitPattern: windowAddress) else { return }
+                gtkConfigureMacOSClientSideDecorations(rawWindow.assumingMemoryBound(to: GtkWindow.self))
+            }
+        }
+    }
+    #endif
+}
+
 /// A departing page can rebuild during its stack transition. Only the
 /// currently visible page may replace the window's navigation chrome.
 func gtkSetVisibleWindowTitlebar(_ widget: UnsafeMutablePointer<GtkWidget>, _ titlebar: UnsafeMutablePointer<GtkWidget>) {
@@ -282,11 +321,16 @@ extension WindowGroup: GTKWindowRenderable {
         setCurrentEnvironment(wgEnv)
 
         let contentWidget = widgetFromOpaque(gtkRenderView(content))
+        let usesClientSideDecorations: Bool
         if gtkConfigureSelfContainedWindowChrome(winPtr, content: contentWidget) {
             // The content hierarchy owns its chrome. In particular, do not
             // detach a toolbar from an outer modifier host around it.
+            usesClientSideDecorations = true
         } else if let titlebarWidget = gtkFindTitlebar(in: contentWidget) {
             gtk_window_set_titlebar(winPtr, titlebarWidget)
+            usesClientSideDecorations = true
+        } else {
+            usesClientSideDecorations = false
         }
 
         // Apply minimum content size where configured. GTK4 window sizing is
@@ -341,7 +385,7 @@ extension WindowGroup: GTKWindowRenderable {
         gtkSetupMenuBarIfNeeded(winPtr: winWidget, contentWidget: contentWidget, windowID: Int(bitPattern: winPtr))
         gtkAttachKeyboardShortcutController(to: winWidget)
         gtkAttachWindowActivationHandler(to: winWidget)
-        gtk_window_present(winPtr)
+        gtkPresentWindow(winPtr, usesClientSideDecorations: usesClientSideDecorations)
     }
 }
 
@@ -882,7 +926,7 @@ extension Window: GTKWindowRenderable {
         setCurrentEnvironment(wsEnv)
 
         let contentWidget = widgetFromOpaque(gtkRenderView(content))
-        gtkConfigureSelfContainedWindowChrome(winPtr, content: contentWidget)
+        let usesClientSideDecorations = gtkConfigureSelfContainedWindowChrome(winPtr, content: contentWidget)
 
         if let w = defaultWindowWidth, let h = defaultWindowHeight {
             gtk_window_set_default_size(winPtr, gint(w), gint(h))
@@ -901,7 +945,7 @@ extension Window: GTKWindowRenderable {
         gtkSetupMenuBarIfNeeded(winPtr: winWidget, contentWidget: contentWidget, windowID: Int(bitPattern: winPtr))
         gtkAttachKeyboardShortcutController(to: winWidget)
         gtkAttachWindowActivationHandler(to: winWidget)
-        gtk_window_present(winPtr)
+        gtkPresentWindow(winPtr, usesClientSideDecorations: usesClientSideDecorations)
 
         // Track the live window so repeated openWindow(id:) refocuses
         // instead of creating duplicates. Hook the destroy signal to
