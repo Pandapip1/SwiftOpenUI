@@ -5,12 +5,12 @@ final class OnChangeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        clearOnChangeState()
+        MainActor.assumeIsolated { clearOnChangeState() }
     }
 
     // MARK: - Modifier wrapping
 
-    func testOnChangeWrapsContent() {
+    @MainActor func testOnChangeWrapsContent() {
         var fired = false
         let view = Text("Hello").onChange(of: 1) { _ in fired = true }
         XCTAssertEqual(view.content.content, "Hello")
@@ -20,14 +20,14 @@ final class OnChangeTests: XCTestCase {
 
     // MARK: - Value tracking
 
-    func testFirstRenderDoesNotFire() {
+    @MainActor func testFirstRenderDoesNotFire() {
         var fired = false
         // First render — no previous value stored, should not fire
         onChangeCheckAndFire(value: "hello") { _ in fired = true }
         XCTAssertFalse(fired)
     }
 
-    func testSecondRenderWithSameValueDoesNotFire() {
+    @MainActor func testSecondRenderWithSameValueDoesNotFire() {
         var fireCount = 0
         // First render — stores value 42 at key 0
         onChangeCheckAndFire(value: 42) { _ in fireCount += 1 }
@@ -37,7 +37,7 @@ final class OnChangeTests: XCTestCase {
         XCTAssertEqual(fireCount, 0)
     }
 
-    func testSecondRenderWithDifferentValueFires() {
+    @MainActor func testSecondRenderWithDifferentValueFires() {
         var received: Int?
         // First render
         onChangeCheckAndFire(value: 1) { _ in }
@@ -47,7 +47,7 @@ final class OnChangeTests: XCTestCase {
         XCTAssertEqual(received, 2)
     }
 
-    func testMultipleOnChangeTrackIndependently() {
+    @MainActor func testMultipleOnChangeTrackIndependently() {
         var firedA = false
         var firedB = false
         // First render — two onChange at keys 0 and 1
@@ -61,7 +61,7 @@ final class OnChangeTests: XCTestCase {
         XCTAssertFalse(firedB, "Second onChange should not fire — value unchanged")
     }
 
-    func testCounterResetsPerRenderPass() {
+    @MainActor func testCounterResetsPerRenderPass() {
         let key1 = onChangeCheckAndFire(value: 1) { _ in }
         XCTAssertEqual(key1, 0)
         let key2 = onChangeCheckAndFire(value: 2) { _ in }
@@ -73,7 +73,7 @@ final class OnChangeTests: XCTestCase {
 
     // MARK: - Equatable comparison
 
-    func testOnChangeUsesEquatable() {
+    @MainActor func testOnChangeUsesEquatable() {
         struct Pair: Equatable {
             let x: Int
             let y: Int
@@ -87,13 +87,13 @@ final class OnChangeTests: XCTestCase {
 
     // MARK: - Two-arg form
 
-    func testOnChangeTwoArgWrapsContent() {
+    @MainActor func testOnChangeTwoArgWrapsContent() {
         let view = Text("Hello").onChange(of: 1) { _, _ in }
         XCTAssertEqual(view.content.content, "Hello")
         XCTAssertEqual(view.value, 1)
     }
 
-    func testOnChangeTwoArgFiresWithOldAndNewValue() {
+    @MainActor func testOnChangeTwoArgFiresWithOldAndNewValue() {
         var received: (Int, Int)?
 
         // First render — seeds key 0 with value 10, no fire
@@ -108,7 +108,7 @@ final class OnChangeTests: XCTestCase {
         XCTAssertEqual(received?.1, 20)
     }
 
-    func testOnChangeTwoArgDoesNotFireWhenUnchanged() {
+    @MainActor func testOnChangeTwoArgDoesNotFireWhenUnchanged() {
         var fired = false
 
         onChangeCheckAndFireTwoArg(value: "a") { _, _ in }

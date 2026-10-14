@@ -5,7 +5,7 @@ final class PopoverTests: XCTestCase {
 
     // MARK: - Modifier wrapping
 
-    func testPopoverWrapsContent() {
+    @MainActor func testPopoverWrapsContent() {
         var presented = false
         let view = Text("Anchor").popover(isPresented: .init(
             get: { presented }, set: { presented = $0 }
@@ -16,7 +16,7 @@ final class PopoverTests: XCTestCase {
         XCTAssertFalse(view.isPresented.wrappedValue)
     }
 
-    func testPopoverStoresBinding() {
+    @MainActor func testPopoverStoresBinding() {
         var presented = true
         let view = Text("Anchor").popover(isPresented: .init(
             get: { presented }, set: { presented = $0 }
@@ -26,7 +26,7 @@ final class PopoverTests: XCTestCase {
         XCTAssertTrue(view.isPresented.wrappedValue)
     }
 
-    func testPopoverBindingCanBeToggled() {
+    @MainActor func testPopoverBindingCanBeToggled() {
         var presented = false
         let binding = Binding<Bool>(
             get: { presented }, set: { presented = $0 }
@@ -42,7 +42,7 @@ final class PopoverTests: XCTestCase {
 
     // MARK: - Chaining
 
-    func testPopoverChainedWithFrame() {
+    @MainActor func testPopoverChainedWithFrame() {
         var presented = false
         let view = Text("Anchor")
             .frame(width: 100, height: 50)
@@ -54,7 +54,7 @@ final class PopoverTests: XCTestCase {
         XCTAssertEqual(view.content.width, 100)
     }
 
-    func testPopoverChainedWithPadding() {
+    @MainActor func testPopoverChainedWithPadding() {
         var presented = false
         let view = Text("Anchor")
             .padding()

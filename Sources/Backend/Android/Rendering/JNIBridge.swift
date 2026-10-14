@@ -321,7 +321,7 @@ private func createSessionForExample(name: String) -> AndroidViewHost {
 /// Uses a flat view with all @State on one struct because Android
 /// doesn't yet persist @State in nested composed child views.
 private func createStateDemoSession() -> AndroidViewHost {
-    var view = AndroidStateDemoView() // swiftlint:disable:this redundant_var
+    let view = AndroidStateDemoView()
 
     let host = AndroidViewHost { [view] in
         let rootNode = androidRenderView(view)
@@ -418,7 +418,7 @@ private struct NestedMultiSection: View {
 // MARK: - Navigation demo
 
 private func createNavigationDemoSession() -> AndroidViewHost {
-    var view = AndroidNavigationDemo() // swiftlint:disable:this redundant_var
+    let view = AndroidNavigationDemo()
 
     let host = AndroidViewHost { [view] in
         androidBeginRenderPass()
@@ -487,7 +487,7 @@ private struct AndroidNavigationDemo: View {
 // MARK: - TextField demo
 
 private func createTextFieldDemoSession() -> AndroidViewHost {
-    var view = AndroidTextFieldDemo() // swiftlint:disable:this redundant_var
+    let view = AndroidTextFieldDemo()
 
     let host = AndroidViewHost { [view] in
         let rootNode = androidRenderView(view)

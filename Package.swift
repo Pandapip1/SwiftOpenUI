@@ -1,4 +1,4 @@
-// swift-tools-version: 5.10
+// swift-tools-version: 6.2
 
 import PackageDescription
 
@@ -10,7 +10,9 @@ let gtkWebKitEnabled = gtkBackendEnabled
 let gtkBackendEnabled = requestedBackend == "gtk"
 let gtkWebKitEnabled = false
 #endif
-let gtkSwiftSettings: [SwiftSetting] = gtkBackendEnabled ? [.define("BACKEND_GTK")] : []
+let gtkSwiftSettings: [SwiftSetting] = [
+    .defaultIsolation(MainActor.self),
+] + (gtkBackendEnabled ? [.define("BACKEND_GTK")] : [])
 
 var targets: [Target] = [
     // Portable declarative UI model consumed by non-SwiftUI renderers.
@@ -24,7 +26,8 @@ var targets: [Target] = [
     // backend wherever the system SwiftUI framework is available.
     .target(
         name: "BackendSwiftUI",
-        path: "Sources/Backend/SwiftUI"
+        path: "Sources/Backend/SwiftUI",
+        swiftSettings: gtkSwiftSettings
     ),
 
     // Stable application-facing module. Applications import SwiftOpenUI on
@@ -40,7 +43,8 @@ var targets: [Target] = [
     .target(
         name: "MacExampleSupport",
         dependencies: ["SwiftOpenUI"],
-        path: "Sources/MacExampleSupport"
+        path: "Sources/MacExampleSupport",
+        swiftSettings: gtkSwiftSettings
     ),
 
     // Core tests
@@ -92,7 +96,8 @@ targets += [
     .target(
         name: "WebKit",
         dependencies: ["SwiftOpenUICore"],
-        path: "Sources/WebKit"
+        path: "Sources/WebKit",
+        swiftSettings: gtkSwiftSettings
     ),
 ]
 
@@ -139,6 +144,7 @@ targets += [
         dependencies: gtkBackendDependencies,
         path: "Sources/Backend/GTK4/Rendering",
         exclude: gtkBackendExclude,
+        swiftSettings: gtkSwiftSettings,
         linkerSettings: [
             // FontConfig is used by the process-local font registration
             // path that loads SwiftOpenUISymbols' bundled Material Symbols
@@ -246,7 +252,8 @@ targets += [
     .target(
         name: "BackendAndroid",
         dependencies: ["SwiftOpenUICore"],
-        path: "Sources/Backend/Android/Rendering"
+        path: "Sources/Backend/Android/Rendering",
+        swiftSettings: gtkSwiftSettings
     ),
     .testTarget(
         name: "AndroidRenderTests",
@@ -278,7 +285,8 @@ targets += [
             "SwiftOpenUICore",
             .product(name: "JavaScriptKit", package: "JavaScriptKit"),
         ],
-        path: "Sources/Backend/Web/Rendering"
+        path: "Sources/Backend/Web/Rendering",
+        swiftSettings: gtkSwiftSettings
     ),
     .testTarget(
         name: "WebDescriptorTests",
@@ -528,5 +536,6 @@ let package = Package(
         return p
     }(),
     dependencies: deps,
-    targets: targets
+    targets: targets,
+    swiftLanguageModes: [.v6]
 )

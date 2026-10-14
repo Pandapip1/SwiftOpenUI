@@ -3,7 +3,7 @@ import XCTest
 
 final class NavigationLinkTests: XCTestCase {
 
-    func testStringNavigationLinkKeepsTextFallback() {
+    @MainActor func testStringNavigationLinkKeepsTextFallback() {
         let link = NavigationLink("Go", title: "Detail") {
             Text("Destination")
         }
@@ -13,7 +13,7 @@ final class NavigationLinkTests: XCTestCase {
         XCTAssertTrue(link.labelView.wrapped is Text)
     }
 
-    func testDestinationNavigationLinkStoresCustomLabelView() {
+    @MainActor func testDestinationNavigationLinkStoresCustomLabelView() {
         let link = NavigationLink(title: "Detail") {
             Text("Destination")
         } label: {
@@ -28,7 +28,7 @@ final class NavigationLinkTests: XCTestCase {
         XCTAssertTrue(String(describing: type(of: link.labelView.wrapped)).contains("HStack"))
     }
 
-    func testValueNavigationLinkUsesTextLabelAsDefaultTitle() {
+    @MainActor func testValueNavigationLinkUsesTextLabelAsDefaultTitle() {
         let link = NavigationLink(value: "detail") {
             Text("Go")
         }

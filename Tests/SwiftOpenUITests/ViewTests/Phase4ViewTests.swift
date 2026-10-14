@@ -5,18 +5,18 @@ final class Phase4ViewTests: XCTestCase {
 
     // MARK: - TabView
 
-    func testTabConstruction() {
+    @MainActor func testTabConstruction() {
         let tab = Tab("Settings") { Text("Content") }
         XCTAssertEqual(tab.title, "Settings")
         XCTAssertEqual(tab.id, "settings")
     }
 
-    func testTabCustomId() {
+    @MainActor func testTabCustomId() {
         let tab = Tab("My Tab", id: "custom-id") { Text("Content") }
         XCTAssertEqual(tab.id, "custom-id")
     }
 
-    func testTabViewConstruction() {
+    @MainActor func testTabViewConstruction() {
         let tabView = TabView {
             Tab("First") { Text("Page 1") }
             Tab("Second") { Text("Page 2") }
@@ -27,7 +27,7 @@ final class Phase4ViewTests: XCTestCase {
         XCTAssertNil(tabView.initialTab)
     }
 
-    func testTabViewInitialTab() {
+    @MainActor func testTabViewInitialTab() {
         let tabView = TabView(initialTab: 1) {
             Tab("A") { Text("A") }
             Tab("B") { Text("B") }
@@ -37,7 +37,7 @@ final class Phase4ViewTests: XCTestCase {
 
     // MARK: - Grid
 
-    func testGridAutoWrap() {
+    @MainActor func testGridAutoWrap() {
         let grid = Grid(columns: 3, spacing: 8) {
             Text("A")
             Text("B")
@@ -48,7 +48,7 @@ final class Phase4ViewTests: XCTestCase {
         XCTAssertFalse(grid.useExplicitRows)
     }
 
-    func testGridExplicitRows() {
+    @MainActor func testGridExplicitRows() {
         let grid = Grid(horizontalSpacing: 4, verticalSpacing: 8) {
             GridRow { Text("A"); Text("B") }
             GridRow { Text("C"); Text("D") }
@@ -58,15 +58,14 @@ final class Phase4ViewTests: XCTestCase {
         XCTAssertTrue(grid.useExplicitRows)
     }
 
-    func testGridExplicitRowsPreserveGridRowBoundaries() {
+    @MainActor func testGridExplicitRowsPreserveGridRowBoundaries() {
         let grid = Grid(horizontalSpacing: 4, verticalSpacing: 8) {
             GridRow { Text("A"); Text("B") }
             GridRow { Text("C"); Text("D") }
             Text("Footer")
         }
 
-        let multi = try? XCTUnwrap(grid.content as? MultiChildView)
-        let children = multi?.children ?? []
+        let children = grid.content.children
         XCTAssertEqual(children.count, 3)
         // GridRow generic parameter varies with buildPartialBlock; check protocol
         XCTAssertTrue(children[0] is MultiChildView, "First child should be a GridRow")
@@ -76,7 +75,7 @@ final class Phase4ViewTests: XCTestCase {
 
     // MARK: - GridRow
 
-    func testGridRowChildren() {
+    @MainActor func testGridRowChildren() {
         let row = GridRow {
             Text("A")
             Text("B")
@@ -86,19 +85,19 @@ final class Phase4ViewTests: XCTestCase {
         XCTAssertFalse(row.children.isEmpty)
     }
 
-    func testGridCellColumns() {
+    @MainActor func testGridCellColumns() {
         let view = Text("Wide").gridCellColumns(3)
         XCTAssertEqual(view.gridColumnSpan, 3)
     }
 
-    func testGridCellColumnsMinimum() {
+    @MainActor func testGridCellColumnsMinimum() {
         let view = Text("Narrow").gridCellColumns(0)
         XCTAssertEqual(view.gridColumnSpan, 1) // clamped to 1
     }
 
     // MARK: - DisclosureGroup
 
-    func testDisclosureGroupDefaults() {
+    @MainActor func testDisclosureGroupDefaults() {
         let group = DisclosureGroup("Advanced") {
             Text("Hidden content")
         }
@@ -107,14 +106,14 @@ final class Phase4ViewTests: XCTestCase {
         XCTAssertNil(group.onExpandedChange)
     }
 
-    func testDisclosureGroupExpanded() {
+    @MainActor func testDisclosureGroupExpanded() {
         let group = DisclosureGroup("Open", isExpanded: true) {
             Text("Visible")
         }
         XCTAssertTrue(group.isExpanded)
     }
 
-    func testDisclosureGroupBinding() {
+    @MainActor func testDisclosureGroupBinding() {
         let group = DisclosureGroup("Bound", isExpanded: .constant(false)) {
             Text("Content")
         }
@@ -124,7 +123,7 @@ final class Phase4ViewTests: XCTestCase {
 
     // MARK: - Form
 
-    func testFormConstruction() {
+    @MainActor func testFormConstruction() {
         let form = Form {
             Text("Field 1")
             Text("Field 2")
@@ -134,7 +133,7 @@ final class Phase4ViewTests: XCTestCase {
 
     // MARK: - Section
 
-    func testSectionHeaderOnly() {
+    @MainActor func testSectionHeaderOnly() {
         let section = Section("Account") {
             Text("Username")
         }
@@ -142,7 +141,7 @@ final class Phase4ViewTests: XCTestCase {
         XCTAssertNil(section.footer)
     }
 
-    func testSectionHeaderAndFooter() {
+    @MainActor func testSectionHeaderAndFooter() {
         let section = Section(header: "Settings", footer: "Changes apply immediately.") {
             Text("Toggle")
         }
@@ -150,7 +149,7 @@ final class Phase4ViewTests: XCTestCase {
         XCTAssertEqual(section.footer, "Changes apply immediately.")
     }
 
-    func testSectionNoHeader() {
+    @MainActor func testSectionNoHeader() {
         let section = Section {
             Text("Content")
         }
@@ -160,7 +159,7 @@ final class Phase4ViewTests: XCTestCase {
 
     // MARK: - TabBuilder conditional content
 
-    func testTabBuilderConditional() {
+    @MainActor func testTabBuilderConditional() {
         let showAdvanced = true
         let tabView = TabView {
             Tab("General") { Text("General") }
@@ -171,7 +170,7 @@ final class Phase4ViewTests: XCTestCase {
         XCTAssertEqual(tabView.tabs.count, 2)
     }
 
-    func testTabBuilderConditionalFalse() {
+    @MainActor func testTabBuilderConditionalFalse() {
         let showAdvanced = false
         let tabView = TabView {
             Tab("General") { Text("General") }
@@ -185,7 +184,7 @@ final class Phase4ViewTests: XCTestCase {
 
     // MARK: - GridRow with ForEach
 
-    func testGridRowChildrenViaMultiChildView() {
+    @MainActor func testGridRowChildrenViaMultiChildView() {
         let row = GridRow {
             Text("A")
             Text("B")
@@ -199,7 +198,7 @@ final class Phase4ViewTests: XCTestCase {
 
     // MARK: - Form with many children (TupleView4+)
 
-    func testFormManyChildren() {
+    @MainActor func testFormManyChildren() {
         let form = Form {
             Text("A")
             Text("B")
@@ -211,7 +210,7 @@ final class Phase4ViewTests: XCTestCase {
         XCTAssertEqual(form.children.count, 4)
     }
 
-    func testSectionManyChildren() {
+    @MainActor func testSectionManyChildren() {
         // Section content can have 4+ views via TupleView4
         // This should compile and construct without issues
         let section = Section("Many") {

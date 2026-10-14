@@ -2,7 +2,7 @@ import XCTest
 @testable import SwiftOpenUICore
 
 final class AsyncImageLoaderTests: XCTestCase {
-    func testPersistentFileIsReusedWithoutNetwork() throws {
+    @MainActor func testPersistentFileIsReusedWithoutNetwork() throws {
         let remote = try XCTUnwrap(URL(string: "https://unreachable.invalid/thumb.png"))
         let file = AsyncImageLoader.cacheFile(for: remote)
         try Data("cached-image".utf8).write(to: file, options: .atomic)
@@ -16,7 +16,7 @@ final class AsyncImageLoaderTests: XCTestCase {
         wait(for: [loaded], timeout: 1)
     }
 
-    func testCacheFileIsStableAndPreservesSafeExtension() throws {
+    @MainActor func testCacheFileIsStableAndPreservesSafeExtension() throws {
         let url = try XCTUnwrap(URL(string: "https://example.test/a/thumbnail.webp?size=large"))
         XCTAssertEqual(AsyncImageLoader.cacheFile(for: url), AsyncImageLoader.cacheFile(for: url))
         XCTAssertEqual(AsyncImageLoader.cacheFile(for: url).pathExtension, "webp")

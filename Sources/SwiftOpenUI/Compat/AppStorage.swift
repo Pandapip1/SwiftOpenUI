@@ -60,7 +60,10 @@ extension AppStorage where Value == String {
 }
 extension AppStorage where Value == URL {
     public init(wrappedValue: URL, _ key: String, store: UserDefaults? = nil) {
-        self.init(wrappedValue, key, store, read: { $0.string(forKey: $1).flatMap(URL.init(string:)) }, write: { $0.set($2.absoluteString, forKey: $1) })
+        self.init(wrappedValue, key, store, read: {
+            guard let value = $0.string(forKey: $1) else { return nil }
+            return URL(string: value)
+        }, write: { $0.set($2.absoluteString, forKey: $1) })
     }
 }
 extension AppStorage where Value == Data {
@@ -70,11 +73,17 @@ extension AppStorage where Value == Data {
 }
 extension AppStorage where Value: RawRepresentable, Value.RawValue == String {
     public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) {
-        self.init(wrappedValue, key, store, read: { $0.string(forKey: $1).flatMap(Value.init(rawValue:)) }, write: { $0.set($2.rawValue, forKey: $1) })
+        self.init(wrappedValue, key, store, read: {
+            guard let value = $0.string(forKey: $1) else { return nil }
+            return Value(rawValue: value)
+        }, write: { $0.set($2.rawValue, forKey: $1) })
     }
 }
 extension AppStorage where Value: RawRepresentable, Value.RawValue == Int {
     public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) {
-        self.init(wrappedValue, key, store, read: { ($0.object(forKey: $1) as? Int).flatMap(Value.init(rawValue:)) }, write: { $0.set($2.rawValue, forKey: $1) })
+        self.init(wrappedValue, key, store, read: {
+            guard let value = $0.object(forKey: $1) as? Int else { return nil }
+            return Value(rawValue: value)
+        }, write: { $0.set($2.rawValue, forKey: $1) })
     }
 }

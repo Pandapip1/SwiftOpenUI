@@ -5,19 +5,19 @@ final class ViewBuilderTests: XCTestCase {
 
     // MARK: - ViewBuilder basics
 
-    func testBuildBlockEmpty() {
+    @MainActor func testBuildBlockEmpty() {
         @ViewBuilder func build() -> some View { }
         let view = build()
         XCTAssertTrue(view is EmptyView)
     }
 
-    func testBuildBlockSingle() {
+    @MainActor func testBuildBlockSingle() {
         @ViewBuilder func build() -> some View { Text("hello") }
         let view = build()
         XCTAssertTrue(view is Text)
     }
 
-    func testBuildBlockTwo() {
+    @MainActor func testBuildBlockTwo() {
         @ViewBuilder func build() -> some View {
             Text("a")
             Text("b")
@@ -29,7 +29,7 @@ final class ViewBuilderTests: XCTestCase {
         XCTAssertEqual(children.count, 2)
     }
 
-    func testBuildBlockThree() {
+    @MainActor func testBuildBlockThree() {
         @ViewBuilder func build() -> some View {
             Text("a")
             Text("b")
@@ -41,7 +41,7 @@ final class ViewBuilderTests: XCTestCase {
         XCTAssertEqual(children.count, 3)
     }
 
-    func testBuildOptionalPresent() {
+    @MainActor func testBuildOptionalPresent() {
         let show = true
         @ViewBuilder func build() -> some View {
             if show { Text("visible") }
@@ -51,7 +51,7 @@ final class ViewBuilderTests: XCTestCase {
         XCTAssertNotNil(view)
     }
 
-    func testBuildEitherTrue() {
+    @MainActor func testBuildEitherTrue() {
         let flag = true
         @ViewBuilder func build() -> some View {
             if flag {
@@ -66,12 +66,12 @@ final class ViewBuilderTests: XCTestCase {
 
     // MARK: - MultiChildView
 
-    func testTupleViewChildren() {
+    @MainActor func testTupleViewChildren() {
         let tuple = TupleView(Text("a"), Text("b"))
         XCTAssertEqual(tuple.children.count, 2)
     }
 
-    func testGroupFlattensChildren() {
+    @MainActor func testGroupFlattensChildren() {
         let group = Group {
             Text("a")
             Text("b")
@@ -82,7 +82,7 @@ final class ViewBuilderTests: XCTestCase {
 
     // MARK: - ForEach
 
-    func testForEachRange() {
+    @MainActor func testForEachRange() {
         let forEach = ForEach(0..<5) { i in Text("\(i)") }
         XCTAssertEqual(forEach.children.count, 5)
     }
@@ -92,7 +92,7 @@ final class ViewBuilderTests: XCTestCase {
         let name: String
     }
 
-    func testForEachIdentifiable() {
+    @MainActor func testForEachIdentifiable() {
         let items = [Item(id: 1, name: "a"), Item(id: 2, name: "b")]
         let forEach = ForEach(items) { item in Text(item.name) }
         XCTAssertEqual(forEach.children.count, 2)
@@ -100,7 +100,7 @@ final class ViewBuilderTests: XCTestCase {
 
     // MARK: - AnyView
 
-    func testAnyViewWraps() {
+    @MainActor func testAnyViewWraps() {
         let text = Text("hello")
         let any = AnyView(text)
         XCTAssertTrue(any.wrapped is Text)
@@ -108,22 +108,22 @@ final class ViewBuilderTests: XCTestCase {
 
     // MARK: - Stacks
 
-    func testVStackDefaults() {
+    @MainActor func testVStackDefaults() {
         let stack = VStack { Text("child") }
         XCTAssertEqual(stack.children.count, 1)
     }
 
-    func testHStackDefaults() {
+    @MainActor func testHStackDefaults() {
         let stack = HStack { Text("child") }
         XCTAssertEqual(stack.children.count, 1)
     }
 
-    func testZStackDefaults() {
+    @MainActor func testZStackDefaults() {
         let stack = ZStack { Text("child") }
         XCTAssertEqual(stack.children.count, 1)
     }
 
-    func testVStackMultipleChildren() {
+    @MainActor func testVStackMultipleChildren() {
         let stack = VStack {
             Text("a")
             Text("b")

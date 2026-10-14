@@ -1358,7 +1358,7 @@ extension NavigationDestinationModifier: WebRenderable {
     public func webCreateElement() -> JSValue {
         // Register destination factory in current navigation context
         if let ctx = _webCurrentNavContext {
-            ctx.destinationRegistry.register(for: dataType) { value in
+            ctx.destinationRegistry.register(for: dataType) { [ctx] value in
                 let prevCtx = _webCurrentNavContext
                 _webCurrentNavContext = ctx
                 // Install NavigateAction so destinations can use @Environment(\.navigate)
@@ -3570,7 +3570,7 @@ private func webRenderMenuElements(_ elements: [MenuElement], into container: JS
             let subHandler = webMakeClosure { args in
                 // The document-level dismiss handler must not close the menu
                 // while a nested submenu is being opened or selected.
-                if let event = args.first?.object { event.stopPropagation() }
+                if let event = args.first?.object { _ = event.stopPropagation?() }
                 let current = subMenu.style.object?.display.string ?? "none"
                 subMenu.style.object?.display = .string(current == "none" ? "block" : "none")
                 return .undefined

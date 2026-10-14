@@ -3347,6 +3347,14 @@ extension OpacityView: GTKRenderable, GTKDescribable {
     }
 }
 
+extension AllowsHitTestingView: GTKRenderable {
+    public func gtkCreateWidget() -> OpaquePointer {
+        let widget = widgetFromOpaque(gtkRenderView(content))
+        gtk_widget_set_can_target(widget, allowsHitTesting ? 1 : 0)
+        return opaqueFromWidget(widget)
+    }
+}
+
 extension OffsetView: GTKRenderable, GTKDescribable {
     public func gtkDescribeNode() -> GTK4DescriptorNode {
         GTK4DescriptorNode(

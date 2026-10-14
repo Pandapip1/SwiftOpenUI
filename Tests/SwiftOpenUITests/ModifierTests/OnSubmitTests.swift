@@ -5,7 +5,7 @@ final class OnSubmitTests: XCTestCase {
 
     // MARK: - OnSubmitView
 
-    func testOnSubmitWrapsContent() {
+    @MainActor func testOnSubmitWrapsContent() {
         var submitted = false
         let view = Text("Hello").onSubmit { submitted = true }
         XCTAssertEqual(view.content.content, "Hello")
@@ -13,14 +13,14 @@ final class OnSubmitTests: XCTestCase {
         XCTAssertFalse(submitted)
     }
 
-    func testOnSubmitSearchTrigger() {
+    @MainActor func testOnSubmitSearchTrigger() {
         let view = Text("Hello").onSubmit(of: .search) {}
         XCTAssertEqual(view.triggers, .search)
     }
 
     // MARK: - SubmitAction
 
-    func testSubmitActionCallable() {
+    @MainActor func testSubmitActionCallable() {
         var called = false
         let action = SubmitAction { called = true }
         action()
@@ -29,12 +29,12 @@ final class OnSubmitTests: XCTestCase {
 
     // MARK: - Environment
 
-    func testSubmitActionEnvironmentDefault() {
+    @MainActor func testSubmitActionEnvironmentDefault() {
         let env = EnvironmentValues()
         XCTAssertNil(env.submitAction)
     }
 
-    func testSubmitActionEnvironmentSet() {
+    @MainActor func testSubmitActionEnvironmentSet() {
         var env = EnvironmentValues()
         var called = false
         env.submitAction = SubmitAction { called = true }
@@ -44,7 +44,7 @@ final class OnSubmitTests: XCTestCase {
 
     // MARK: - Chaining
 
-    func testOnSubmitChainedWithTextField() {
+    @MainActor func testOnSubmitChainedWithTextField() {
         var submitted = false
         let binding = Binding<String>(get: { "" }, set: { _ in })
         let view = TextField("Name", text: binding)

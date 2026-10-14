@@ -5,18 +5,18 @@ final class StateTests: XCTestCase {
 
     // MARK: - @State
 
-    func testStateInitialValue() {
+    @MainActor func testStateInitialValue() {
         let state = State<Int>(wrappedValue: 42)
         XCTAssertEqual(state.wrappedValue, 42)
     }
 
-    func testStateSetValue() {
+    @MainActor func testStateSetValue() {
         let state = State<Int>(wrappedValue: 0)
         state.wrappedValue = 99
         XCTAssertEqual(state.wrappedValue, 99)
     }
 
-    func testStateProjectedValueReturnsBinding() {
+    @MainActor func testStateProjectedValueReturnsBinding() {
         let state = State<String>(wrappedValue: "hello")
         let binding = state.projectedValue
         XCTAssertEqual(binding.wrappedValue, "hello")
@@ -24,7 +24,7 @@ final class StateTests: XCTestCase {
         XCTAssertEqual(state.wrappedValue, "world")
     }
 
-    func testStateStorageSharedAcrossCopies() {
+    @MainActor func testStateStorageSharedAcrossCopies() {
         let state = State<Int>(wrappedValue: 10)
         let copy = state
         state.wrappedValue = 20
@@ -33,7 +33,7 @@ final class StateTests: XCTestCase {
 
     // MARK: - @Binding
 
-    func testBindingGetSet() {
+    @MainActor func testBindingGetSet() {
         var value = 5
         let binding = Binding<Int>(get: { value }, set: { value = $0 })
         XCTAssertEqual(binding.wrappedValue, 5)
@@ -41,14 +41,14 @@ final class StateTests: XCTestCase {
         XCTAssertEqual(value, 10)
     }
 
-    func testBindingConstant() {
+    @MainActor func testBindingConstant() {
         let binding = Binding<String>.constant("fixed")
         XCTAssertEqual(binding.wrappedValue, "fixed")
         binding.wrappedValue = "changed"
         XCTAssertEqual(binding.wrappedValue, "fixed", "Constant binding should not change")
     }
 
-    func testBindingProjectedValue() {
+    @MainActor func testBindingProjectedValue() {
         let binding = Binding<Int>(get: { 1 }, set: { _ in })
         let projected = binding.projectedValue
         XCTAssertEqual(projected.wrappedValue, 1)
@@ -60,18 +60,18 @@ final class StateTests: XCTestCase {
         @SwiftOpenUICore.Published var count = 0
     }
 
-    func testPublishedInitialValue() {
+    @MainActor func testPublishedInitialValue() {
         let counter = Counter()
         XCTAssertEqual(counter.count, 0)
     }
 
-    func testPublishedSetValue() {
+    @MainActor func testPublishedSetValue() {
         let counter = Counter()
         counter.count = 42
         XCTAssertEqual(counter.count, 42)
     }
 
-    func testPublishedNotifiesObservers() {
+    @MainActor func testPublishedNotifiesObservers() {
         let counter = Counter()
         let expectation = XCTestExpectation(description: "Observer notified")
         let token = ObjectIdentifier(self)
@@ -84,7 +84,7 @@ final class StateTests: XCTestCase {
         wait(for: [expectation], timeout: 1.0)
     }
 
-    func testPublishedReplacesObserverWithSameToken() {
+    @MainActor func testPublishedReplacesObserverWithSameToken() {
         let counter = Counter()
         let token = ObjectIdentifier(self)
         var callCount = 0
@@ -111,7 +111,7 @@ final class StateTests: XCTestCase {
         @SwiftOpenUICore.Published var derivedProp = "derived"
     }
 
-    func testWirePublishedWalksSuperclass() {
+    @MainActor func testWirePublishedWalksSuperclass() {
         let model = DerivedModel()
         var notifications = 0
 
@@ -136,7 +136,7 @@ final class StateTests: XCTestCase {
 
     // MARK: - @StateObject
 
-    func testStateObjectLazyCreation() {
+    @MainActor func testStateObjectLazyCreation() {
         var created = false
         let stateObj = StateObject<Counter>(wrappedValue: {
             created = true
@@ -148,7 +148,7 @@ final class StateTests: XCTestCase {
         XCTAssertEqual(stateObj.wrappedValue.count, 0)
     }
 
-    func testStateObjectReturnsSameInstance() {
+    @MainActor func testStateObjectReturnsSameInstance() {
         let stateObj = StateObject<Counter>(wrappedValue: Counter())
         let first = stateObj.wrappedValue
         let second = stateObj.wrappedValue
@@ -157,12 +157,12 @@ final class StateTests: XCTestCase {
 
     // MARK: - @FocusState
 
-    func testFocusStateBoolDefault() {
+    @MainActor func testFocusStateBoolDefault() {
         let focus = FocusState<Bool>()
         XCTAssertEqual(focus.wrappedValue, false)
     }
 
-    func testFocusStateOptionalDefault() {
+    @MainActor func testFocusStateOptionalDefault() {
         enum Field { case name, email }
         let focus = FocusState<Field?>()
         XCTAssertNil(focus.storage.value as Any?)

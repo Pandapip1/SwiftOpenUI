@@ -6,6 +6,8 @@ final class WebInputStateTests: XCTestCase {
 
     // MARK: - WebFocusSnapshot construction
 
+    @MainActor
+
     func testSnapshotTextInput() {
         let snapshot = WebFocusSnapshot(
             tag: "input", inputType: "text", typeIndex: 0, typeCount: 2,
@@ -19,6 +21,8 @@ final class WebInputStateTests: XCTestCase {
         XCTAssertEqual(snapshot.selectionDirection, "forward")
     }
 
+    @MainActor
+
     func testSnapshotPasswordInput() {
         let snapshot = WebFocusSnapshot(
             tag: "input", inputType: "password", typeIndex: 1, typeCount: 3,
@@ -27,6 +31,8 @@ final class WebInputStateTests: XCTestCase {
         XCTAssertEqual(snapshot.selectionStart, 0)
         XCTAssertEqual(snapshot.selectionEnd, 8)
     }
+
+    @MainActor
 
     func testSnapshotTextarea() {
         let snapshot = WebFocusSnapshot(
@@ -38,6 +44,8 @@ final class WebInputStateTests: XCTestCase {
         XCTAssertEqual(snapshot.selectionEnd, 20)
     }
 
+    @MainActor
+
     func testSnapshotCheckboxNoSelection() {
         let snapshot = WebFocusSnapshot(
             tag: "input", inputType: "checkbox", typeIndex: 0, typeCount: 1,
@@ -47,6 +55,8 @@ final class WebInputStateTests: XCTestCase {
         XCTAssertNil(snapshot.selectionEnd)
     }
 
+    @MainActor
+
     func testSnapshotRangeNoSelection() {
         let snapshot = WebFocusSnapshot(
             tag: "input", inputType: "range", typeIndex: 0, typeCount: 1,
@@ -54,6 +64,8 @@ final class WebInputStateTests: XCTestCase {
         XCTAssertEqual(snapshot.inputType, "range")
         XCTAssertNil(snapshot.selectionStart)
     }
+
+    @MainActor
 
     func testSnapshotDateNoSelection() {
         let snapshot = WebFocusSnapshot(
@@ -64,6 +76,8 @@ final class WebInputStateTests: XCTestCase {
     }
 
     // MARK: - Bail guard logic
+
+    @MainActor
 
     func testBailGuardCountMismatch() {
         let snapshot = WebFocusSnapshot(
@@ -77,6 +91,8 @@ final class WebInputStateTests: XCTestCase {
         XCTAssertFalse(shouldRestore, "Count mismatch should bail")
     }
 
+    @MainActor
+
     func testBailGuardCountMatch() {
         let snapshot = WebFocusSnapshot(
             tag: "input", inputType: "text", typeIndex: 1, typeCount: 3,
@@ -87,6 +103,8 @@ final class WebInputStateTests: XCTestCase {
             && snapshot.typeIndex < newCount
         XCTAssertTrue(shouldRestore, "Matching count should proceed")
     }
+
+    @MainActor
 
     func testBailGuardIndexOutOfBounds() {
         let snapshot = WebFocusSnapshot(
@@ -101,6 +119,8 @@ final class WebInputStateTests: XCTestCase {
 
     // MARK: - Text-selectable type classification
 
+    @MainActor
+
     func testTextSelectableTypes() {
         let selectable: Set<String> = ["text", "password", "search", "textarea"]
         XCTAssertTrue(selectable.contains("text"))
@@ -114,6 +134,8 @@ final class WebInputStateTests: XCTestCase {
 
     // MARK: - Suppress focus restore
 
+    @MainActor
+
     func testSuppressFocusRestoreContract() {
         // suppressNextFocusRestore is consumed before Phase 7 early return
         // in rebuild(), same lifecycle as pendingAnimation. This prevents
@@ -125,10 +147,12 @@ final class WebInputStateTests: XCTestCase {
         //
         // Verify WebViewHost conforms to AnyViewHost (which requires
         // suppressNextFocusRestore).
-        XCTAssertTrue(WebViewHost.self is AnyViewHost.Type)
+        let _: AnyViewHost.Type = WebViewHost.self
     }
 
     // MARK: - webRestoreFocusState suppressFocus parameter
+
+    @MainActor
 
     func testRestoreWithSuppressFocusTrueSkipsFocusButAllowsSelection() {
         // When suppressFocus is true, webRestoreFocusState should:
@@ -148,6 +172,8 @@ final class WebInputStateTests: XCTestCase {
         XCTAssertEqual(snapshot.selectionDirection, "forward")
     }
 
+    @MainActor
+
     func testRestoreWithSuppressFocusFalseForNonTextType() {
         // Non-text types should have nil selection even without suppression
         let snapshot = WebFocusSnapshot(
@@ -158,6 +184,8 @@ final class WebInputStateTests: XCTestCase {
     }
 
     // MARK: - Tag classification
+
+    @MainActor
 
     func testTagClassificationInput() {
         // Verify the snapshot correctly distinguishes input types
@@ -171,6 +199,8 @@ final class WebInputStateTests: XCTestCase {
         // Same tag but different input types — should not match
         XCTAssertNotEqual(textSnap.inputType, rangeSnap.inputType)
     }
+
+    @MainActor
 
     func testTagClassificationTextarea() {
         let snap = WebFocusSnapshot(

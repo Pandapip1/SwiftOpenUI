@@ -6,11 +6,15 @@ final class WebShapeTests: XCTestCase {
 
     // MARK: - Shape views
 
+    @MainActor
+
     func testCirclePathIsNotEmpty() {
         let rect = CGRect(x: 0, y: 0, width: 100, height: 100)
         let path = Circle().path(in: rect)
         XCTAssertFalse(path.isEmpty)
     }
+
+    @MainActor
 
     func testRectanglePathIsNotEmpty() {
         let rect = CGRect(x: 0, y: 0, width: 100, height: 100)
@@ -18,16 +22,22 @@ final class WebShapeTests: XCTestCase {
         XCTAssertFalse(path.isEmpty)
     }
 
+    @MainActor
+
     func testRoundedRectangleStoresCornerRadius() {
         let shape = RoundedRectangle(cornerRadius: 12)
         XCTAssertEqual(shape.cornerRadius, 12)
     }
+
+    @MainActor
 
     func testCapsulePathIsNotEmpty() {
         let rect = CGRect(x: 0, y: 0, width: 100, height: 50)
         let path = Capsule().path(in: rect)
         XCTAssertFalse(path.isEmpty)
     }
+
+    @MainActor
 
     func testEllipsePathIsNotEmpty() {
         let rect = CGRect(x: 0, y: 0, width: 200, height: 100)
@@ -37,11 +47,15 @@ final class WebShapeTests: XCTestCase {
 
     // MARK: - FilledShape
 
+    @MainActor
+
     func testFillReturnsFilledShape() {
         let filled = Circle().fill(.red)
         XCTAssertEqual(filled.color.red, 1.0)
         XCTAssertEqual(filled.color.green, 0.0)
     }
+
+    @MainActor
 
     func testFilledShapePreservesShape() {
         let filled = RoundedRectangle(cornerRadius: 8).fill(.blue)
@@ -50,11 +64,15 @@ final class WebShapeTests: XCTestCase {
 
     // MARK: - StrokedShape
 
+    @MainActor
+
     func testStrokeReturnsStrokedShape() {
         let stroked = Circle().stroke(.red, lineWidth: 3)
         XCTAssertEqual(stroked.style.lineWidth, 3)
         XCTAssertEqual(stroked.color.red, 1.0)
     }
+
+    @MainActor
 
     func testStrokeWithStylePreservesStyle() {
         let style = StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .bevel)
@@ -66,6 +84,8 @@ final class WebShapeTests: XCTestCase {
 
     // MARK: - Modifier chaining
 
+    @MainActor
+
     func testShapeWithFrameAndFill() {
         // Verify chaining compiles and stores correct values
         let view = Circle().fill(.green).frame(width: 50, height: 50)
@@ -74,6 +94,8 @@ final class WebShapeTests: XCTestCase {
     }
 
     // MARK: - RoundedCornerStyle
+
+    @MainActor
 
     func testRoundedCornerStyleEquatable() {
         XCTAssertEqual(RoundedCornerStyle.circular, RoundedCornerStyle.circular)

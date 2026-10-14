@@ -6,27 +6,39 @@ final class WebAnimationTests: XCTestCase {
 
     // MARK: - webCSSTimingFunction
 
+    @MainActor
+
     func testCSSTimingFunctionLinear() {
         XCTAssertEqual(webCSSTimingFunction(.linear), "linear")
     }
+
+    @MainActor
 
     func testCSSTimingFunctionEaseIn() {
         XCTAssertEqual(webCSSTimingFunction(.easeIn), "ease-in")
     }
 
+    @MainActor
+
     func testCSSTimingFunctionEaseOut() {
         XCTAssertEqual(webCSSTimingFunction(.easeOut), "ease-out")
     }
 
+    @MainActor
+
     func testCSSTimingFunctionEaseInOut() {
         XCTAssertEqual(webCSSTimingFunction(.easeInOut), "ease-in-out")
     }
+
+    @MainActor
 
     func testCSSTimingFunctionSpring() {
         XCTAssertEqual(webCSSTimingFunction(.spring), "cubic-bezier(0.5, 1.8, 0.3, 0.8)")
     }
 
     // MARK: - AnimatedView TLS scoping
+
+    @MainActor
 
     func testAnimatedViewScopesCurrentAnimation() {
         // Before: no animation in TLS
@@ -45,12 +57,16 @@ final class WebAnimationTests: XCTestCase {
             "currentAnimation should remain nil outside AnimatedView render")
     }
 
+    @MainActor
+
     func testAnimatedViewNilAnimation() {
         let view = Text("hello").animation(nil)
         XCTAssertNil(view.animation)
     }
 
     // MARK: - WebViewHost animation fields
+
+    @MainActor
 
     func testCaptureAnimationStoresCurrentAnimation() {
         // WebViewHost.captureAnimation is tested indirectly through
@@ -62,6 +78,8 @@ final class WebAnimationTests: XCTestCase {
         // Clean up
         setCurrentAnimation(nil)
     }
+
+    @MainActor
 
     func testPendingAnimationFromWithAnimation() {
         // Clean state
@@ -81,6 +99,8 @@ final class WebAnimationTests: XCTestCase {
 
     // MARK: - Animation snapshot types
 
+    @MainActor
+
     func testAnimatableSnapshotOpacityRole() {
         let snapshot = WebAnimatableSnapshot(
             key: "opacity@2", role: "opacity", opacity: "0.5", transform: nil)
@@ -89,6 +109,8 @@ final class WebAnimationTests: XCTestCase {
         XCTAssertEqual(snapshot.opacity, "0.5")
         XCTAssertNil(snapshot.transform)
     }
+
+    @MainActor
 
     func testAnimatableSnapshotTransformRole() {
         let snapshot = WebAnimatableSnapshot(
@@ -99,6 +121,8 @@ final class WebAnimationTests: XCTestCase {
         XCTAssertEqual(snapshot.transform, "translate(10px, 20px)")
     }
 
+    @MainActor
+
     func testAnimatableSnapshotKeyFormat() {
         // Key is "role@depth"
         let snapshot = WebAnimatableSnapshot(
@@ -108,12 +132,16 @@ final class WebAnimationTests: XCTestCase {
 
     // MARK: - Strict match guard logic (key-based)
 
+    @MainActor
+
     func testKeySequenceMatchIdentical() {
         let oldKeys = ["opacity@2", "offset@3", "scale@3"]
         let newKeys = ["opacity@2", "offset@3", "scale@3"]
         let keysMatch = oldKeys == newKeys && Set(oldKeys).count == oldKeys.count
         XCTAssertTrue(keysMatch)
     }
+
+    @MainActor
 
     func testKeySequenceMismatchDifferentCount() {
         let oldKeys = ["opacity@2", "offset@3"]
@@ -122,6 +150,8 @@ final class WebAnimationTests: XCTestCase {
         XCTAssertFalse(keysMatch)
     }
 
+    @MainActor
+
     func testKeySequenceMismatchDifferentOrder() {
         let oldKeys = ["opacity@2", "scale@3"]
         let newKeys = ["scale@3", "opacity@2"]
@@ -129,12 +159,16 @@ final class WebAnimationTests: XCTestCase {
         XCTAssertFalse(keysMatch)
     }
 
+    @MainActor
+
     func testKeySequenceMismatchDifferentRole() {
         let oldKeys = ["opacity@2"]
         let newKeys = ["rotation@2"]
         let keysMatch = oldKeys == newKeys && Set(oldKeys).count == oldKeys.count
         XCTAssertFalse(keysMatch)
     }
+
+    @MainActor
 
     func testKeySequenceMismatchDifferentDepth() {
         // Same roles but different depths → different nodes, must not pair.
@@ -144,6 +178,8 @@ final class WebAnimationTests: XCTestCase {
         XCTAssertFalse(keysMatch, "Same role at different depth must not match")
     }
 
+    @MainActor
+
     func testKeySequenceDuplicateRolesSameDepthCountMismatch() {
         // Two opacity wrappers at depth 3 — if one is removed, count differs.
         let oldKeys = ["opacity@3", "opacity@3"]
@@ -151,6 +187,8 @@ final class WebAnimationTests: XCTestCase {
         let keysMatch = oldKeys == newKeys && Set(oldKeys).count == oldKeys.count
         XCTAssertFalse(keysMatch)
     }
+
+    @MainActor
 
     func testKeySequenceDuplicateRolesSameDepthReorder() {
         // Two same-role siblings at the same depth: even if the sequence
@@ -162,6 +200,8 @@ final class WebAnimationTests: XCTestCase {
             "Duplicate keys must bail — cannot distinguish reordered same-role siblings")
     }
 
+    @MainActor
+
     func testEmptyKeySequencesMatch() {
         let oldKeys: [String] = []
         let newKeys: [String] = []
@@ -170,6 +210,8 @@ final class WebAnimationTests: XCTestCase {
     }
 
     // MARK: - Pending animation lifecycle
+
+    @MainActor
 
     func testPendingAnimationConsumedBeforePhase7() {
         // Verify the contract: pendingAnimation must be consumed before

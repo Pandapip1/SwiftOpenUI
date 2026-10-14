@@ -5,7 +5,7 @@ final class Phase4FViewTests: XCTestCase {
 
     // MARK: - Picker
 
-    func testPickerCallback() {
+    @MainActor func testPickerCallback() {
         var selected = -1
         let picker = Picker("Color", selection: 1, options: ["Red", "Green", "Blue"]) { selected = $0 }
         XCTAssertEqual(picker.label, "Color")
@@ -15,13 +15,13 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(selected, 2)
     }
 
-    func testPickerBinding() {
+    @MainActor func testPickerBinding() {
         let picker = Picker("Size", selection: .constant(0), options: ["S", "M", "L"])
         XCTAssertEqual(picker.selected, 0)
         XCTAssertNotNil(picker.onChanged)
     }
 
-    func testPickerStyle() {
+    @MainActor func testPickerStyle() {
         let picker = Picker("Mode", options: ["A", "B"]).pickerStyle(.segmented)
         if case .segmented = picker.style {} else {
             XCTFail("Expected .segmented style")
@@ -30,27 +30,27 @@ final class Phase4FViewTests: XCTestCase {
 
     // MARK: - DatePicker
 
-    func testDateComponents() {
+    @MainActor func testDateComponents() {
         let dc = SwiftOpenUICore.DateComponents(year: 2025, month: 3, day: 15)
         XCTAssertEqual(dc.year, 2025)
         XCTAssertEqual(dc.month, 3)
         XCTAssertEqual(dc.day, 15)
     }
 
-    func testDateComponentsToday() {
+    @MainActor func testDateComponentsToday() {
         let dc = SwiftOpenUICore.DateComponents()
         XCTAssertGreaterThan(dc.year, 2020)
         XCTAssertTrue((1...12).contains(dc.month))
         XCTAssertTrue((1...31).contains(dc.day))
     }
 
-    func testDatePickerCallback() {
+    @MainActor func testDatePickerCallback() {
         let picker = DatePicker("Birthday")
         XCTAssertEqual(picker.title, "Birthday")
         XCTAssertNil(picker.selection)
     }
 
-    func testDatePickerBinding() {
+    @MainActor func testDatePickerBinding() {
         let dc = SwiftOpenUICore.DateComponents(year: 2000, month: 1, day: 1)
         let picker = DatePicker("DOB", selection: .constant(dc))
         XCTAssertNotNil(picker.selection)
@@ -59,31 +59,31 @@ final class Phase4FViewTests: XCTestCase {
 
     // MARK: - GeometryReader
 
-    func testGeometrySize() {
+    @MainActor func testGeometrySize() {
         let size = GeometrySize(width: 100, height: 200)
         XCTAssertEqual(size.width, 100)
         XCTAssertEqual(size.height, 200)
     }
 
-    func testGeometryProxy() {
+    @MainActor func testGeometryProxy() {
         let proxy = GeometryProxy(size: GeometrySize(width: 300, height: 400))
         XCTAssertEqual(proxy.size.width, 300)
         XCTAssertEqual(proxy.size.height, 400)
     }
 
-    func testGeometryReaderConstruction() {
+    @MainActor func testGeometryReaderConstruction() {
         let reader = GeometryReader { geo in
             Text("Width: \(geo.size.width)")
         }
         // Verify content builder works
         let proxy = GeometryProxy(size: GeometrySize(width: 100, height: 50))
         let view = reader.content(proxy)
-        XCTAssertTrue(view is Text)
+        XCTAssertEqual(view.content, "Width: 100.0")
     }
 
     // MARK: - ViewThatFits
 
-    func testViewThatFitsStoresChildrenInSourceOrder() {
+    @MainActor func testViewThatFitsStoresChildrenInSourceOrder() {
         let view = ViewThatFits {
             Text("Wide")
             Text("Compact")
@@ -96,7 +96,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertNotNil(view.children[2].wrapped as? Button<Text>)
     }
 
-    func testViewThatFitsBuilderSupportsConditionals() {
+    @MainActor func testViewThatFitsBuilderSupportsConditionals() {
         let includeCompact = true
         let view = ViewThatFits {
             Text("Primary")
@@ -110,7 +110,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual((view.children[1].wrapped as? Text)?.content, "Compact")
     }
 
-    func testViewThatFitsBuilderSupportsLoops() {
+    @MainActor func testViewThatFitsBuilderSupportsLoops() {
         let labels = ["One", "Two", "Three"]
         let view = ViewThatFits {
             for label in labels {
@@ -124,14 +124,14 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual((view.children[2].wrapped as? Text)?.content, "Three")
     }
 
-    func testViewThatFitsAllowsEmptyContent() {
+    @MainActor func testViewThatFitsAllowsEmptyContent() {
         let view = ViewThatFits {}
         XCTAssertTrue(view.children.isEmpty)
     }
 
     // MARK: - Searchable
 
-    func testSearchableModifier() {
+    @MainActor func testSearchableModifier() {
         let text = Text("Content")
         let searchable = text.searchable(text: .constant("query"), prompt: "Find...")
         XCTAssertEqual(searchable.text.wrappedValue, "query")
@@ -140,13 +140,13 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertNil(searchable.isPresented)
     }
 
-    func testSearchableDefaultPrompt() {
+    @MainActor func testSearchableDefaultPrompt() {
         let searchable = Text("Content").searchable(text: .constant(""))
         XCTAssertEqual(searchable.prompt, "Search")
         XCTAssertEqual(searchable.placement, .automatic)
     }
 
-    func testSearchableExplicitPlacement() {
+    @MainActor func testSearchableExplicitPlacement() {
         let searchable = Text("Content").searchable(
             text: .constant("query"),
             placement: .sidebar,
@@ -156,7 +156,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertNil(searchable.isPresented)
     }
 
-    func testSearchableStoresPresentationBinding() {
+    @MainActor func testSearchableStoresPresentationBinding() {
         let presented = Binding.constant(true)
         let searchable = Text("Content").searchable(
             text: .constant("query"),
@@ -171,7 +171,7 @@ final class Phase4FViewTests: XCTestCase {
         )
     }
 
-    func testSearchableStoresTokenValues() {
+    @MainActor func testSearchableStoresTokenValues() {
         struct SearchToken: Identifiable {
             let id: Int
             let name: String
@@ -200,7 +200,7 @@ final class Phase4FViewTests: XCTestCase {
         )
     }
 
-    func testSearchableStoresEditableTokenValues() {
+    @MainActor func testSearchableStoresEditableTokenValues() {
         struct SearchToken: Identifiable {
             let id: String
             let label: String
@@ -223,7 +223,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(searchable.tokens[1].label, "Closed")
     }
 
-    func testSearchableStoresSuggestions() {
+    @MainActor func testSearchableStoresSuggestions() {
         let searchable = Text("Content")
             .searchable(text: .constant("query"))
             .searchSuggestions {
@@ -241,7 +241,7 @@ final class Phase4FViewTests: XCTestCase {
         )
     }
 
-    func testSearchableSuggestionBuilderSupportsConditionals() {
+    @MainActor func testSearchableSuggestionBuilderSupportsConditionals() {
         let includeSuggestion = true
         let searchable = Text("Content")
             .searchable(text: .constant(""))
@@ -257,7 +257,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(searchable.suggestions[1].completion, "B")
     }
 
-    func testSearchableStoresFilteredSuggestionsForQuery() {
+    @MainActor func testSearchableStoresFilteredSuggestionsForQuery() {
         let searchable = Text("Content")
             .searchable(text: .constant("swift"))
             .searchSuggestions(
@@ -279,7 +279,7 @@ final class Phase4FViewTests: XCTestCase {
         )
     }
 
-    func testSearchableFilteredSuggestionsAreCaseInsensitive() {
+    @MainActor func testSearchableFilteredSuggestionsAreCaseInsensitive() {
         let searchable = Text("Content")
             .searchable(text: .constant("KIT"))
             .searchSuggestions(
@@ -294,7 +294,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(searchable.suggestions[0].label, "UIKit")
     }
 
-    func testSearchableFilteredSuggestionsMatchCompletionText() {
+    @MainActor func testSearchableFilteredSuggestionsMatchCompletionText() {
         let searchable = Text("Content")
             .searchable(text: .constant("ios"))
             .searchSuggestions(
@@ -310,7 +310,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(searchable.suggestions[0].completion, "ios ui")
     }
 
-    func testSearchableFilteredSuggestionsKeepAllRowsForEmptyQuery() {
+    @MainActor func testSearchableFilteredSuggestionsKeepAllRowsForEmptyQuery() {
         let searchable = Text("Content")
             .searchable(text: .constant(""))
             .searchSuggestions(
@@ -326,7 +326,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(searchable.suggestions[1].label, "Beta")
     }
 
-    func testSearchableStoresScopes() {
+    @MainActor func testSearchableStoresScopes() {
         enum Scope: String, Hashable {
             case all
             case open
@@ -352,7 +352,7 @@ final class Phase4FViewTests: XCTestCase {
         )
     }
 
-    func testSearchableScopeSelectionWritesBack() {
+    @MainActor func testSearchableScopeSelectionWritesBack() {
         enum Scope: String, Hashable {
             case all
             case favorites
@@ -374,7 +374,7 @@ final class Phase4FViewTests: XCTestCase {
 
     // MARK: - Menu
 
-    func testMenuTitleConstruction() {
+    @MainActor func testMenuTitleConstruction() {
         // SwiftUI-shaped Menu with a text label.
         let menu = Menu("Actions") {
             Button("Copy") { }
@@ -383,7 +383,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(menu.label.content, "Actions")
     }
 
-    func testMenuWithViewLabel() {
+    @MainActor func testMenuWithViewLabel() {
         // The view-label init: Menu { items } label: { <view> }.
         let menu = Menu {
             Button("Cut") { }
@@ -395,7 +395,7 @@ final class Phase4FViewTests: XCTestCase {
 
     // MARK: - Toolbar
 
-    func testToolbarItemConstruction() {
+    @MainActor func testToolbarItemConstruction() {
         let item = ToolbarItem(placement: .leading) {
             Button("Add") { }
         }
@@ -404,7 +404,7 @@ final class Phase4FViewTests: XCTestCase {
         }
     }
 
-    func testToolbarModifier() {
+    @MainActor func testToolbarModifier() {
         let view = Text("Content").toolbar {
             ToolbarItem(placement: .trailing) {
                 Button("Save") { }
@@ -418,7 +418,7 @@ final class Phase4FViewTests: XCTestCase {
         }
     }
 
-    func testToolbarModifierFlattensMultipleItemsInOrder() {
+    @MainActor func testToolbarModifierFlattensMultipleItemsInOrder() {
         let view = Text("Content").toolbar {
             ToolbarItem(placement: .leading) {
                 Button("Back") { }
@@ -443,7 +443,7 @@ final class Phase4FViewTests: XCTestCase {
         }
     }
 
-    func testToolbarItemGroupCanBeReturnedAsToolbarContent() {
+    @MainActor func testToolbarItemGroupCanBeReturnedAsToolbarContent() {
         let view = Text("Content").toolbar {
             ReusableToolbarActions()
         }
@@ -454,7 +454,7 @@ final class Phase4FViewTests: XCTestCase {
         }
     }
 
-    func testToolbarContentBuilderPreservesConditionalGroup() {
+    @MainActor func testToolbarContentBuilderPreservesConditionalGroup() {
         let includeActions = true
         let view = Text("Content").toolbar {
             if includeActions {
@@ -474,7 +474,7 @@ final class Phase4FViewTests: XCTestCase {
         }
     }
 
-    func testToolbarModifierStoresID() {
+    @MainActor func testToolbarModifierStoresID() {
         let view = Text("Content").toolbar(id: "detail-toolbar") {
             ToolbarItem(placement: .trailing) {
                 Button("Save") { }
@@ -486,7 +486,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(view.toolbarConfiguration, ToolbarConfiguration())
     }
 
-    func testToolbarModifierChainsMergeItemsInOrder() {
+    @MainActor func testToolbarModifierChainsMergeItemsInOrder() {
         let view = Text("Content")
             .toolbar {
                 ToolbarItem(placement: .leading) {
@@ -509,7 +509,7 @@ final class Phase4FViewTests: XCTestCase {
         }
     }
 
-    func testToolbarModifierChainsPreserveExistingID() {
+    @MainActor func testToolbarModifierChainsPreserveExistingID() {
         let view = Text("Content")
             .toolbar(id: "detail-toolbar") {
                 ToolbarItem(placement: .leading) {
@@ -526,7 +526,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(view.toolbarItems.count, 2)
     }
 
-    func testToolbarModifierChainsCanReplaceID() {
+    @MainActor func testToolbarModifierChainsCanReplaceID() {
         let view = Text("Content")
             .toolbar {
                 ToolbarItem(placement: .leading) {
@@ -543,7 +543,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(view.toolbarItems.count, 2)
     }
 
-    func testToolbarVisibilityConfigurationStored() {
+    @MainActor func testToolbarVisibilityConfigurationStored() {
         let view = Text("Content").toolbar(.hidden, for: .navigationBar)
 
         XCTAssertEqual(
@@ -555,7 +555,7 @@ final class Phase4FViewTests: XCTestCase {
         )
     }
 
-    func testToolbarRemovingPlacementsStored() {
+    @MainActor func testToolbarRemovingPlacementsStored() {
         let view = Text("Content").toolbar(removing: .leading, .primaryAction)
 
         XCTAssertEqual(
@@ -564,7 +564,7 @@ final class Phase4FViewTests: XCTestCase {
         )
     }
 
-    func testToolbarConfigurationWrapsToolbarItems() {
+    @MainActor func testToolbarConfigurationWrapsToolbarItems() {
         let configured = Text("Content")
             .toolbar {
                 ToolbarItem(placement: .trailing) {
@@ -578,7 +578,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(configured.toolbarItems.count, 1)
     }
 
-    func testToolbarConfigurationCanMergeVisibilityAndRemovals() {
+    @MainActor func testToolbarConfigurationCanMergeVisibilityAndRemovals() {
         let configured = Text("Content")
             .toolbar(.visible, for: .navigationBar)
             .toolbar(removing: .trailing)
@@ -592,7 +592,7 @@ final class Phase4FViewTests: XCTestCase {
         )
     }
 
-    func testToolbarConfigurationAndItemsComposeInEitherOrder() {
+    @MainActor func testToolbarConfigurationAndItemsComposeInEitherOrder() {
         let configured = Text("Content")
             .toolbar(.hidden, for: .navigationBar)
             .toolbar {
@@ -617,7 +617,7 @@ final class Phase4FViewTests: XCTestCase {
         }
     }
 
-    func testToolbarItemsAndConfigurationComposeAcrossRepeatedToolbarCalls() {
+    @MainActor func testToolbarItemsAndConfigurationComposeAcrossRepeatedToolbarCalls() {
         let configured = Text("Content")
             .toolbar {
                 ToolbarItem(placement: .leading) {
@@ -646,7 +646,7 @@ final class Phase4FViewTests: XCTestCase {
 
     // MARK: - ConfirmationDialog
 
-    func testConfirmationDialogConstruction() {
+    @MainActor func testConfirmationDialogConstruction() {
         let dialog = Text("Content").confirmationDialog(
             "Delete Item?",
             isPresented: .constant(false),
@@ -665,7 +665,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(dialog.buttons[1].role, .cancel)
     }
 
-    func testConfirmationDialogStoresTitleVisibility() {
+    @MainActor func testConfirmationDialogStoresTitleVisibility() {
         let dialog = Text("Content").confirmationDialog(
             "Archive?",
             isPresented: .constant(true),
@@ -680,7 +680,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(dialog.buttons.count, 1)
     }
 
-    func testConfirmationDialogStoresMessage() {
+    @MainActor func testConfirmationDialogStoresMessage() {
         let dialog = Text("Content").confirmationDialog(
             "Archive?",
             isPresented: .constant(true),
@@ -695,7 +695,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(dialog.buttons[0].role, .cancel)
     }
 
-    func testDismissalConfirmationDialogConstruction() {
+    @MainActor func testDismissalConfirmationDialogConstruction() {
         let dialog = Text("Content").dismissalConfirmationDialog(
             "Discard changes?",
             shouldPresent: .constant(true),
@@ -725,7 +725,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(config?.buttons.count, 2)
     }
 
-    func testStandardConfirmationDialogDoesNotExposeDismissalInterceptionConfiguration() {
+    @MainActor func testStandardConfirmationDialogDoesNotExposeDismissalInterceptionConfiguration() {
         let dialog = Text("Content").confirmationDialog(
             "Archive?",
             isPresented: .constant(true),
@@ -738,7 +738,7 @@ final class Phase4FViewTests: XCTestCase {
 
     // MARK: - Canvas
 
-    func testCanvasConstruction() {
+    @MainActor func testCanvasConstruction() {
         let canvas = Canvas(width: 400, height: 300) { context, w, h in
             // draw handler
         }
@@ -746,20 +746,20 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(canvas.height, 300)
     }
 
-    func testCanvasDefaultSize() {
+    @MainActor func testCanvasDefaultSize() {
         let canvas = Canvas { _, _, _ in }
         XCTAssertEqual(canvas.width, 0)
         XCTAssertEqual(canvas.height, 0)
     }
 
-    func testCanvasSizeModifier() {
+    @MainActor func testCanvasSizeModifier() {
         let canvas = Canvas { _, _, _ in }
             .canvasSize(width: 200, height: 100)
         XCTAssertEqual(canvas.width, 200)
         XCTAssertEqual(canvas.height, 100)
     }
 
-    func testCanvasLayoutSizedInit() {
+    @MainActor func testCanvasLayoutSizedInit() {
         let canvas = Canvas { context, size in
             // SwiftUI-style draw handler with CGSize
         }
@@ -769,13 +769,13 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertNotNil(canvas.sizedDrawHandler, "sizedDrawHandler should be set")
     }
 
-    func testCanvasLegacyInitDoesNotUseLayoutSize() {
+    @MainActor func testCanvasLegacyInitDoesNotUseLayoutSize() {
         let canvas = Canvas(width: 400, height: 300) { _, _, _ in }
         XCTAssertFalse(canvas.usesLayoutSize, "Legacy Canvas should not use layout size")
         XCTAssertNil(canvas.sizedDrawHandler, "Legacy Canvas should not have sizedDrawHandler")
     }
 
-    func testCanvasLayoutSizedHandlerReceivesCGSize() {
+    @MainActor func testCanvasLayoutSizedHandlerReceivesCGSize() {
         var receivedSize: CGSize?
         let canvas = Canvas { context, size in
             receivedSize = size
@@ -790,7 +790,7 @@ final class Phase4FViewTests: XCTestCase {
 
     // MARK: - Path tests
 
-    func testPathConstruction() {
+    @MainActor func testPathConstruction() {
         var path = Path()
         XCTAssertTrue(path.isEmpty)
         path.move(to: CGPoint(x: 10, y: 20))
@@ -799,18 +799,18 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(path.elements.count, 2)
     }
 
-    func testPathFromRect() {
+    @MainActor func testPathFromRect() {
         let path = Path(CGRect(x: 0, y: 0, width: 100, height: 50))
         // moveTo + 3 lineTo + closeSubpath = 5 elements
         XCTAssertEqual(path.elements.count, 5)
     }
 
-    func testPathFromEllipse() {
+    @MainActor func testPathFromEllipse() {
         let path = Path(ellipseIn: CGRect(x: 0, y: 0, width: 100, height: 80))
         XCTAssertEqual(path.elements.count, 1) // single .ellipse element
     }
 
-    func testPathAddCurve() {
+    @MainActor func testPathAddCurve() {
         var path = Path()
         path.move(to: CGPoint(x: 0, y: 0))
         path.addCurve(to: CGPoint(x: 100, y: 100),
@@ -819,7 +819,7 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(path.elements.count, 2)
     }
 
-    func testPathCloseSubpath() {
+    @MainActor func testPathCloseSubpath() {
         var path = Path()
         path.move(to: .zero)
         path.addLine(to: CGPoint(x: 100, y: 0))
@@ -828,17 +828,17 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(path.elements.count, 4)
     }
 
-    func testStrokeStyleDefaults() {
+    @MainActor func testStrokeStyleDefaults() {
         let style = StrokeStyle()
         XCTAssertEqual(style.lineWidth, 1)
     }
 
-    func testStrokeStyleCustom() {
+    @MainActor func testStrokeStyleCustom() {
         let style = StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
         XCTAssertEqual(style.lineWidth, 3)
     }
 
-    func testShadingColorComponents() {
+    @MainActor func testShadingColorComponents() {
         let shading = Shading.color(Color(red: 1, green: 0.5, blue: 0, opacity: 0.8))
         let (r, g, b, a) = shading.colorComponents
         XCTAssertEqual(r, 1.0, accuracy: 0.01)
@@ -847,13 +847,13 @@ final class Phase4FViewTests: XCTestCase {
         XCTAssertEqual(a, 0.8, accuracy: 0.01)
     }
 
-    func testShadingOpaqueColor() {
+    @MainActor func testShadingOpaqueColor() {
         let shading = Shading.color(.red)
         let (_, _, _, a) = shading.colorComponents
         XCTAssertEqual(a, 1.0)
     }
 
-    func testDrawingContextTypes() {
+    @MainActor func testDrawingContextTypes() {
         // LineCap and LineJoin enums should be constructible
         let _ = LineCap.round
         let _ = LineCap.butt

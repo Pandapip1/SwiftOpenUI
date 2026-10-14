@@ -1,6 +1,6 @@
 #if os(macOS)
-import AppKit
-import Foundation
+@preconcurrency import AppKit
+@preconcurrency import Foundation
 import SwiftOpenUI
 
 private let launchLoggingEnabled: Bool = {
@@ -29,9 +29,24 @@ private func describeAppState() -> String {
     return "active=\(app.isActive) hidden=\(app.isHidden) policy=\(app.activationPolicy().rawValue) windows=\(app.windows.count) key=\(describeWindow(app.keyWindow)) main=\(describeWindow(app.mainWindow))"
 }
 
+private final class ObserverTokens: @unchecked Sendable {
+    nonisolated(unsafe) var values: [NSObjectProtocol] = []
+    deinit { values.forEach(NotificationCenter.default.removeObserver) }
+}
+
+/// NotificationCenter invokes this observer on the main queue, but Foundation's
+/// legacy callback does not express that isolation to Swift's type system.
+private struct MainQueueNotification: @unchecked Sendable {
+    nonisolated(unsafe) let value: Notification
+
+    nonisolated init(value: Notification) {
+        self.value = value
+    }
+}
+
 private final class LaunchObserver {
     private var didFrontWindow = false
-    private var observers: [NSObjectProtocol] = []
+    private let observers = ObserverTokens()
 
     init() {
         observeAppNotification(NSApplication.willFinishLaunchingNotification, label: "willFinishLaunching")
@@ -56,37 +71,42 @@ private final class LaunchObserver {
     private func observeAppNotification(
         _ name: NSNotification.Name,
         label: String,
-        action: (() -> Void)? = nil
+        action: (@MainActor @Sendable () -> Void)? = nil
     ) {
         let observer = NotificationCenter.default.addObserver(
             forName: name,
             object: NSApplication.shared,
             queue: .main
         ) { _ in
-            launchLog("app callback \(label) \(describeAppState())")
-            action?()
+            MainActor.assumeIsolated {
+                launchLog("app callback \(label) \(describeAppState())")
+                action?()
+            }
         }
-        observers.append(observer)
+        observers.values.append(observer)
     }
 
     private func observeWindowNotification(
         _ name: NSNotification.Name,
         label: String,
         frontsWindow: Bool = false,
-        action: ((NSWindow?) -> Void)? = nil
+        action: (@MainActor @Sendable (NSWindow?) -> Void)? = nil
     ) {
         let observer = NotificationCenter.default.addObserver(
             forName: name,
             object: nil,
             queue: .main
         ) { [weak self] note in
-            let window = note.object as? NSWindow
-            launchLog("window callback \(label) \(describeWindow(window)) \(describeAppState())")
-            action?(window)
-            guard frontsWindow, let self, !self.didFrontWindow, let window else { return }
-            self.bringToFront(window, reason: label)
+            let notification = MainQueueNotification(value: note)
+            MainActor.assumeIsolated {
+                let window = notification.value.object as? NSWindow
+                launchLog("window callback \(label) \(describeWindow(window)) \(describeAppState())")
+                action?(window)
+                guard frontsWindow, let self, !self.didFrontWindow, let window else { return }
+                self.bringToFront(window, reason: label)
+            }
         }
-        observers.append(observer)
+        observers.values.append(observer)
     }
 
     private func scheduleFrontmostAttempt(remainingAttempts: Int) {
@@ -148,12 +168,6 @@ private final class LaunchObserver {
         }
     }
 
-    deinit {
-        launchLog("deinit observer")
-        for observer in observers {
-            NotificationCenter.default.removeObserver(observer)
-        }
-    }
 }
 
 private var launchObserver: LaunchObserver?

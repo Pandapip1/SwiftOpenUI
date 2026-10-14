@@ -6,12 +6,12 @@ final class ContextMenuTests: XCTestCase {
         var body: some View { Text("Custom") }
     }
 
-    func testContextMenuWrapsContent() {
+    @MainActor func testContextMenuWrapsContent() {
         let view = Text("Hello").contextMenu { Button("Copy") {} }
         let _: any View = view
     }
 
-    func testContextMenuMultipleButtons() {
+    @MainActor func testContextMenuMultipleButtons() {
         let view = Text("Hello").contextMenu {
             Button("Copy") {}
             Button("Delete", role: .destructive) {}
@@ -19,7 +19,7 @@ final class ContextMenuTests: XCTestCase {
         let _: any View = view
     }
 
-    func testContextMenuUsesButtonAction() {
+    @MainActor func testContextMenuUsesButtonAction() {
         var fired = false
         let view = Text("Hello").contextMenu {
             Button("Remove", role: .destructive) { fired = true }
@@ -35,14 +35,14 @@ final class ContextMenuTests: XCTestCase {
         }
     }
 
-    func testContextMenuKeepsCustomButtonLabelsAccessible() {
+    @MainActor func testContextMenuKeepsCustomButtonLabelsAccessible() {
         let elements = AlertActions.menuElements(from: Button(action: {}, label: { CustomButtonLabel() }))
         if case .item(let label, _, _, _) = elements[0] {
             XCTAssertEqual(label, "Custom")
         } else { XCTFail("Expected custom-label button item") }
     }
 
-    func testContextMenuPreservesButtonThroughDisabledWrapper() {
+    @MainActor func testContextMenuPreservesButtonThroughDisabledWrapper() {
         let elements = AlertActions.menuElements(from: Button("Copy") {}.disabled(true))
         if case .item(let label, _, _, let action) = elements[0] {
             XCTAssertEqual(label, "Copy")
@@ -50,7 +50,7 @@ final class ContextMenuTests: XCTestCase {
         } else { XCTFail("Expected disabled button item") }
     }
 
-    func testContextMenuDisablesNestedMenuItemsRecursively() {
+    @MainActor func testContextMenuDisablesNestedMenuItemsRecursively() {
         let elements = AlertActions.menuElements(from: Menu("More") {
             Button("Nested") {}
             Menu("Deep") { Button("Deep item") {} }
@@ -64,7 +64,7 @@ final class ContextMenuTests: XCTestCase {
         } else { XCTFail("Expected submenu") }
     }
 
-    func testContextMenuExtractsModifiedButtonAndMenuLabels() {
+    @MainActor func testContextMenuExtractsModifiedButtonAndMenuLabels() {
         let button = Button(action: {}, label: { Text("Styled").font(.headline) })
         let buttonElements = AlertActions.menuElements(from: button)
         if case .item(let label, _, _, _) = buttonElements[0] { XCTAssertEqual(label, "Styled") }
@@ -74,7 +74,7 @@ final class ContextMenuTests: XCTestCase {
         else { XCTFail("Expected modified menu label") }
     }
 
-    func testContextMenuExtractsCompositeAndAccessibilityLabels() {
+    @MainActor func testContextMenuExtractsCompositeAndAccessibilityLabels() {
         let composite = Button(action: {}, label: { HStack { Text("Open"); Text("Now") } })
         if case .item(let label, _, _, _) = AlertActions.menuElements(from: composite)[0] {
             XCTAssertEqual(label, "Open Now")
@@ -85,7 +85,7 @@ final class ContextMenuTests: XCTestCase {
         } else { XCTFail("Expected accessibility label") }
     }
 
-    func testContextMenuExtractsMenusDividersGroupsConditionalsAndForEach() {
+    @MainActor func testContextMenuExtractsMenusDividersGroupsConditionalsAndForEach() {
         let includeConditional = true
         let menuContent = Group {
             Button("Copy") {}
@@ -113,7 +113,7 @@ final class ContextMenuTests: XCTestCase {
         else { XCTFail("Expected ForEach button") }
     }
 
-    func testContextMenuSupportsConditionalButtons() {
+    @MainActor func testContextMenuSupportsConditionalButtons() {
         let includeCopy = true
         let view = Text("Hello").contextMenu {
             if includeCopy { Button("Copy") {} }
@@ -122,7 +122,7 @@ final class ContextMenuTests: XCTestCase {
         let _: any View = view
     }
 
-    func testContextMenuItemLabels() {
+    @MainActor func testContextMenuItemLabels() {
         let menuElements = AlertActions.menuElements(from: TupleView((Button("Cut") {}, Button("Copy") {}, Button("Paste") {})))
         if case .item(let label, _, _, _) = menuElements[0] {
             XCTAssertEqual(label, "Cut")
@@ -132,7 +132,7 @@ final class ContextMenuTests: XCTestCase {
         } else { XCTFail("Expected item") }
     }
 
-    func testContextMenuChainedWithOtherModifiers() {
+    @MainActor func testContextMenuChainedWithOtherModifiers() {
         let view = Text("Hello").padding().contextMenu { Button("Copy") {} }
         let _: any View = view
     }

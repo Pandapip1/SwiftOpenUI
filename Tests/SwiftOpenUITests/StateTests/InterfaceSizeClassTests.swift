@@ -2,7 +2,7 @@ import XCTest
 @testable import SwiftOpenUICore
 
 final class InterfaceSizeClassTests: XCTestCase {
-    func testDesktopDefaultsAndExplicitSizeClasses() {
+    @MainActor func testDesktopDefaultsAndExplicitSizeClasses() {
         var environment = EnvironmentValues()
         XCTAssertNil(environment.horizontalSizeClass)
         XCTAssertNil(environment.verticalSizeClass)

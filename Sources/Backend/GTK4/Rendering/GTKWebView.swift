@@ -69,7 +69,7 @@ private final class GTKWebPageBackend: _WebPageBackend {
         else { webkit_web_view_reload(webView()) }
     }
     func stopLoading() { webkit_web_view_stop_loading(webView()) }
-    func evaluateJavaScript(_ source: String) async throws -> Any? {
+    func evaluateJavaScript(_ source: String) async throws -> sending Any? {
         try await withCheckedThrowingContinuation { continuation in
             let box = Unmanaged.passRetained(JavaScriptCallback(continuation))
             swift_openui_webkit_evaluate(webView(), source, { json, error, context in

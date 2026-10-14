@@ -5,7 +5,7 @@ final class InputEqualityTests: XCTestCase {
 
     // MARK: - Generation counter
 
-    func testGenerationIncrementsOnSetValue() {
+    @MainActor func testGenerationIncrementsOnSetValue() {
         let storage = StateStorage(42)
         XCTAssertEqual(storage.generation, 0)
         storage.setValue(99)
@@ -14,14 +14,14 @@ final class InputEqualityTests: XCTestCase {
         XCTAssertEqual(storage.generation, 2)
     }
 
-    func testPublishedGenerationIncrementsOnSetValue() {
+    @MainActor func testPublishedGenerationIncrementsOnSetValue() {
         let storage = PublishedStorage("hello")
         XCTAssertEqual(storage.generation, 0)
         storage.setValue("world")
         XCTAssertEqual(storage.generation, 1)
     }
 
-    func testGenerationDoesNotIncrementOnRead() {
+    @MainActor func testGenerationDoesNotIncrementOnRead() {
         let storage = StateStorage(42)
         _ = storage.value
         XCTAssertEqual(storage.generation, 0, "Reading should not change generation")
@@ -29,7 +29,7 @@ final class InputEqualityTests: XCTestCase {
 
     // MARK: - Snapshot capture
 
-    func testSnapshotCapturedDuringTracking() {
+    @MainActor func testSnapshotCapturedDuringTracking() {
         let storage1 = StateStorage(1)
         let storage2 = PublishedStorage("two")
         storage1.setValue(10) // generation = 1
@@ -50,7 +50,7 @@ final class InputEqualityTests: XCTestCase {
 
     // MARK: - inputsUnchanged
 
-    func testInputsUnchangedWhenNoMutation() {
+    @MainActor func testInputsUnchangedWhenNoMutation() {
         let storage = StateStorage(42)
         storage.setValue(99) // generation = 1
 
@@ -62,7 +62,7 @@ final class InputEqualityTests: XCTestCase {
         XCTAssertTrue(inputsUnchanged(snapshot: tracking.snapshots))
     }
 
-    func testInputsChangedAfterMutation() {
+    @MainActor func testInputsChangedAfterMutation() {
         let storage = StateStorage(42)
 
         beginDependencyTracking()
@@ -76,14 +76,14 @@ final class InputEqualityTests: XCTestCase {
         XCTAssertFalse(inputsUnchanged(snapshot: tracking.snapshots))
     }
 
-    func testInputsChangedWhenSnapshotEmpty() {
+    @MainActor func testInputsChangedWhenSnapshotEmpty() {
         // Empty snapshot means no GenerationTracked inputs were read —
         // e.g. @Observable or @FocusState driven rebuild. Can't prove
         // nothing changed, so must return false (rebuild).
         XCTAssertFalse(inputsUnchanged(snapshot: []))
     }
 
-    func testInputsChangedWhenStorageDeallocated() {
+    @MainActor func testInputsChangedWhenStorageDeallocated() {
         var tracking: (readSet: Set<ObjectIdentifier>, snapshots: [StorageSnapshot])!
 
         // Create storage in a scope so it gets deallocated

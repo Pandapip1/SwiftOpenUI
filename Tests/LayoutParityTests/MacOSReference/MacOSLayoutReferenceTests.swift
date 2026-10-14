@@ -40,6 +40,7 @@ final class MacOSLayoutReferenceTests: XCTestCase {
 
     // MARK: - Generate All References
 
+    @MainActor
     func testGenerateAllReferenceSnapshots() throws {
         var generated: [String] = []
         var failed: [String] = []
@@ -78,37 +79,37 @@ final class MacOSLayoutReferenceTests: XCTestCase {
 
     // MARK: - Individual Scenario Tests (for debugging)
 
-    func testCapture_vstackDefault() throws {
+    @MainActor func testCapture_vstackDefault() throws {
         let snapshot = try captureAndSave("vstack-default", AnyView(scenario_vstackDefault))
         XCTAssertGreaterThan(snapshot.root.children.count, 0)
         print(snapshot.root)
     }
 
-    func testCapture_hstackWithSpacer() throws {
+    @MainActor func testCapture_hstackWithSpacer() throws {
         let snapshot = try captureAndSave("hstack-with-spacer", AnyView(scenario_hstackWithSpacer))
         XCTAssertGreaterThan(snapshot.root.children.count, 0)
         print(snapshot.root)
     }
 
-    func testCapture_complexNested() throws {
+    @MainActor func testCapture_complexNested() throws {
         let snapshot = try captureAndSave("complex-nested", AnyView(scenario_complexNested))
         XCTAssertGreaterThan(snapshot.root.children.count, 0)
         print(snapshot.root)
     }
 
-    func testCapture_frameAlignmentTopLeading() throws {
+    @MainActor func testCapture_frameAlignmentTopLeading() throws {
         let snapshot = try captureAndSave("frame-alignment-top-leading", AnyView(scenario_frameAlignmentTopLeading))
         print(snapshot.root)
     }
 
-    func testCapture_deeplyNestedFrames() throws {
+    @MainActor func testCapture_deeplyNestedFrames() throws {
         let snapshot = try captureAndSave("deeply-nested-frames", AnyView(scenario_deeplyNestedFrames))
         print(snapshot.root)
     }
 
     // MARK: - Capture Helpers
 
-    private func captureAndSave(_ name: String, _ view: AnyView) throws -> LayoutSnapshot {
+    @MainActor private func captureAndSave(_ name: String, _ view: AnyView) throws -> LayoutSnapshot {
         let snapshot = try captureSwiftUILayout(
             scenario: name,
             view: view,
@@ -124,7 +125,7 @@ final class MacOSLayoutReferenceTests: XCTestCase {
 // MARK: - SwiftUI Layout Capture Engine
 
 /// Renders a SwiftUI view in an off-screen NSHostingView and captures the layout tree.
-func captureSwiftUILayout(
+@MainActor func captureSwiftUILayout(
     scenario: String,
     view: AnyView,
     width: Double,
@@ -184,7 +185,7 @@ func captureSwiftUILayout(
 /// The root NSHostingView has 0 subviews; all content is in sublayers.
 /// Container views (VStack, HStack) don't produce intermediate layers —
 /// the tree is typically flat: root layer -> drawing layers for each leaf.
-func captureLayerTree(
+@MainActor func captureLayerTree(
     layer: CALayer,
     rootLayer: CALayer
 ) -> LayoutNode {
@@ -213,7 +214,7 @@ func captureLayerTree(
 }
 
 /// Identify a layer with a human-readable tag.
-private func identifyLayer(_ layer: CALayer) -> String {
+@MainActor private func identifyLayer(_ layer: CALayer) -> String {
     // Layer name (set by SwiftUI internals, sometimes contains type info)
     if let name = layer.name, !name.isEmpty {
         return name

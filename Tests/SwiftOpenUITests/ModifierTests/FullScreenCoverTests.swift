@@ -3,7 +3,7 @@ import XCTest
 
 final class FullScreenCoverTests: XCTestCase {
 
-    func testFullScreenCoverWrapsContent() {
+    @MainActor func testFullScreenCoverWrapsContent() {
         var presented = false
         let view = Text("Main").fullScreenCover(isPresented: .init(
             get: { presented }, set: { presented = $0 }
@@ -14,7 +14,7 @@ final class FullScreenCoverTests: XCTestCase {
         XCTAssertFalse(view.isPresented.wrappedValue)
     }
 
-    func testFullScreenCoverStoresBinding() {
+    @MainActor func testFullScreenCoverStoresBinding() {
         var presented = true
         let view = Text("Main").fullScreenCover(isPresented: .init(
             get: { presented }, set: { presented = $0 }
@@ -24,7 +24,7 @@ final class FullScreenCoverTests: XCTestCase {
         XCTAssertTrue(view.isPresented.wrappedValue)
     }
 
-    func testFullScreenCoverOnDismiss() {
+    @MainActor func testFullScreenCoverOnDismiss() {
         var dismissed = false
         var presented = false
         let view = Text("Main").fullScreenCover(
@@ -38,7 +38,7 @@ final class FullScreenCoverTests: XCTestCase {
         XCTAssertTrue(dismissed)
     }
 
-    func testFullScreenCoverChainedWithFrame() {
+    @MainActor func testFullScreenCoverChainedWithFrame() {
         var presented = false
         let view = Text("Main")
             .frame(width: 300, height: 200)

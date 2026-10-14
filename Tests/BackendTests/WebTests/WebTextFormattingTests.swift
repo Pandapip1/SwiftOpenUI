@@ -6,16 +6,22 @@ final class WebTextFormattingTests: XCTestCase {
 
     // MARK: - LineLimitView
 
+    @MainActor
+
     func testLineLimitOneCSS() {
         let css = webLineLimitCSS(1)
         XCTAssertTrue(css.contains("white-space: nowrap"), "lineLimit(1) should set nowrap")
         XCTAssertTrue(css.contains("overflow: hidden"), "lineLimit(1) should set overflow hidden")
     }
 
+    @MainActor
+
     func testLineLimitNilCSS() {
         let css = webLineLimitCSS(nil)
         XCTAssertTrue(css.contains("white-space: normal"), "lineLimit(nil) should set normal wrapping")
     }
+
+    @MainActor
 
     func testLineLimitMultiLineCSS() {
         let css = webLineLimitCSS(3)
@@ -24,12 +30,16 @@ final class WebTextFormattingTests: XCTestCase {
         XCTAssertTrue(css.contains("overflow: hidden"), "lineLimit(3) should set overflow hidden")
     }
 
+    @MainActor
+
     func testLineLimitTwoCSS() {
         let css = webLineLimitCSS(2)
         XCTAssertTrue(css.contains("-webkit-line-clamp: 2"))
     }
 
     // MARK: - TruncationModeView
+
+    @MainActor
 
     func testTruncationModeTailCSS() {
         let view = Text("Hello").truncationMode(.tail)
@@ -38,11 +48,15 @@ final class WebTextFormattingTests: XCTestCase {
         // Verified by CSS string in webCreateElement
     }
 
+    @MainActor
+
     func testTruncationModeHeadCSS() {
         let view = Text("Hello").truncationMode(.head)
         XCTAssertEqual(view.mode, .head)
         // Head truncation uses direction: rtl hack
     }
+
+    @MainActor
 
     func testTruncationModeMiddleFallsBackToTail() {
         let view = Text("Hello").truncationMode(.middle)
@@ -52,11 +66,15 @@ final class WebTextFormattingTests: XCTestCase {
 
     // MARK: - LineSpacingView
 
+    @MainActor
+
     func testLineSpacingStoresValue() {
         let view = Text("Hello").lineSpacing(8.0)
         XCTAssertEqual(view.spacing, 8.0)
         // CSS: line-height: calc(1em + 8.0px)
     }
+
+    @MainActor
 
     func testLineSpacingZero() {
         let view = Text("Hello").lineSpacing(0)
@@ -65,17 +83,23 @@ final class WebTextFormattingTests: XCTestCase {
 
     // MARK: - MultilineTextAlignmentView
 
+    @MainActor
+
     func testMultilineAlignmentLeading() {
         let view = Text("Hello").multilineTextAlignment(.leading)
         XCTAssertEqual(view.alignment, .leading)
         // CSS: text-align: left
     }
 
+    @MainActor
+
     func testMultilineAlignmentCenter() {
         let view = Text("Hello").multilineTextAlignment(.center)
         XCTAssertEqual(view.alignment, .center)
         // CSS: text-align: center
     }
+
+    @MainActor
 
     func testMultilineAlignmentTrailing() {
         let view = Text("Hello").multilineTextAlignment(.trailing)
@@ -84,6 +108,8 @@ final class WebTextFormattingTests: XCTestCase {
     }
 
     // MARK: - CSS helper verification
+
+    @MainActor
 
     func testLineLimitCSSHelperIsAccessible() {
         // Verify the helper function is public/internal and callable
@@ -96,6 +122,8 @@ final class WebTextFormattingTests: XCTestCase {
     }
 
     // MARK: - Modifier chaining
+
+    @MainActor
 
     func testChainedModifiers() {
         let view = Text("Hello")

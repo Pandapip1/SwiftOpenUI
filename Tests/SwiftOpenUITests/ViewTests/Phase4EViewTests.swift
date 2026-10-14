@@ -5,7 +5,7 @@ final class Phase4EViewTests: XCTestCase {
 
     // MARK: - LazyVStack
 
-    func testLazyVStackConstruction() {
+    @MainActor func testLazyVStackConstruction() {
         let items = ["A", "B", "C"]
         let stack = LazyVStack(items) { item in
             Text(item)
@@ -13,14 +13,14 @@ final class Phase4EViewTests: XCTestCase {
         XCTAssertEqual(stack.items.count, 3)
     }
 
-    func testLazyVStackEmpty() {
+    @MainActor func testLazyVStackEmpty() {
         let stack = LazyVStack([String]()) { Text($0) }
         XCTAssertEqual(stack.items.count, 0)
     }
 
     // MARK: - LazyHStack
 
-    func testLazyHStackConstruction() {
+    @MainActor func testLazyHStackConstruction() {
         let items = [1, 2, 3, 4]
         let stack = LazyHStack(items) { Text("\($0)") }
         XCTAssertEqual(stack.items.count, 4)
@@ -28,7 +28,7 @@ final class Phase4EViewTests: XCTestCase {
 
     // MARK: - GridItem
 
-    func testGridItemDefaults() {
+    @MainActor func testGridItemDefaults() {
         let item = GridItem()
         if case .flexible = item.size {
             // expected
@@ -37,7 +37,7 @@ final class Phase4EViewTests: XCTestCase {
         }
     }
 
-    func testGridItemFixed() {
+    @MainActor func testGridItemFixed() {
         let item = GridItem(.fixed)
         if case .fixed = item.size {
             // expected
@@ -46,7 +46,7 @@ final class Phase4EViewTests: XCTestCase {
         }
     }
 
-    func testGridItemAdaptive() {
+    @MainActor func testGridItemAdaptive() {
         let item = GridItem(.adaptive(minimum: 80))
         if case .adaptive(let min) = item.size {
             XCTAssertEqual(min, 80)
@@ -57,13 +57,13 @@ final class Phase4EViewTests: XCTestCase {
 
     // MARK: - LazyVGrid
 
-    func testLazyVGridFixedColumns() {
+    @MainActor func testLazyVGridFixedColumns() {
         let grid = LazyVGrid(columns: 3, data: ["A", "B", "C"]) { Text($0) }
         XCTAssertEqual(grid.items.count, 3)
         XCTAssertEqual(grid.gridItems.count, 3)
     }
 
-    func testLazyVGridExplicitColumns() {
+    @MainActor func testLazyVGridExplicitColumns() {
         let columns = [GridItem(.adaptive(minimum: 100)), GridItem(.fixed)]
         let grid = LazyVGrid(columns: columns, data: [1, 2]) { Text("\($0)") }
         XCTAssertEqual(grid.gridItems.count, 2)
@@ -71,13 +71,13 @@ final class Phase4EViewTests: XCTestCase {
 
     // MARK: - LazyHGrid
 
-    func testLazyHGridFixedRows() {
+    @MainActor func testLazyHGridFixedRows() {
         let grid = LazyHGrid(rows: 2, data: ["X", "Y"]) { Text($0) }
         XCTAssertEqual(grid.items.count, 2)
         XCTAssertEqual(grid.gridItems.count, 2)
     }
 
-    func testLazyHGridExplicitRows() {
+    @MainActor func testLazyHGridExplicitRows() {
         let rows = [GridItem(.flexible), GridItem(.flexible), GridItem(.flexible)]
         let grid = LazyHGrid(rows: rows, data: [1, 2, 3]) { Text("\($0)") }
         XCTAssertEqual(grid.gridItems.count, 3)

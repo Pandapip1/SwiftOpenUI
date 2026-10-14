@@ -9,7 +9,7 @@ import XCTest
 /// summary bar stacked vertically.
 final class ConditionalChildFlatteningTests: XCTestCase {
 
-    func testConditionalOnlyContentContributesTrueBranchChildren() {
+    @MainActor func testConditionalOnlyContentContributesTrueBranchChildren() {
         let searching = false
         // The summary-bar shape from the shared IssuesListView.
         let stack = HStack {
@@ -25,7 +25,7 @@ final class ConditionalChildFlatteningTests: XCTestCase {
                        "false branch has 3 children; they must splice onto the stack axis")
     }
 
-    func testConditionalOnlyContentContributesFalseBranchChild() {
+    @MainActor func testConditionalOnlyContentContributesFalseBranchChild() {
         let searching = true
         let stack = HStack {
             if searching {
@@ -39,7 +39,7 @@ final class ConditionalChildFlatteningTests: XCTestCase {
         XCTAssertEqual(stack.children.count, 1)
     }
 
-    func testConditionalAmongSiblingsSplices() {
+    @MainActor func testConditionalAmongSiblingsSplices() {
         let flag = true
         let stack = VStack {
             Text("x")
@@ -53,7 +53,7 @@ final class ConditionalChildFlatteningTests: XCTestCase {
                        "builder accumulation must splice the branch children among siblings")
     }
 
-    func testIfWithoutElseFalseContributesNothing() {
+    @MainActor func testIfWithoutElseFalseContributesNothing() {
         let flag = false
         let stack = HStack {
             Text("x")
@@ -65,7 +65,7 @@ final class ConditionalChildFlatteningTests: XCTestCase {
                        "Optional.none must contribute no children (not an empty box)")
     }
 
-    func testNestedStackIsNotFlattened() {
+    @MainActor func testNestedStackIsNotFlattened() {
         let stack = HStack {
             VStack {
                 Text("a")
@@ -77,7 +77,7 @@ final class ConditionalChildFlatteningTests: XCTestCase {
                        "nested stacks are real containers, never spliced into the parent")
     }
 
-    func testStackAsConditionalBranchIsNotSpliced() {
+    @MainActor func testStackAsConditionalBranchIsNotSpliced() {
         // Round-2 review High finding: a REAL container as the branch's
         // content must survive intact — only transparent aggregates
         // (TupleView, ViewList, nested conditionals) splice.
@@ -98,7 +98,7 @@ final class ConditionalChildFlatteningTests: XCTestCase {
                       "the branch child must still BE the VStack, got \(firstChildType)")
     }
 
-    func testNestedConditionalFlattensRecursively() {
+    @MainActor func testNestedConditionalFlattensRecursively() {
         let outer = true
         let inner = true
         let stack = HStack {

@@ -16,7 +16,7 @@ let parityRootWidth: Double = 400
 let parityRootHeight: Double = 600
 
 /// All scenarios, keyed by name.
-let allLayoutScenarios: [(name: String, view: AnyView)] = [
+@MainActor let allLayoutScenarios: [(name: String, view: AnyView)] = [
     // === Basic Views ===
     ("text-single", AnyView(scenario_textSingle)),
     ("text-long-wrap", AnyView(scenario_textLongWrap)),

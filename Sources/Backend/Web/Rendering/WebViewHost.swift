@@ -123,7 +123,7 @@ public class WebViewHost: AnyViewHost, DependencyTrackingHost {
             withObservationTracking {
                 result = buildBody()
             } onChange: { [weak self] in
-                self?.scheduleRebuild()
+                Task { @MainActor in self?.scheduleRebuild() }
             }
             return result
         }

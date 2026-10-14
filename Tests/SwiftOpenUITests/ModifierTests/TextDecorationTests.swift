@@ -5,27 +5,27 @@ final class TextDecorationTests: XCTestCase {
 
     // MARK: - Bold
 
-    func testBoldWrapsContent() {
+    @MainActor func testBoldWrapsContent() {
         let view = Text("Hello").bold()
         XCTAssertEqual(view.content.content, "Hello")
     }
 
     // MARK: - Italic
 
-    func testItalicWrapsContent() {
+    @MainActor func testItalicWrapsContent() {
         let view = Text("Hello").italic()
         XCTAssertEqual(view.content.content, "Hello")
     }
 
     // MARK: - FontWeight
 
-    func testFontWeightWrapsContent() {
+    @MainActor func testFontWeightWrapsContent() {
         let view = Text("Hello").fontWeight(.heavy)
         XCTAssertEqual(view.weight, .heavy)
         XCTAssertEqual(view.content.content, "Hello")
     }
 
-    func testFontWeightAllValues() {
+    @MainActor func testFontWeightAllValues() {
         let weights: [FontWeight] = [.ultraLight, .thin, .light, .regular, .medium, .semibold, .bold, .heavy, .black]
         for w in weights {
             let view = Text("X").fontWeight(w)
@@ -35,48 +35,48 @@ final class TextDecorationTests: XCTestCase {
 
     // MARK: - Underline
 
-    func testUnderlineDefaultActive() {
+    @MainActor func testUnderlineDefaultActive() {
         let view = Text("Hello").underline()
         XCTAssertTrue(view.isActive)
     }
 
-    func testUnderlineExplicitFalse() {
+    @MainActor func testUnderlineExplicitFalse() {
         let view = Text("Hello").underline(false)
         XCTAssertFalse(view.isActive)
     }
 
     // MARK: - Strikethrough
 
-    func testStrikethroughDefaultActive() {
+    @MainActor func testStrikethroughDefaultActive() {
         let view = Text("Hello").strikethrough()
         XCTAssertTrue(view.isActive)
     }
 
-    func testStrikethroughExplicitFalse() {
+    @MainActor func testStrikethroughExplicitFalse() {
         let view = Text("Hello").strikethrough(false)
         XCTAssertFalse(view.isActive)
     }
 
     // MARK: - TextCase
 
-    func testTextCaseUppercase() {
+    @MainActor func testTextCaseUppercase() {
         let view = Text("Hello").textCase(.uppercase)
         XCTAssertEqual(view.textCase, .uppercase)
     }
 
-    func testTextCaseLowercase() {
+    @MainActor func testTextCaseLowercase() {
         let view = Text("Hello").textCase(.lowercase)
         XCTAssertEqual(view.textCase, .lowercase)
     }
 
-    func testTextCaseNilReset() {
+    @MainActor func testTextCaseNilReset() {
         let view = Text("Hello").textCase(nil)
         XCTAssertNil(view.textCase)
     }
 
     // MARK: - Chaining
 
-    func testChainBoldItalicUnderline() {
+    @MainActor func testChainBoldItalicUnderline() {
         let view = Text("Hello")
             .bold()
             .italic()
@@ -84,7 +84,7 @@ final class TextDecorationTests: XCTestCase {
         XCTAssertTrue(view.isActive)
     }
 
-    func testChainFontWeightWithStrikethrough() {
+    @MainActor func testChainFontWeightWithStrikethrough() {
         let view = Text("Hello")
             .fontWeight(.semibold)
             .strikethrough()

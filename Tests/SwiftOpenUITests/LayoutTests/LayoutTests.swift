@@ -5,7 +5,7 @@ final class LayoutTests: XCTestCase {
 
     // MARK: - Color
 
-    func testColorHex6() {
+    @MainActor func testColorHex6() {
         let color = Color(hex: "#FF0000")
         XCTAssertEqual(color.red, 1.0, accuracy: 0.01)
         XCTAssertEqual(color.green, 0.0, accuracy: 0.01)
@@ -13,41 +13,41 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(color.alpha, 1.0)
     }
 
-    func testColorHex8() {
+    @MainActor func testColorHex8() {
         let color = Color(hex: "#FF000080")
         XCTAssertEqual(color.red, 1.0, accuracy: 0.01)
         XCTAssertEqual(color.alpha, 128.0 / 255.0, accuracy: 0.01)
     }
 
-    func testColorRGBFractional() {
+    @MainActor func testColorRGBFractional() {
         let color = Color(red: 0.5, green: 0.5, blue: 0.5)
         XCTAssertEqual(color.red, 0.5, accuracy: 0.01)
         XCTAssertEqual(color.alpha, 1.0)
     }
 
-    func testColorRGBInteger() {
+    @MainActor func testColorRGBInteger() {
         let color = Color(red: 128, green: 0, blue: 255)
         XCTAssertEqual(color.red, 128.0 / 255.0, accuracy: 0.01)
         XCTAssertEqual(color.blue, 1.0, accuracy: 0.01)
     }
 
-    func testColorOpacity() {
+    @MainActor func testColorOpacity() {
         let color = Color.red.opacity(0.5)
         XCTAssertEqual(color.red, 1.0, accuracy: 0.01)
         XCTAssertEqual(color.alpha, 0.5, accuracy: 0.01)
     }
 
-    func testColorEquality() {
+    @MainActor func testColorEquality() {
         XCTAssertEqual(Color.red, Color.red)
         XCTAssertNotEqual(Color.red, Color.blue)
     }
 
-    func testColorHexOutput() {
+    @MainActor func testColorHexOutput() {
         let color = Color(red: 1.0, green: 0.0, blue: 0.0)
         XCTAssertEqual(color.hex, "#FF0000")
     }
 
-    func testNamedColors() {
+    @MainActor func testNamedColors() {
         // Ensure named colors don't crash
         _ = Color.red
         _ = Color.green
@@ -69,7 +69,7 @@ final class LayoutTests: XCTestCase {
 
     // MARK: - Edge
 
-    func testEdgeSetAll() {
+    @MainActor func testEdgeSetAll() {
         let all = Edge.Set.all
         XCTAssertTrue(all.contains(.top))
         XCTAssertTrue(all.contains(.bottom))
@@ -77,14 +77,14 @@ final class LayoutTests: XCTestCase {
         XCTAssertTrue(all.contains(.trailing))
     }
 
-    func testEdgeSetHorizontal() {
+    @MainActor func testEdgeSetHorizontal() {
         let h = Edge.Set.horizontal
         XCTAssertTrue(h.contains(.leading))
         XCTAssertTrue(h.contains(.trailing))
         XCTAssertFalse(h.contains(.top))
     }
 
-    func testEdgeSetVertical() {
+    @MainActor func testEdgeSetVertical() {
         let v = Edge.Set.vertical
         XCTAssertTrue(v.contains(.top))
         XCTAssertTrue(v.contains(.bottom))
@@ -93,13 +93,13 @@ final class LayoutTests: XCTestCase {
 
     // MARK: - SafeAreaRegions
 
-    func testSafeAreaRegionsAll() {
+    @MainActor func testSafeAreaRegionsAll() {
         let all = SafeAreaRegions.all
         XCTAssertTrue(all.contains(.container))
         XCTAssertTrue(all.contains(.keyboard))
     }
 
-    func testSafeAreaRegionsCustomSet() {
+    @MainActor func testSafeAreaRegionsCustomSet() {
         let regions: SafeAreaRegions = [.container]
         XCTAssertTrue(regions.contains(.container))
         XCTAssertFalse(regions.contains(.keyboard))
@@ -107,7 +107,7 @@ final class LayoutTests: XCTestCase {
 
     // MARK: - EdgeInsets
 
-    func testEdgeInsetsDefault() {
+    @MainActor func testEdgeInsetsDefault() {
         let insets = EdgeInsets()
         XCTAssertEqual(insets.top, 0)
         XCTAssertEqual(insets.leading, 0)
@@ -115,7 +115,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(insets.trailing, 0)
     }
 
-    func testEdgeInsetsCustom() {
+    @MainActor func testEdgeInsetsCustom() {
         let insets = EdgeInsets(top: 1, leading: 2, bottom: 3, trailing: 4)
         XCTAssertEqual(insets.top, 1)
         XCTAssertEqual(insets.leading, 2)
@@ -125,7 +125,7 @@ final class LayoutTests: XCTestCase {
 
     // MARK: - Alignment
 
-    func testAlignmentEnumCases() {
+    @MainActor func testAlignmentEnumCases() {
         // Ensure all alignment cases exist
         _ = Alignment.topLeading
         _ = Alignment.top
@@ -150,19 +150,19 @@ final class LayoutTests: XCTestCase {
 
     // MARK: - ProposedViewSize / ViewSize
 
-    func testViewSizeZero() {
+    @MainActor func testViewSizeZero() {
         let size = ViewSize.zero
         XCTAssertEqual(size.width, 0)
         XCTAssertEqual(size.height, 0)
     }
 
-    func testProposedViewSizeUnspecified() {
+    @MainActor func testProposedViewSizeUnspecified() {
         let size = ProposedViewSize.unspecified
         XCTAssertNil(size.width)
         XCTAssertNil(size.height)
     }
 
-    func testComputeFrameLayoutCentersChildInFixedFrame() {
+    @MainActor func testComputeFrameLayoutCentersChildInFixedFrame() {
         let result = computeFrameLayout(
             childNaturalSize: ViewSize(width: 20, height: 10),
             width: 56,
@@ -175,7 +175,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.childPlacement.origin, ViewPoint(x: 18, y: 23))
     }
 
-    func testComputeFrameLayoutAppliesMinAndMaxConstraints() {
+    @MainActor func testComputeFrameLayoutAppliesMinAndMaxConstraints() {
         let result = computeFrameLayout(
             childNaturalSize: ViewSize(width: 40, height: 10),
             minWidth: 60,
@@ -188,7 +188,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.childPlacement.origin, ViewPoint(x: 0, y: 0))
     }
 
-    func testComputeFrameLayoutExpandsChildWhenRequested() {
+    @MainActor func testComputeFrameLayoutExpandsChildWhenRequested() {
         let result = computeFrameLayout(
             childNaturalSize: ViewSize(width: 10, height: 12),
             width: 50,
@@ -203,7 +203,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.childPlacement.origin, .zero)
     }
 
-    func testComputeVStackLayoutTrailingAlignmentAndSpacing() {
+    @MainActor func testComputeVStackLayoutTrailingAlignmentAndSpacing() {
         let result = computeVStackLayout(
             childSizes: [
                 ViewSize(width: 40, height: 10),
@@ -219,7 +219,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.childPlacements[1].size, ViewSize(width: 20, height: 8))
     }
 
-    func testComputeVStackLayoutMeasuresSubviewsThroughContext() {
+    @MainActor func testComputeVStackLayoutMeasuresSubviewsThroughContext() {
         var measuredSubviews: [LayoutSubview] = []
         var measuredProposals: [ProposedViewSize] = []
         let context = MockLayoutMeasureContext { subview, proposal in
@@ -249,7 +249,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.childPlacements[1].origin, ViewPoint(x: 20, y: 14))
     }
 
-    func testComputeHStackLayoutBottomAlignmentAndSpacing() {
+    @MainActor func testComputeHStackLayoutBottomAlignmentAndSpacing() {
         let result = computeHStackLayout(
             childSizes: [
                 ViewSize(width: 10, height: 24),
@@ -265,7 +265,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.childPlacements[1].size, ViewSize(width: 8, height: 12))
     }
 
-    func testComputeHStackLayoutMeasuresSubviewsThroughContext() {
+    @MainActor func testComputeHStackLayoutMeasuresSubviewsThroughContext() {
         var measuredSubviews: [LayoutSubview] = []
         var measuredProposals: [ProposedViewSize] = []
         let context = MockLayoutMeasureContext { subview, proposal in
@@ -295,7 +295,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.childPlacements[1].origin, ViewPoint(x: 16, y: 12))
     }
 
-    func testComputeZStackLayoutBottomTrailingAlignment() {
+    @MainActor func testComputeZStackLayoutBottomTrailingAlignment() {
         let result = computeZStackLayout(
             childSizes: [
                 ViewSize(width: 40, height: 24),
@@ -310,7 +310,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.childPlacements[1].size, ViewSize(width: 12, height: 10))
     }
 
-    func testComputeZStackLayoutMeasuresSubviewsThroughContext() {
+    @MainActor func testComputeZStackLayoutMeasuresSubviewsThroughContext() {
         var measuredSubviews: [LayoutSubview] = []
         var measuredProposals: [ProposedViewSize] = []
         let context = MockLayoutMeasureContext { subview, proposal in
@@ -339,7 +339,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.childPlacements[1].origin, ViewPoint(x: 28, y: 14))
     }
 
-    func testComputeGridLayoutWrapsRowsUsingColumnWidthsAndRowHeights() {
+    @MainActor func testComputeGridLayoutWrapsRowsUsingColumnWidthsAndRowHeights() {
         let result = computeGridLayout(
             childSizes: [
                 ViewSize(width: 40, height: 10),
@@ -358,7 +358,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.childPlacements[2].size, ViewSize(width: 20, height: 6))
     }
 
-    func testComputeGridLayoutMeasuresSubviewsThroughContext() {
+    @MainActor func testComputeGridLayoutMeasuresSubviewsThroughContext() {
         var measuredSubviews: [LayoutSubview] = []
         var measuredProposals: [ProposedViewSize] = []
         let context = MockLayoutMeasureContext { subview, proposal in
@@ -398,7 +398,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.childPlacements[2].origin, ViewPoint(x: 0, y: 16))
     }
 
-    func testComputeExplicitGridLayoutUsesHomogeneousColumnsAndSpans() {
+    @MainActor func testComputeExplicitGridLayoutUsesHomogeneousColumnsAndSpans() {
         let result = computeExplicitGridLayout(
             rows: [
                 [
@@ -424,7 +424,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.childPlacements[4].origin, ViewPoint(x: 59, y: 15))
     }
 
-    func testComputeExplicitGridLayoutMeasuresSubviewsThroughContext() {
+    @MainActor func testComputeExplicitGridLayoutMeasuresSubviewsThroughContext() {
         var measuredSubviews: [LayoutSubview] = []
         var measuredProposals: [ProposedViewSize] = []
         let context = MockLayoutMeasureContext { subview, proposal in
@@ -483,7 +483,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(result.childPlacements[4].origin, ViewPoint(x: 59, y: 15))
     }
 
-    func testComputeLazyGridConfigurationDefaultsWhenEmpty() {
+    @MainActor func testComputeLazyGridConfigurationDefaultsWhenEmpty() {
         let result = computeLazyGridConfiguration(gridItems: [])
 
         XCTAssertEqual(
@@ -492,7 +492,7 @@ final class LayoutTests: XCTestCase {
         )
     }
 
-    func testComputeLazyGridConfigurationUsesFixedCountForNonAdaptiveItems() {
+    @MainActor func testComputeLazyGridConfigurationUsesFixedCountForNonAdaptiveItems() {
         let result = computeLazyGridConfiguration(
             gridItems: [GridItem(.fixed), GridItem(.flexible), GridItem(.fixed)]
         )
@@ -503,7 +503,7 @@ final class LayoutTests: XCTestCase {
         )
     }
 
-    func testComputeLazyGridConfigurationUsesAdaptiveBoundsAndMinimum() {
+    @MainActor func testComputeLazyGridConfigurationUsesAdaptiveBoundsAndMinimum() {
         let result = computeLazyGridConfiguration(
             gridItems: [GridItem(.fixed), GridItem(.adaptive(minimum: 80))]
         )
@@ -514,14 +514,14 @@ final class LayoutTests: XCTestCase {
         )
     }
 
-    func testLayoutSubviewIsHashableByIndex() {
+    @MainActor func testLayoutSubviewIsHashableByIndex() {
         let subviews: Set<LayoutSubview> = [LayoutSubview(index: 0), LayoutSubview(index: 1)]
 
         XCTAssertTrue(subviews.contains(LayoutSubview(index: 0)))
         XCTAssertEqual(subviews.count, 2)
     }
 
-    func testLayoutMeasurementCapturesSizeAndFillFlags() {
+    @MainActor func testLayoutMeasurementCapturesSizeAndFillFlags() {
         let measurement = LayoutMeasurement(
             size: ViewSize(width: 40, height: 12),
             expandsToFillWidth: true,
@@ -533,7 +533,7 @@ final class LayoutTests: XCTestCase {
         XCTAssertFalse(measurement.expandsToFillHeight)
     }
 
-    func testLayoutMeasureContextReceivesSubviewAndProposal() {
+    @MainActor func testLayoutMeasureContextReceivesSubviewAndProposal() {
         let context = MockLayoutMeasureContext { subview, proposal in
             XCTAssertEqual(subview, LayoutSubview(index: 2))
             XCTAssertEqual(proposal, ProposedViewSize(width: 80, height: nil))

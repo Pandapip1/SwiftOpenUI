@@ -20,7 +20,7 @@ final class BindableTests: XCTestCase {
         }
     }
 
-    func testBindableExposesObject() {
+    @MainActor func testBindableExposesObject() {
         let model = Model(count: 5, title: "alpha")
         let bindable = Bindable(wrappedValue: model)
 
@@ -28,7 +28,7 @@ final class BindableTests: XCTestCase {
         XCTAssertEqual(bindable.wrappedValue.count, 5)
     }
 
-    func testProjectedValueReturnsSelf() {
+    @MainActor func testProjectedValueReturnsSelf() {
         let model = Model()
         let bindable = Bindable(wrappedValue: model)
         // projectedValue returns the Bindable itself so `$bindable.x`
@@ -36,7 +36,7 @@ final class BindableTests: XCTestCase {
         XCTAssertTrue(bindable.projectedValue.wrappedValue === model)
     }
 
-    func testDynamicMemberSubscriptBuildsBindingThatReads() {
+    @MainActor func testDynamicMemberSubscriptBuildsBindingThatReads() {
         let model = Model(count: 7, title: "alpha")
         let bindable = Bindable(wrappedValue: model)
 
@@ -44,7 +44,7 @@ final class BindableTests: XCTestCase {
         XCTAssertEqual(countBinding.wrappedValue, 7)
     }
 
-    func testDynamicMemberSubscriptBuildsBindingThatWrites() {
+    @MainActor func testDynamicMemberSubscriptBuildsBindingThatWrites() {
         let model = Model(count: 0, title: "alpha")
         let bindable = Bindable(wrappedValue: model)
 
@@ -54,7 +54,7 @@ final class BindableTests: XCTestCase {
         XCTAssertEqual(model.count, 42, "Write should flow through to the wrapped object")
     }
 
-    func testBindingTracksLatestValueAcrossMutations() {
+    @MainActor func testBindingTracksLatestValueAcrossMutations() {
         let model = Model(count: 1, title: "")
         let bindable = Bindable(wrappedValue: model)
 
@@ -63,7 +63,7 @@ final class BindableTests: XCTestCase {
         XCTAssertEqual(binding.wrappedValue, 99, "Binding reads should reflect mutations through the object itself")
     }
 
-    func testMultipleBindingsFromSameObjectAreIndependent() {
+    @MainActor func testMultipleBindingsFromSameObjectAreIndependent() {
         let model = Model(count: 0, title: "start")
         let bindable = Bindable(wrappedValue: model)
 

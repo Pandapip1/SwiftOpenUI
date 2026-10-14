@@ -47,14 +47,14 @@ private class MockInteractiveHost: AnyViewHost, DependencyTrackingHost {
 
 final class InteractiveUpdateTests: XCTestCase {
 
-    func testScheduleRebuildSuppressedDuringInteraction() {
+    @MainActor func testScheduleRebuildSuppressedDuringInteraction() {
         let host = MockInteractiveHost()
         host.beginInteractiveUpdate()
         host.scheduleRebuild()
         XCTAssertEqual(host.rebuildCount, 0, "Rebuild should be suppressed during interaction")
     }
 
-    func testDeferredRebuildFiresOnEnd() {
+    @MainActor func testDeferredRebuildFiresOnEnd() {
         let host = MockInteractiveHost()
         host.beginInteractiveUpdate()
         host.scheduleRebuild()
@@ -63,7 +63,7 @@ final class InteractiveUpdateTests: XCTestCase {
         XCTAssertEqual(host.rebuildCount, 1, "Deferred rebuild should fire on end")
     }
 
-    func testNestedInteractiveUpdates() {
+    @MainActor func testNestedInteractiveUpdates() {
         let host = MockInteractiveHost()
         host.beginInteractiveUpdate()
         host.beginInteractiveUpdate()
@@ -74,14 +74,14 @@ final class InteractiveUpdateTests: XCTestCase {
         XCTAssertEqual(host.rebuildCount, 1, "All levels ended — rebuild fires")
     }
 
-    func testNoDeferredRebuildIfNothingScheduled() {
+    @MainActor func testNoDeferredRebuildIfNothingScheduled() {
         let host = MockInteractiveHost()
         host.beginInteractiveUpdate()
         host.endInteractiveUpdate()
         XCTAssertEqual(host.rebuildCount, 0, "No deferred rebuild if nothing was scheduled")
     }
 
-    func testBindingUpdatesFlowDuringInteraction() {
+    @MainActor func testBindingUpdatesFlowDuringInteraction() {
         let host = MockInteractiveHost()
         let storage = StateStorage(42)
         storage.host = host

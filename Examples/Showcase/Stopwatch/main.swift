@@ -163,7 +163,7 @@ struct StopwatchView: View {
             // Lap list
             if !engine.laps.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    ForEach(0..<engine.laps.count) { i in
+                    ForEach(0..<engine.laps.count, id: \.self) { i in
                         HStack {
                             Text("Lap \(engine.laps.count - i)")
                                 .foregroundColor(Color(red: 0.6, green: 0.6, blue: 0.6))

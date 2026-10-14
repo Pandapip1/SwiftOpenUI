@@ -2,8 +2,9 @@ import Foundation
 import XCTest
 @_spi(SwiftOpenUIBackend) @testable import SwiftOpenUICore
 
+#if !canImport(AVFoundation) || BACKEND_GTK
 final class AVPlayerCompatibilityTests: XCTestCase {
-    func testAssetLoadsMediaSelectionGroupsAsynchronously() async throws {
+    @MainActor func testAssetLoadsMediaSelectionGroupsAsynchronously() async throws {
         let asset = AVURLAsset(url: URL(string: "https://example.com/video.mp4")!)
         let option = AVMediaSelectionOption(
             mediaType: .audio,
@@ -26,7 +27,7 @@ final class AVPlayerCompatibilityTests: XCTestCase {
         XCTAssertTrue(loadedGroup === group)
     }
 
-    func testAsyncPropertySupportsGenericLoadingOnAssetSubclasses() async throws {
+    @MainActor func testAsyncPropertySupportsGenericLoadingOnAssetSubclasses() async throws {
         let asset = AVURLAsset(url: URL(string: "https://example.com/video.mp4")!)
         let group = AVMediaSelectionGroup(options: [], allowsEmptySelection: false, characteristic: .audible)
         asset._swiftOpenUISetMediaSelectionGroups([.audible: group])
@@ -62,7 +63,7 @@ final class AVPlayerCompatibilityTests: XCTestCase {
         func stopPictureInPicture() { pictureInPictureActive = false }
     }
 
-    func testCompositionItemQueuedBeforeDriverPreservesBothSources() async throws {
+    @MainActor func testCompositionItemQueuedBeforeDriverPreservesBothSources() async throws {
         try await MainActor.run {
         let video = URL(string: "https://example.com/video.mp4")!
         let audio = URL(string: "https://example.com/audio.m4a")!
@@ -106,3 +107,4 @@ final class AVPlayerCompatibilityTests: XCTestCase {
         }
     }
 }
+#endif

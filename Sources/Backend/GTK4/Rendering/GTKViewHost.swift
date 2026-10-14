@@ -234,11 +234,11 @@ public class GTKViewHost: AnyViewHost, DependencyTrackingHost {
                     result = buildBody()
                 }
             } onChange: { [weak self] in
-                guard let self else { return }
-                self.lock.lock()
-                self.observationDidFire = true
-                self.lock.unlock()
-                self.scheduleRebuild()
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.observationDidFire = true
+                    self.scheduleRebuild()
+                }
             }
             if let renderBody { result = renderBody() }
             if let reads = endEnvironmentReadTracking() {
@@ -359,8 +359,12 @@ public class GTKViewHost: AnyViewHost, DependencyTrackingHost {
         var oldChild = gtk_widget_get_first_child(container)
         while let child = oldChild {
             if oldChildren.isEmpty {
-                gtk_widget_get_allocation(child, &oldAllocation)
-                oldBaseline = gtk_widget_get_allocated_baseline(child)
+                oldAllocation = GtkAllocation(
+                    x: 0, y: 0,
+                    width: gtk_widget_get_width(child),
+                    height: gtk_widget_get_height(child)
+                )
+                oldBaseline = gtk_widget_get_baseline(child)
             }
             g_object_ref(gpointer(child))
             oldChildren.append(child)

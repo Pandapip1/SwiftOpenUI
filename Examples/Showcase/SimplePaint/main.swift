@@ -178,7 +178,7 @@ struct ToolPanelView: View {
 
     var body: some View {
         VStack(spacing: 1) {
-            ForEach(0..<toolList.count) { i in
+            ForEach(0..<toolList.count, id: \.self) { i in
                 let tool = toolList[i]
                 Text(tool.icon)
                     .frame(width: 36, height: 36)

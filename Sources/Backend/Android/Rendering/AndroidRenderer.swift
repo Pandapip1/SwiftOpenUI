@@ -143,7 +143,7 @@ public func androidRenderChildren<V: View>(_ view: V) -> [RenderNode] {
     }
     if let multi = view as? MultiChildView {
         return multi.children.map { child in
-            func render<C: View>(_ c: C) -> RenderNode { androidRenderView(c) }
+            @MainActor func render<C: View>(_ c: C) -> RenderNode { androidRenderView(c) }
             return render(child)
         }
     }

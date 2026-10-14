@@ -3,7 +3,7 @@ import Foundation
 #if canImport(AVFoundation) && !BACKEND_GTK
 @_exported import AVFoundation
 #else
-public struct CMTime: Hashable, Sendable {
+nonisolated public struct CMTime: Hashable, Sendable {
     public var value: Int64
     public var timescale: Int32
     public init(value: Int64, timescale: Int32) { self.value = value; self.timescale = timescale }
@@ -14,13 +14,13 @@ public struct CMTime: Hashable, Sendable {
     public static let zero = CMTime(value: 0, timescale: 1)
 }
 
-public struct CMTimeRange: Hashable, Sendable {
+nonisolated public struct CMTimeRange: Hashable, Sendable {
     public var start: CMTime
     public var duration: CMTime
     public init(start: CMTime, duration: CMTime) { self.start = start; self.duration = duration }
 }
 
-public struct AVMediaType: RawRepresentable, Hashable, Sendable {
+nonisolated public struct AVMediaType: RawRepresentable, Hashable, Sendable {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
     public static let video = AVMediaType(rawValue: "vide")
@@ -28,7 +28,7 @@ public struct AVMediaType: RawRepresentable, Hashable, Sendable {
     public static let subtitle = AVMediaType(rawValue: "sbtl")
 }
 
-public struct AVMediaCharacteristic: RawRepresentable, Hashable, Sendable {
+nonisolated public struct AVMediaCharacteristic: RawRepresentable, Hashable, Sendable {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
     public static let visual = AVMediaCharacteristic(rawValue: "visual")
@@ -36,7 +36,7 @@ public struct AVMediaCharacteristic: RawRepresentable, Hashable, Sendable {
     public static let legible = AVMediaCharacteristic(rawValue: "legible")
 }
 
-public final class AVMediaSelectionOption: @unchecked Sendable {
+nonisolated public final class AVMediaSelectionOption: @unchecked Sendable {
     public let mediaType: AVMediaType
     public let displayName: String
     public let locale: Locale?
@@ -53,7 +53,7 @@ public final class AVMediaSelectionOption: @unchecked Sendable {
     }
 }
 
-public final class AVMediaSelectionGroup: @unchecked Sendable {
+nonisolated public final class AVMediaSelectionGroup: @unchecked Sendable {
     public let options: [AVMediaSelectionOption]
     public let allowsEmptySelection: Bool
     @_spi(SwiftOpenUIBackend) public let _swiftOpenUICharacteristic: AVMediaCharacteristic
@@ -66,7 +66,7 @@ public final class AVMediaSelectionGroup: @unchecked Sendable {
     }
 }
 
-public final class AVMediaSelection: @unchecked Sendable {
+nonisolated public final class AVMediaSelection: @unchecked Sendable {
     private let lock = NSLock()
     private var selected: [ObjectIdentifier: AVMediaSelectionOption] = [:]
     public init() {}
@@ -85,16 +85,16 @@ public final class AVMediaSelection: @unchecked Sendable {
 ///
 /// This mirrors AVFoundation's async asset-loading surface so clients can use
 /// the same APIs on the non-Apple compatibility implementation.
-public class AVAsyncProperty<Root, Value>: @unchecked Sendable {
-    fileprivate let value: (Root) -> Value
+nonisolated public class AVAsyncProperty<Root, Value>: @unchecked Sendable {
+    fileprivate nonisolated let value: @Sendable (Root) -> Value
 
-    public required init(_ value: @escaping (Root) -> Value) {
+    public required nonisolated init(_ value: @escaping @Sendable (Root) -> Value) {
         self.value = value
     }
 }
 
 /// Types that load AVFoundation properties asynchronously.
-public protocol AVAsynchronousKeyValueLoading: AnyObject {
+nonisolated public protocol AVAsynchronousKeyValueLoading: AnyObject {
 }
 
 public extension AVAsynchronousKeyValueLoading {
@@ -111,7 +111,7 @@ public extension AVAsynchronousKeyValueLoading {
 public typealias CMPersistentTrackID = Int32
 public let kCMPersistentTrackID_Invalid: CMPersistentTrackID = 0
 
-open class AVAsset: AVAsynchronousKeyValueLoading, @unchecked Sendable {
+nonisolated open class AVAsset: AVAsynchronousKeyValueLoading, @unchecked Sendable {
     @_spi(SwiftOpenUIBackend) public var _swiftOpenUITracks: [AVAssetTrack] = []
     private let mediaSelectionLock = NSLock()
     private var mediaSelectionGroups: [AVMediaCharacteristic: AVMediaSelectionGroup] = [:]
@@ -165,7 +165,7 @@ public extension AVAsyncProperty where Root: AVAsset, Value == [AVMediaCharacter
     }
 }
 
-public final class AVURLAsset: AVAsset, @unchecked Sendable {
+nonisolated public final class AVURLAsset: AVAsset, @unchecked Sendable {
     public let url: URL
     @_spi(SwiftOpenUIBackend) public let _swiftOpenUIOptions: [String: Any]?
     public init(url: URL, options: [String: Any]? = nil) {
@@ -176,7 +176,7 @@ public final class AVURLAsset: AVAsset, @unchecked Sendable {
     }
 }
 
-public final class AVAssetTrack: @unchecked Sendable {
+nonisolated public final class AVAssetTrack: @unchecked Sendable {
     public let mediaType: AVMediaType
     @_spi(SwiftOpenUIBackend) public let _swiftOpenUISourceURL: URL
     @_spi(SwiftOpenUIBackend) public let _swiftOpenUISourceOptions: [String: Any]?
@@ -188,7 +188,7 @@ public final class AVAssetTrack: @unchecked Sendable {
     }
 }
 
-public final class AVMutableCompositionTrack: @unchecked Sendable {
+nonisolated public final class AVMutableCompositionTrack: @unchecked Sendable {
     public let mediaType: AVMediaType
     @_spi(SwiftOpenUIBackend) public private(set) var _swiftOpenUISourceTrack: AVAssetTrack?
     fileprivate init(mediaType: AVMediaType) { self.mediaType = mediaType }
@@ -197,7 +197,7 @@ public final class AVMutableCompositionTrack: @unchecked Sendable {
     }
 }
 
-public final class AVMutableComposition: AVAsset, @unchecked Sendable {
+nonisolated public final class AVMutableComposition: AVAsset, @unchecked Sendable {
     private var mutableTracks: [AVMutableCompositionTrack] = []
     public override init() { super.init() }
     public func addMutableTrack(withMediaType mediaType: AVMediaType,
@@ -210,14 +210,14 @@ public final class AVMutableComposition: AVAsset, @unchecked Sendable {
     @_spi(SwiftOpenUIBackend) public var _swiftOpenUICompositionTracks: [AVMutableCompositionTrack] { mutableTracks }
 }
 
-public final class AVPlayerItem: @unchecked Sendable {
+nonisolated public final class AVPlayerItem: @unchecked Sendable {
     private let mediaSelectionLock = NSLock()
     private var mediaSelectionHandler:
         (@Sendable (AVMediaSelectionOption?, AVMediaSelectionGroup) -> Void)?
-    public let asset: AVAsset
+    public nonisolated let asset: AVAsset
     public let currentMediaSelection = AVMediaSelection()
-    public init(asset: AVAsset) { self.asset = asset }
-    public convenience init(url: URL) { self.init(asset: AVURLAsset(url: url)) }
+    public nonisolated init(asset: AVAsset) { self.asset = asset }
+    public nonisolated convenience init(url: URL) { self.init(asset: AVURLAsset(url: url)) }
     @_spi(SwiftOpenUIBackend) public var _swiftOpenUISelectMediaOption:
         (@Sendable (AVMediaSelectionOption?, AVMediaSelectionGroup) -> Void)? {
         get {
@@ -395,12 +395,11 @@ public final class AVPictureInPictureController: @unchecked Sendable {
 }
 #endif
 
-@MainActor @preconcurrency
 public struct VideoPlayer<VideoOverlay: View>: View, PrimitiveView {
     public typealias Body = Never
     @_spi(SwiftOpenUIBackend) public let player: AVPlayer?
     @_spi(SwiftOpenUIBackend) public let videoOverlay: VideoOverlay
-    public init(player: AVPlayer?, @ViewBuilder videoOverlay: () -> VideoOverlay) {
+    @MainActor public init(player: AVPlayer?, @ViewBuilder videoOverlay: () -> VideoOverlay) {
         self.player = player
         self.videoOverlay = videoOverlay()
     }
@@ -408,5 +407,5 @@ public struct VideoPlayer<VideoOverlay: View>: View, PrimitiveView {
 }
 
 public extension VideoPlayer where VideoOverlay == EmptyView {
-    init(player: AVPlayer?) { self.init(player: player) { EmptyView() } }
+    @MainActor init(player: AVPlayer?) { self.init(player: player) { EmptyView() } }
 }

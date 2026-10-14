@@ -13,7 +13,7 @@ final class TestModel {
 
 final class ObservableTests: XCTestCase {
 
-    func testObservableDetectedByMirror() {
+    @MainActor func testObservableDetectedByMirror() {
         // A view struct with an @Observable property should be detected
         // as having reactive properties
         struct TestView: View {
@@ -27,7 +27,7 @@ final class ObservableTests: XCTestCase {
             "@Observable stored property should be detected as reactive")
     }
 
-    func testNonObservableNotDetected() {
+    @MainActor func testNonObservableNotDetected() {
         // A plain struct property should not be detected
         struct PlainView: View {
             var label: String
@@ -39,7 +39,7 @@ final class ObservableTests: XCTestCase {
             "Plain stored property should not be detected as reactive")
     }
 
-    func testObservationTrackingWorks() {
+    @MainActor func testObservationTrackingWorks() {
         // Verify that withObservationTracking fires onChange
         let model = TestModel()
         let expectation = XCTestExpectation(description: "onChange fired")
@@ -54,7 +54,7 @@ final class ObservableTests: XCTestCase {
         wait(for: [expectation], timeout: 1.0)
     }
 
-    func testObservableModelConstruction() {
+    @MainActor func testObservableModelConstruction() {
         let model = TestModel()
         XCTAssertEqual(model.name, "hello")
         XCTAssertEqual(model.count, 0)

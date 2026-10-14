@@ -5,7 +5,7 @@ final class NavigationSplitViewTests: XCTestCase {
 
     // MARK: - Two-column
 
-    func testTwoColumnDefault() {
+    @MainActor func testTwoColumnDefault() {
         let split = NavigationSplitView {
             Text("Sidebar")
         } detail: {
@@ -16,7 +16,7 @@ final class NavigationSplitViewTests: XCTestCase {
         XCTAssertNil(split.columnVisibility)
     }
 
-    func testTwoColumnCustomWidth() {
+    @MainActor func testTwoColumnCustomWidth() {
         let split = NavigationSplitView(sidebarWidth: 300) {
             Text("Sidebar")
         } detail: {
@@ -26,7 +26,7 @@ final class NavigationSplitViewTests: XCTestCase {
         XCTAssertFalse(split.hasContentColumn)
     }
 
-    func testTwoColumnWithVisibility() {
+    @MainActor func testTwoColumnWithVisibility() {
         let split = NavigationSplitView(columnVisibility: .constant(.all)) {
             Text("Sidebar")
         } detail: {
@@ -38,7 +38,7 @@ final class NavigationSplitViewTests: XCTestCase {
 
     // MARK: - Three-column
 
-    func testThreeColumn() {
+    @MainActor func testThreeColumn() {
         let split = NavigationSplitView {
             Text("Sidebar")
         } content: {
@@ -50,7 +50,7 @@ final class NavigationSplitViewTests: XCTestCase {
         XCTAssertEqual(split.sidebarWidth, 200)
     }
 
-    func testThreeColumnWithVisibility() {
+    @MainActor func testThreeColumnWithVisibility() {
         let split = NavigationSplitView(columnVisibility: .constant(.doubleColumn)) {
             Text("Sidebar")
         } content: {
@@ -64,14 +64,14 @@ final class NavigationSplitViewTests: XCTestCase {
 
     // MARK: - Visibility enum
 
-    func testVisibilityEnum() {
+    @MainActor func testVisibilityEnum() {
         let cases: [NavigationSplitViewVisibility] = [.automatic, .all, .doubleColumn, .detailOnly]
         XCTAssertEqual(cases.count, 4)
     }
 
     // MARK: - Column width modifier
 
-    func testColumnWidthIdeal() {
+    @MainActor func testColumnWidthIdeal() {
         let view = Text("Sidebar")
             .navigationSplitViewColumnWidth(min: 150, ideal: 250, max: 400)
         XCTAssertEqual(view.columnMinWidth, 150)
@@ -79,21 +79,21 @@ final class NavigationSplitViewTests: XCTestCase {
         XCTAssertEqual(view.columnMaxWidth, 400)
     }
 
-    func testColumnWidthFixed() {
+    @MainActor func testColumnWidthFixed() {
         let view = Text("Sidebar").navigationSplitViewColumnWidth(200)
         XCTAssertEqual(view.columnMinWidth, 200)
         XCTAssertEqual(view.columnIdealWidth, 200)
         XCTAssertEqual(view.columnMaxWidth, 200)
     }
 
-    func testColumnWidthIdealOnly() {
+    @MainActor func testColumnWidthIdealOnly() {
         let view = Text("Content").navigationSplitViewColumnWidth(ideal: 300)
         XCTAssertNil(view.columnMinWidth)
         XCTAssertEqual(view.columnIdealWidth, 300)
         XCTAssertNil(view.columnMaxWidth)
     }
 
-    func testColumnWidthProvider() {
+    @MainActor func testColumnWidthProvider() {
         let view = Text("Test").navigationSplitViewColumnWidth(min: 100, ideal: 200, max: 300)
         let provider = view as NavigationSplitViewColumnWidthProvider
         XCTAssertEqual(provider.columnMinWidth, 100)

@@ -8,12 +8,12 @@ final class ShapeTests: XCTestCase {
 
     // MARK: - Circle
 
-    func testCirclePathIsNotEmpty() {
+    @MainActor func testCirclePathIsNotEmpty() {
         let path = Circle().path(in: unitRect)
         XCTAssertFalse(path.isEmpty)
     }
 
-    func testCircleInscribesInSmallerDimension() {
+    @MainActor func testCircleInscribesInSmallerDimension() {
         let rect = CGRect(x: 0, y: 0, width: 200, height: 100)
         let path = Circle().path(in: rect)
         // Should produce an ellipse element centered in the rect
@@ -31,12 +31,12 @@ final class ShapeTests: XCTestCase {
 
     // MARK: - Rectangle
 
-    func testRectanglePathIsNotEmpty() {
+    @MainActor func testRectanglePathIsNotEmpty() {
         let path = Rectangle().path(in: unitRect)
         XCTAssertFalse(path.isEmpty)
     }
 
-    func testRectanglePathMatchesRect() {
+    @MainActor func testRectanglePathMatchesRect() {
         let rect = CGRect(x: 10, y: 20, width: 50, height: 30)
         let path = Rectangle().path(in: rect)
         // First element should be moveTo(10, 20)
@@ -55,23 +55,23 @@ final class ShapeTests: XCTestCase {
 
     // MARK: - RoundedRectangle
 
-    func testRoundedRectangleStoresCornerRadius() {
+    @MainActor func testRoundedRectangleStoresCornerRadius() {
         let shape = RoundedRectangle(cornerRadius: 12)
         XCTAssertEqual(shape.cornerRadius, 12)
         XCTAssertEqual(shape.style, .circular)
     }
 
-    func testRoundedRectangleContinuousStyle() {
+    @MainActor func testRoundedRectangleContinuousStyle() {
         let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
         XCTAssertEqual(shape.style, .continuous)
     }
 
-    func testRoundedRectanglePathIsNotEmpty() {
+    @MainActor func testRoundedRectanglePathIsNotEmpty() {
         let path = RoundedRectangle(cornerRadius: 10).path(in: unitRect)
         XCTAssertFalse(path.isEmpty)
     }
 
-    func testRoundedRectangleCornerRadiusClamped() {
+    @MainActor func testRoundedRectangleCornerRadiusClamped() {
         // cornerRadius larger than half the short side should be clamped
         let rect = CGRect(x: 0, y: 0, width: 20, height: 10)
         let path = RoundedRectangle(cornerRadius: 100).path(in: rect)
@@ -81,17 +81,17 @@ final class ShapeTests: XCTestCase {
 
     // MARK: - Capsule
 
-    func testCapsuleDefaultStyle() {
+    @MainActor func testCapsuleDefaultStyle() {
         let shape = Capsule()
         XCTAssertEqual(shape.style, .circular)
     }
 
-    func testCapsulePathIsNotEmpty() {
+    @MainActor func testCapsulePathIsNotEmpty() {
         let path = Capsule().path(in: unitRect)
         XCTAssertFalse(path.isEmpty)
     }
 
-    func testCapsuleUsesHalfShortSide() {
+    @MainActor func testCapsuleUsesHalfShortSide() {
         // In a 100x40 rect, capsule cornerRadius should be 20
         let rect = CGRect(x: 0, y: 0, width: 100, height: 40)
         let path = Capsule().path(in: rect)
@@ -106,12 +106,12 @@ final class ShapeTests: XCTestCase {
 
     // MARK: - Ellipse
 
-    func testEllipsePathIsNotEmpty() {
+    @MainActor func testEllipsePathIsNotEmpty() {
         let path = Ellipse().path(in: unitRect)
         XCTAssertFalse(path.isEmpty)
     }
 
-    func testEllipsePathMatchesRect() {
+    @MainActor func testEllipsePathMatchesRect() {
         let rect = CGRect(x: 0, y: 0, width: 200, height: 100)
         let path = Ellipse().path(in: rect)
         if case .ellipse(let center, let rx, let ry) = path.elements.first {
@@ -126,27 +126,27 @@ final class ShapeTests: XCTestCase {
 
     // MARK: - FilledShape
 
-    func testFillReturnsFilledShape() {
+    @MainActor func testFillReturnsFilledShape() {
         let filled = Circle().fill(.red)
         XCTAssertEqual(filled.color.red, 1.0)
         XCTAssertEqual(filled.color.green, 0.0)
         XCTAssertEqual(filled.color.blue, 0.0)
     }
 
-    func testFilledShapePreservesShape() {
+    @MainActor func testFilledShapePreservesShape() {
         let filled = RoundedRectangle(cornerRadius: 8).fill(.blue)
         XCTAssertEqual(filled.shape.cornerRadius, 8)
     }
 
     // MARK: - StrokedShape
 
-    func testStrokeReturnsStrokedShape() {
+    @MainActor func testStrokeReturnsStrokedShape() {
         let stroked = Circle().stroke(.green, lineWidth: 3)
         XCTAssertGreaterThan(stroked.color.green, 0)
         XCTAssertEqual(stroked.style.lineWidth, 3)
     }
 
-    func testStrokeWithStyleReturnsStrokedShape() {
+    @MainActor func testStrokeWithStyleReturnsStrokedShape() {
         let style = StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .bevel)
         let stroked = Rectangle().stroke(.red, style: style)
         XCTAssertEqual(stroked.style.lineWidth, 2)
@@ -154,14 +154,14 @@ final class ShapeTests: XCTestCase {
         XCTAssertEqual(stroked.style.lineJoin, .bevel)
     }
 
-    func testStrokedShapePreservesShape() {
+    @MainActor func testStrokedShapePreservesShape() {
         let stroked = Capsule().stroke(.black, lineWidth: 1)
         XCTAssertEqual(stroked.shape.style, .circular)
     }
 
     // MARK: - Path.addRoundedRect
 
-    func testAddRoundedRectProducesElements() {
+    @MainActor func testAddRoundedRectProducesElements() {
         var path = Path()
         path.addRoundedRect(in: unitRect, cornerRadius: 10)
         XCTAssertFalse(path.isEmpty)
@@ -180,7 +180,7 @@ final class ShapeTests: XCTestCase {
 
     // MARK: - RoundedCornerStyle
 
-    func testRoundedCornerStyleEquatable() {
+    @MainActor func testRoundedCornerStyleEquatable() {
         XCTAssertEqual(RoundedCornerStyle.circular, RoundedCornerStyle.circular)
         XCTAssertEqual(RoundedCornerStyle.continuous, RoundedCornerStyle.continuous)
         XCTAssertNotEqual(RoundedCornerStyle.circular, RoundedCornerStyle.continuous)

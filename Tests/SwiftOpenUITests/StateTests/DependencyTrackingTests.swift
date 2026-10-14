@@ -16,7 +16,7 @@ final class DependencyTrackingTests: XCTestCase {
 
     // MARK: - Tracking context
 
-    func testBeginEndTracking() {
+    @MainActor func testBeginEndTracking() {
         let obj = NSObject()
         beginDependencyTracking()
         recordDependencyRead(obj)
@@ -25,27 +25,27 @@ final class DependencyTrackingTests: XCTestCase {
         XCTAssertTrue(tracking!.readSet.contains(ObjectIdentifier(obj)))
     }
 
-    func testEmptyTrackingReturnsEmptySet() {
+    @MainActor func testEmptyTrackingReturnsEmptySet() {
         beginDependencyTracking()
         let tracking = endDependencyTracking()
         XCTAssertNotNil(tracking)
         XCTAssertTrue(tracking!.readSet.isEmpty)
     }
 
-    func testNoTrackingReturnsNil() {
+    @MainActor func testNoTrackingReturnsNil() {
         let tracking = endDependencyTracking()
         XCTAssertNil(tracking)
     }
 
     // MARK: - isDependency
 
-    func testIsDependencyTrue() {
+    @MainActor func testIsDependencyTrue() {
         let obj = NSObject()
         let readSet: Set<ObjectIdentifier> = [ObjectIdentifier(obj)]
         XCTAssertTrue(isDependency(obj, in: readSet))
     }
 
-    func testIsDependencyFalse() {
+    @MainActor func testIsDependencyFalse() {
         let obj = NSObject()
         let other = NSObject()
         let readSet: Set<ObjectIdentifier> = [ObjectIdentifier(other)]
@@ -54,7 +54,7 @@ final class DependencyTrackingTests: XCTestCase {
 
     // MARK: - Storage integration
 
-    func testStateStorageRecordsDependency() {
+    @MainActor func testStateStorageRecordsDependency() {
         let storage = StateStorage(42)
         beginDependencyTracking()
         _ = storage.value
@@ -63,7 +63,7 @@ final class DependencyTrackingTests: XCTestCase {
         XCTAssertTrue(tracking!.readSet.contains(ObjectIdentifier(storage)))
     }
 
-    func testPublishedStorageRecordsDependency() {
+    @MainActor func testPublishedStorageRecordsDependency() {
         let storage = PublishedStorage("hello")
         beginDependencyTracking()
         _ = storage.value
@@ -74,7 +74,7 @@ final class DependencyTrackingTests: XCTestCase {
 
     // MARK: - @State always rebuilds (no gating)
 
-    func testStateAlwaysRebuildsEvenWhenUnread() {
+    @MainActor func testStateAlwaysRebuildsEvenWhenUnread() {
         let host = MockViewHost()
         let unreadStorage = StateStorage(1)
         unreadStorage.host = host
@@ -90,15 +90,14 @@ final class DependencyTrackingTests: XCTestCase {
 
     // MARK: - @Published gating
 
-    func testPublishedSkipsRebuildForUnreadStorage() {
+    @MainActor func testPublishedSkipsRebuildForUnreadStorage() {
         let host = MockViewHost()
         let readPublished = PublishedStorage("read")
         let unreadPublished = PublishedStorage("unread")
 
         readPublished.setObserver(token: ObjectIdentifier(host)) { [weak host] in
             guard let host = host else { return }
-            if let trackingHost = host as? DependencyTrackingHost,
-               let readSet = trackingHost.lastReadSet,
+            if let readSet = host.lastReadSet,
                !isDependency(readPublished, in: readSet) {
                 return
             }
@@ -106,8 +105,7 @@ final class DependencyTrackingTests: XCTestCase {
         }
         unreadPublished.setObserver(token: ObjectIdentifier(host)) { [weak host] in
             guard let host = host else { return }
-            if let trackingHost = host as? DependencyTrackingHost,
-               let readSet = trackingHost.lastReadSet,
+            if let readSet = host.lastReadSet,
                !isDependency(unreadPublished, in: readSet) {
                 return
             }
@@ -124,14 +122,13 @@ final class DependencyTrackingTests: XCTestCase {
         XCTAssertEqual(host.rebuildCount, 0, "Should skip rebuild for unread @Published")
     }
 
-    func testPublishedRebuildsForReadStorage() {
+    @MainActor func testPublishedRebuildsForReadStorage() {
         let host = MockViewHost()
         let readPublished = PublishedStorage("read")
 
         readPublished.setObserver(token: ObjectIdentifier(host)) { [weak host] in
             guard let host = host else { return }
-            if let trackingHost = host as? DependencyTrackingHost,
-               let readSet = trackingHost.lastReadSet,
+            if let readSet = host.lastReadSet,
                !isDependency(readPublished, in: readSet) {
                 return
             }
@@ -150,7 +147,7 @@ final class DependencyTrackingTests: XCTestCase {
 
     // MARK: - Nested tracking (stack-based)
 
-    func testNestedTrackingPreservesParentSession() {
+    @MainActor func testNestedTrackingPreservesParentSession() {
         let parentObj = NSObject()
         let childObj = NSObject()
 

@@ -13,7 +13,7 @@ final class PickerTests: XCTestCase {
 
     // MARK: - Basic extraction from a ForEach
 
-    func testGenericPickerExtractsOptionsFromForEach() {
+    @MainActor func testGenericPickerExtractsOptionsFromForEach() {
         var selected = Action.snapshot
         let binding = Binding(
             get: { selected },
@@ -30,7 +30,7 @@ final class PickerTests: XCTestCase {
         XCTAssertEqual(picker.selected, 0)
     }
 
-    func testGenericPickerSelectedReflectsCurrentValue() {
+    @MainActor func testGenericPickerSelectedReflectsCurrentValue() {
         var selected = Action.compare
         let binding = Binding(
             get: { selected },
@@ -46,7 +46,7 @@ final class PickerTests: XCTestCase {
         XCTAssertEqual(picker.selected, 1) // .compare is index 1
     }
 
-    func testGenericPickerOnChangedWritesThroughBinding() {
+    @MainActor func testGenericPickerOnChangedWritesThroughBinding() {
         var selected = Action.snapshot
         let binding = Binding(
             get: { selected },
@@ -65,7 +65,7 @@ final class PickerTests: XCTestCase {
 
     // MARK: - Explicit inline options (TupleView)
 
-    func testGenericPickerExtractsOptionsFromInlineContent() {
+    @MainActor func testGenericPickerExtractsOptionsFromInlineContent() {
         var selected = "a"
         let binding = Binding(
             get: { selected },
@@ -87,7 +87,7 @@ final class PickerTests: XCTestCase {
 
     // MARK: - Defensive behavior
 
-    func testGenericPickerUnknownSelectionFallsBackToZero() {
+    @MainActor func testGenericPickerUnknownSelectionFallsBackToZero() {
         var selected = "unknown-value"
         let binding = Binding(
             get: { selected },
@@ -106,7 +106,7 @@ final class PickerTests: XCTestCase {
 
     // MARK: - pickerStyle + labelsHidden compose
 
-    func testGenericPickerStyleChainSurvivesPickerStyle() {
+    @MainActor func testGenericPickerStyleChainSurvivesPickerStyle() {
         var selected = Action.snapshot
         let binding = Binding(
             get: { selected },
@@ -124,7 +124,7 @@ final class PickerTests: XCTestCase {
         XCTAssertEqual(styled.options, ["snapshot", "compare", "sync"])
     }
 
-    func testLabelsHiddenWrapsContent() {
+    @MainActor func testLabelsHiddenWrapsContent() {
         let hidden = Text("hello").labelsHidden()
         XCTAssertNotNil(hidden as LabelsHiddenView<Text>)
     }

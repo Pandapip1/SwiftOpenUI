@@ -5,23 +5,23 @@ final class TagTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        clearCurrentTagValue()
+        MainActor.assumeIsolated { clearCurrentTagValue() }
     }
 
     // MARK: - TagView
 
-    func testTagWrapsContent() {
+    @MainActor func testTagWrapsContent() {
         let view = Text("Hello").tag(42)
         XCTAssertEqual(view.tagValue, 42)
         XCTAssertEqual(view.content.content, "Hello")
     }
 
-    func testTagStringValue() {
+    @MainActor func testTagStringValue() {
         let view = Text("Hello").tag("option-a")
         XCTAssertEqual(view.tagValue, "option-a")
     }
 
-    func testTagEnumValue() {
+    @MainActor func testTagEnumValue() {
         enum Tab: Hashable { case home, settings }
         let view = Text("Home").tag(Tab.home)
         XCTAssertEqual(view.tagValue, Tab.home)
@@ -29,19 +29,19 @@ final class TagTests: XCTestCase {
 
     // MARK: - Tag value propagation
 
-    func testSetAndGetTagValue() {
+    @MainActor func testSetAndGetTagValue() {
         setCurrentTagValue(42)
         XCTAssertEqual(getCurrentTagValue(), AnyHashable(42))
         clearCurrentTagValue()
     }
 
-    func testClearTagValue() {
+    @MainActor func testClearTagValue() {
         setCurrentTagValue("test")
         clearCurrentTagValue()
         XCTAssertNil(getCurrentTagValue())
     }
 
-    func testTagValueOverwrite() {
+    @MainActor func testTagValueOverwrite() {
         setCurrentTagValue(1)
         setCurrentTagValue(2)
         XCTAssertEqual(getCurrentTagValue(), AnyHashable(2))
@@ -50,7 +50,7 @@ final class TagTests: XCTestCase {
 
     // MARK: - Chaining
 
-    func testTagWithOtherModifiers() {
+    @MainActor func testTagWithOtherModifiers() {
         let view = Text("Hello")
             .padding()
             .tag(99)

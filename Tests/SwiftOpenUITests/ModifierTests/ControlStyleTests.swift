@@ -5,25 +5,25 @@ final class ControlStyleTests: XCTestCase {
 
     // MARK: - ButtonStyleType
 
-    func testButtonStyleTypeEquatable() {
+    @MainActor func testButtonStyleTypeEquatable() {
         XCTAssertEqual(ButtonStyleType.automatic, ButtonStyleType.automatic)
         XCTAssertEqual(ButtonStyleType.plain, ButtonStyleType.plain)
         XCTAssertNotEqual(ButtonStyleType.plain, ButtonStyleType.bordered)
         XCTAssertNotEqual(ButtonStyleType.bordered, ButtonStyleType.borderedProminent)
     }
 
-    func testButtonStyleEnvironmentDefault() {
+    @MainActor func testButtonStyleEnvironmentDefault() {
         let env = EnvironmentValues()
         XCTAssertEqual(env.buttonStyle, .automatic)
     }
 
-    func testButtonStyleEnvironmentSet() {
+    @MainActor func testButtonStyleEnvironmentSet() {
         var env = EnvironmentValues()
         env.buttonStyle = .borderedProminent
         XCTAssertEqual(env.buttonStyle, .borderedProminent)
     }
 
-    func testButtonStyleModifierWraps() {
+    @MainActor func testButtonStyleModifierWraps() {
         let view = Text("Tap").buttonStyle(.plain)
         XCTAssertEqual(view.style, .plain)
         XCTAssertEqual(view.content.content, "Tap")
@@ -31,55 +31,55 @@ final class ControlStyleTests: XCTestCase {
 
     // MARK: - ToggleStyleType
 
-    func testToggleStyleTypeEquatable() {
+    @MainActor func testToggleStyleTypeEquatable() {
         XCTAssertEqual(ToggleStyleType.automatic, ToggleStyleType.automatic)
         XCTAssertEqual(ToggleStyleType.checkbox, ToggleStyleType.checkbox)
         XCTAssertNotEqual(ToggleStyleType.checkbox, ToggleStyleType.switch)
     }
 
-    func testToggleStyleEnvironmentDefault() {
+    @MainActor func testToggleStyleEnvironmentDefault() {
         let env = EnvironmentValues()
         XCTAssertEqual(env.toggleStyle, .automatic)
     }
 
-    func testToggleStyleEnvironmentSet() {
+    @MainActor func testToggleStyleEnvironmentSet() {
         var env = EnvironmentValues()
         env.toggleStyle = .switch
         XCTAssertEqual(env.toggleStyle, .switch)
     }
 
-    func testToggleStyleModifierWraps() {
+    @MainActor func testToggleStyleModifierWraps() {
         let view = Text("On").toggleStyle(.switch)
         XCTAssertEqual(view.style, .switch)
     }
 
     // MARK: - TextFieldStyleType
 
-    func testTextFieldStyleTypeEquatable() {
+    @MainActor func testTextFieldStyleTypeEquatable() {
         XCTAssertEqual(TextFieldStyleType.automatic, TextFieldStyleType.automatic)
         XCTAssertEqual(TextFieldStyleType.plain, TextFieldStyleType.plain)
         XCTAssertNotEqual(TextFieldStyleType.plain, TextFieldStyleType.roundedBorder)
     }
 
-    func testTextFieldStyleEnvironmentDefault() {
+    @MainActor func testTextFieldStyleEnvironmentDefault() {
         let env = EnvironmentValues()
         XCTAssertEqual(env.textFieldStyle, .automatic)
     }
 
-    func testTextFieldStyleEnvironmentSet() {
+    @MainActor func testTextFieldStyleEnvironmentSet() {
         var env = EnvironmentValues()
         env.textFieldStyle = .roundedBorder
         XCTAssertEqual(env.textFieldStyle, .roundedBorder)
     }
 
-    func testTextFieldStyleModifierWraps() {
+    @MainActor func testTextFieldStyleModifierWraps() {
         let view = Text("Name").textFieldStyle(.plain)
         XCTAssertEqual(view.style, .plain)
     }
 
     // MARK: - Style propagation
 
-    func testButtonStylePropagatesThroughEnvironment() {
+    @MainActor func testButtonStylePropagatesThroughEnvironment() {
         var env = EnvironmentValues()
         env.buttonStyle = .bordered
         let modified = env.setting(\.buttonStyle, to: .plain)
@@ -90,7 +90,7 @@ final class ControlStyleTests: XCTestCase {
 
     // MARK: - Chaining
 
-    func testStyleModifiersChain() {
+    @MainActor func testStyleModifiersChain() {
         let view = VStack {
             Text("Hello")
         }

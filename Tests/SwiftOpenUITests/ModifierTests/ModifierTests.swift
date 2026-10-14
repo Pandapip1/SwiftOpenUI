@@ -8,7 +8,7 @@ final class ModifierTests: XCTestCase {
         let title: String
     }
 
-    func testContinuousHoverHasSwiftUICompatibleOpaqueResult() {
+    @MainActor func testContinuousHoverHasSwiftUICompatibleOpaqueResult() {
         let hovered: some View = Text("hover").onContinuousHover(coordinateSpace: .global) { _ in }
         _ = hovered
     }
@@ -22,7 +22,7 @@ final class ModifierTests: XCTestCase {
         }
     }
 
-    func testViewModifierPreservesWrappedContent() {
+    @MainActor func testViewModifierPreservesWrappedContent() {
         let text = Text("hello")
         _ = text.modifier(RedBackground())
         // ModifiedContent should pass AnyView(text) through to the modifier
@@ -37,7 +37,7 @@ final class ModifierTests: XCTestCase {
 
     // MARK: - Padding
 
-    func testPaddingUniform() {
+    @MainActor func testPaddingUniform() {
         let padded = Text("hello").padding(16)
         XCTAssertEqual(padded.top, 16)
         XCTAssertEqual(padded.bottom, 16)
@@ -45,7 +45,7 @@ final class ModifierTests: XCTestCase {
         XCTAssertEqual(padded.trailing, 16)
     }
 
-    func testPaddingEdges() {
+    @MainActor func testPaddingEdges() {
         let padded = Text("hello").padding(.horizontal, 10)
         XCTAssertEqual(padded.leading, 10)
         XCTAssertEqual(padded.trailing, 10)
@@ -53,7 +53,7 @@ final class ModifierTests: XCTestCase {
         XCTAssertEqual(padded.bottom, 0)
     }
 
-    func testPaddingPerEdge() {
+    @MainActor func testPaddingPerEdge() {
         let padded = Text("hello").padding(top: 1, bottom: 2, leading: 3, trailing: 4)
         XCTAssertEqual(padded.top, 1)
         XCTAssertEqual(padded.bottom, 2)
@@ -63,13 +63,13 @@ final class ModifierTests: XCTestCase {
 
     // MARK: - Frame
 
-    func testFrameFixed() {
+    @MainActor func testFrameFixed() {
         let framed = Text("hello").frame(width: 100, height: 50)
         XCTAssertEqual(framed.width, 100)
         XCTAssertEqual(framed.height, 50)
     }
 
-    func testFrameFlexible() {
+    @MainActor func testFrameFlexible() {
         let framed = Text("hello").frame(minWidth: 10, maxWidth: 200)
         XCTAssertEqual(framed.minWidth, 10)
         XCTAssertEqual(framed.maxWidth, 200)
@@ -77,29 +77,29 @@ final class ModifierTests: XCTestCase {
 
     // MARK: - Style modifiers
 
-    func testForegroundColor() {
+    @MainActor func testForegroundColor() {
         let styled = Text("hello").foregroundColor(.red)
         XCTAssertEqual(styled.color, .red)
     }
 
-    func testForegroundStyleAlias() {
+    @MainActor func testForegroundStyleAlias() {
         let styled = Text("hello").foregroundStyle(.blue)
         XCTAssertEqual(styled.color, .blue)
     }
 
-    func testBackgroundColor() {
+    @MainActor func testBackgroundColor() {
         let styled = Text("hello").background(.green)
         XCTAssertEqual(styled.color, .green)
         XCTAssertEqual(styled.alignment, .center)
     }
 
-    func testBackgroundViewOverload() {
+    @MainActor func testBackgroundViewOverload() {
         let styled = Text("hello").background(Text("bg"), alignment: .bottomTrailing)
         XCTAssertEqual(styled.background.content, "bg")
         XCTAssertEqual(styled.alignment, .bottomTrailing)
     }
 
-    func testBackgroundBuilderOverload() {
+    @MainActor func testBackgroundBuilderOverload() {
         let styled = Text("hello").background(alignment: .topLeading) {
             Text("bg")
         }
@@ -107,18 +107,18 @@ final class ModifierTests: XCTestCase {
         XCTAssertEqual(styled.alignment, .topLeading)
     }
 
-    func testFontModifier() {
+    @MainActor func testFontModifier() {
         let styled = Text("hello").font(.title)
         XCTAssertNotNil(styled as FontModifiedView<Text>)
     }
 
-    func testBorderModifier() {
+    @MainActor func testBorderModifier() {
         let styled = Text("hello").border(.red, width: 2)
         XCTAssertEqual(styled.color, .red)
         XCTAssertEqual(styled.width, 2)
     }
 
-    func testOverlayDirectViewOverload() {
+    @MainActor func testOverlayDirectViewOverload() {
         let styled = Text("hello").overlay(Text("badge"), alignment: .topTrailing)
         XCTAssertEqual(styled.overlay.content, "badge")
         XCTAssertEqual(styled.alignment, .topTrailing)
@@ -126,7 +126,7 @@ final class ModifierTests: XCTestCase {
 
     // MARK: - Safe area modifiers
 
-    func testIgnoresSafeAreaStoresRegionsAndEdges() {
+    @MainActor func testIgnoresSafeAreaStoresRegionsAndEdges() {
         let view = Text("hello").ignoresSafeArea([.container], edges: .horizontal)
         XCTAssertTrue(view.regions.contains(.container))
         XCTAssertFalse(view.regions.contains(.keyboard))
@@ -135,7 +135,7 @@ final class ModifierTests: XCTestCase {
         XCTAssertFalse(view.edges.contains(.top))
     }
 
-    func testSafeAreaInsetVerticalStoresValues() {
+    @MainActor func testSafeAreaInsetVerticalStoresValues() {
         let view = Text("hello").safeAreaInset(edge: .top, alignment: .leading, spacing: 12) {
             Text("inset")
         }
@@ -150,7 +150,7 @@ final class ModifierTests: XCTestCase {
         }
     }
 
-    func testSafeAreaInsetHorizontalStoresValues() {
+    @MainActor func testSafeAreaInsetHorizontalStoresValues() {
         let view = Text("hello").safeAreaInset(edge: .trailing, alignment: .bottom) {
             Text("inset")
         }
@@ -165,7 +165,7 @@ final class ModifierTests: XCTestCase {
         }
     }
 
-    func testSafeAreaPaddingDefaultStoresAllEdgesAndNilLength() {
+    @MainActor func testSafeAreaPaddingDefaultStoresAllEdgesAndNilLength() {
         let view = Text("hello").safeAreaPadding()
         XCTAssertTrue(view.edges.contains(.top))
         XCTAssertTrue(view.edges.contains(.bottom))
@@ -174,7 +174,7 @@ final class ModifierTests: XCTestCase {
         XCTAssertNil(view.length)
     }
 
-    func testSafeAreaPaddingExplicitLengthStoresAllEdges() {
+    @MainActor func testSafeAreaPaddingExplicitLengthStoresAllEdges() {
         let view = Text("hello").safeAreaPadding(20)
         XCTAssertTrue(view.edges.contains(.top))
         XCTAssertTrue(view.edges.contains(.bottom))
@@ -183,7 +183,7 @@ final class ModifierTests: XCTestCase {
         XCTAssertEqual(view.length, 20)
     }
 
-    func testSafeAreaPaddingSelectedEdgesStoresValues() {
+    @MainActor func testSafeAreaPaddingSelectedEdgesStoresValues() {
         let view = Text("hello").safeAreaPadding(.horizontal, 12)
         XCTAssertFalse(view.edges.contains(.top))
         XCTAssertFalse(view.edges.contains(.bottom))
@@ -192,7 +192,7 @@ final class ModifierTests: XCTestCase {
         XCTAssertEqual(view.length, 12)
     }
 
-    func testSafeAreaPaddingSelectedEdgesAllowsSyntheticLength() {
+    @MainActor func testSafeAreaPaddingSelectedEdgesAllowsSyntheticLength() {
         let view = Text("hello").safeAreaPadding(.vertical)
         XCTAssertTrue(view.edges.contains(.top))
         XCTAssertTrue(view.edges.contains(.bottom))
@@ -203,7 +203,7 @@ final class ModifierTests: XCTestCase {
 
     // MARK: - Presentation modifiers
 
-    func testSheetOnDismissStoresClosure() {
+    @MainActor func testSheetOnDismissStoresClosure() {
         let binding = Binding.constant(true)
         let view = Text("hello").sheet(isPresented: binding, onDismiss: {}) {
             Text("sheet")
@@ -214,7 +214,7 @@ final class ModifierTests: XCTestCase {
         XCTAssertEqual(view.sheetContent.content, "sheet")
     }
 
-    func testItemSheetStoresItemBindingAndBuilder() {
+    @MainActor func testItemSheetStoresItemBindingAndBuilder() {
         let binding = Binding.constant(TestIdentifiableItem(id: 7, title: "Record") as TestIdentifiableItem?)
         let view = Text("hello").sheet(item: binding, onDismiss: {}) { item in
             Text(item.title)
@@ -225,7 +225,7 @@ final class ModifierTests: XCTestCase {
         XCTAssertEqual(view.sheetContent(TestIdentifiableItem(id: 9, title: "Preview")).content, "Preview")
     }
 
-    func testAlertActionsOverloadStoresButtonsAndEmptyMessage() {
+    @MainActor func testAlertActionsOverloadStoresButtonsAndEmptyMessage() {
         let view = Text("hello").alert(
             "Delete",
             isPresented: .constant(true),
@@ -238,7 +238,7 @@ final class ModifierTests: XCTestCase {
         XCTAssertEqual(view.buttons[0].role, .destructive)
     }
 
-    func testAlertActionsMessageOverloadStoresMessage() {
+    @MainActor func testAlertActionsMessageOverloadStoresMessage() {
         let view = Text("hello").alert(
             "Delete",
             isPresented: .constant(true),
@@ -252,7 +252,7 @@ final class ModifierTests: XCTestCase {
         XCTAssertEqual(view.buttons[0].role, .cancel)
     }
 
-    func testErrorAlertOverloadDerivesTitleMessageAndButtons() {
+    @MainActor func testErrorAlertOverloadDerivesTitleMessageAndButtons() {
         struct SampleError: LocalizedError {
             var errorDescription: String? { "Sync Failed" }
             var failureReason: String? { "The server rejected the request." }
@@ -273,7 +273,7 @@ final class ModifierTests: XCTestCase {
         XCTAssertEqual(view.buttons[1].role, .cancel)
     }
 
-    func testErrorAlertOverloadSuppressesPresentationWhenErrorIsNil() {
+    @MainActor func testErrorAlertOverloadSuppressesPresentationWhenErrorIsNil() {
         enum NilError: Error { case missing }
 
         let view = Text("hello").alert(
@@ -294,14 +294,14 @@ final class ModifierTests: XCTestCase {
         @SwiftOpenUICore.Published var value = "test"
     }
 
-    func testEnvironmentObjectModifier() {
+    @MainActor func testEnvironmentObjectModifier() {
         let model = TestModel()
         let view = Text("hello").environmentObject(model)
         XCTAssertNotNil(view as EnvironmentObjectModifierView<Text, TestModel>)
         XCTAssertTrue(view.object === model)
     }
 
-    func testEnvironmentModifier() {
+    @MainActor func testEnvironmentModifier() {
         let view = Text("hello").environment(\.colorScheme, .dark)
         XCTAssertNotNil(view as EnvironmentModifierView<Text, ColorScheme>)
     }
@@ -313,14 +313,14 @@ final class ModifierTests: XCTestCase {
         var value: Int = 0
     }
 
-    func testEnvironmentObjectOverloadWrapsInObservableModifier() {
+    @MainActor func testEnvironmentObjectOverloadWrapsInObservableModifier() {
         let obj = TestObservableLike()
         let view = Text("hello").environment(obj)
         XCTAssertNotNil(view as EnvironmentObservableModifierView<Text, TestObservableLike>)
         XCTAssertTrue(view.object === obj)
     }
 
-    func testEnvironmentTypeInitReadsInjectedObject() {
+    @MainActor func testEnvironmentTypeInitReadsInjectedObject() {
         let obj = TestObservableLike()
         obj.value = 42
 
@@ -342,7 +342,7 @@ final class ModifierTests: XCTestCase {
     // lives below the ViewHost in the render tree (and isn't
     // guaranteed to re-run before body's next read on rebuild).
 
-    func testEnvironmentReadTrackerCapturesObjectAccessedDuringBody() {
+    @MainActor func testEnvironmentReadTrackerCapturesObjectAccessedDuringBody() {
         let obj = TestObservableLike()
         obj.value = 99
 
@@ -362,13 +362,13 @@ final class ModifierTests: XCTestCase {
         XCTAssertTrue(captured?[ObjectIdentifier(TestObservableLike.self)] === obj)
     }
 
-    func testEnvironmentReadTrackerNotActiveOutsideBody() {
+    @MainActor func testEnvironmentReadTrackerNotActiveOutsideBody() {
         // A read outside `beginEnvironmentReadTracking()` should NOT
         // record anywhere — `endEnvironmentReadTracking()` returns nil.
         XCTAssertNil(endEnvironmentReadTracking())
     }
 
-    func testEnvironmentReadTrackerSurvivesRebuildCycle() {
+    @MainActor func testEnvironmentReadTrackerSurvivesRebuildCycle() {
         // This is the crash-reproduction the Win32 reviewer hit:
         // a parent's body installs `.environment(model)` for a child,
         // the child reads via @Environment(Type.self), then the parent
@@ -409,34 +409,34 @@ final class ModifierTests: XCTestCase {
         setCurrentEnvironment(nil)
     }
 
-    func testEnvironmentValuesIsEnabledDefaultsTrue() {
+    @MainActor func testEnvironmentValuesIsEnabledDefaultsTrue() {
         let env = EnvironmentValues()
         XCTAssertTrue(env.isEnabled)
     }
 
     // MARK: - Help / tooltip modifier
 
-    func testHelpModifierWrapsContent() {
+    @MainActor func testHelpModifierWrapsContent() {
         let view = Text("hello").help("Show details")
         XCTAssertNotNil(view as HelpView<Text>)
         XCTAssertEqual(view.text, "Show details")
         XCTAssertEqual(view.content.content, "hello")
     }
 
-    func testHelpModifierAcceptsEmptyString() {
+    @MainActor func testHelpModifierAcceptsEmptyString() {
         // Empty string is forwarded verbatim so callers can intentionally
         // clear a prior tooltip value rather than toggle it off.
         let view = Text("hello").help("")
         XCTAssertEqual(view.text, "")
     }
 
-    func testDisabledModifierStoresWrapperState() {
+    @MainActor func testDisabledModifierStoresWrapperState() {
         let view = Text("hello").disabled(true)
         XCTAssertTrue(view.isDisabled)
         XCTAssertEqual(view.content.content, "hello")
     }
 
-    func testDisabledModifierCanNestWithoutErasingInnerWrapper() {
+    @MainActor func testDisabledModifierCanNestWithoutErasingInnerWrapper() {
         let view = Text("hello").disabled(true).disabled(false)
         XCTAssertFalse(view.isDisabled)
         XCTAssertTrue(view.content.isDisabled)

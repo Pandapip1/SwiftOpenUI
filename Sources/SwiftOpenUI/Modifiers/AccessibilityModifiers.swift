@@ -6,6 +6,20 @@
 /// automation id (GtkAccessible name / UI Automation AutomationId).
 extension View {
     public func accessibilityIdentifier(_ identifier: String) -> Self { self }
+    public func accessibilityHidden(_ hidden: Bool) -> Self { self }
+}
+
+public struct AllowsHitTestingView<Content: View>: View {
+    public typealias Body = Never
+    public let content: Content
+    public let allowsHitTesting: Bool
+    public var body: Never { fatalError("AllowsHitTestingView is a primitive view") }
+}
+
+extension View {
+    public func allowsHitTesting(_ enabled: Bool) -> AllowsHitTestingView<Self> {
+        AllowsHitTestingView(content: self, allowsHitTesting: enabled)
+    }
 }
 
 /// Wrapper produced by `.accessibilityLabel(_:)`. Renders its content

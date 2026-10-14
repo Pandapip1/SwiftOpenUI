@@ -2,6 +2,7 @@ import JavaScriptKit
 import SwiftOpenUICore
 
 /// Protocol for scenes that can render into the DOM.
+@MainActor
 protocol WebWindowRenderable {
     func webRender()
 }
@@ -83,6 +84,7 @@ public struct WebBackend: RenderBackend {
 
 /// Recursively render a Scene. Terminal scenes (WindowGroup) render directly;
 /// composite scenes recurse through their body.
+@MainActor
 private func webRenderScene<S: Scene>(_ scene: S) {
     if let renderable = scene as? WebWindowRenderable {
         renderable.webRender()

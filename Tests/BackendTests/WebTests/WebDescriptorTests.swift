@@ -6,6 +6,8 @@ final class WebDescriptorTests: XCTestCase {
 
     // MARK: - Describe
 
+    @MainActor
+
     func testDescribeText() {
         let node = webDescribeView(Text("Hello"))
         XCTAssertEqual(node.kind, .text)
@@ -15,6 +17,8 @@ final class WebDescriptorTests: XCTestCase {
             XCTFail("Expected text props")
         }
     }
+
+    @MainActor
 
     func testDescribeColor() {
         let node = webDescribeView(Color.red)
@@ -28,6 +32,8 @@ final class WebDescriptorTests: XCTestCase {
         }
     }
 
+    @MainActor
+
     func testDescribeVStackWithChildren() {
         let node = webDescribeView(VStack {
             Text("A")
@@ -38,6 +44,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(node.children[0].kind, .text)
         XCTAssertEqual(node.children[1].kind, .text)
     }
+
+    @MainActor
 
     func testDescribeIgnoresSafeAreaCarriesConfiguration() {
         let node = webDescribeView(
@@ -58,6 +66,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(node.children.count, 1)
         XCTAssertEqual(node.children[0].kind, .text)
     }
+
+    @MainActor
 
     func testDescribeSafeAreaInsetCarriesEdgeAlignmentAndSpacing() {
         let node = webDescribeView(
@@ -84,6 +94,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(node.children[1].kind, .text)
     }
 
+    @MainActor
+
     func testDescribeSafeAreaInsetTopMatchesDOMChildOrder() {
         let node = webDescribeView(
             Text("Body").safeAreaInset(edge: .top) {
@@ -104,6 +116,8 @@ final class WebDescriptorTests: XCTestCase {
             XCTFail("Expected content text second")
         }
     }
+
+    @MainActor
 
     func testDescribeSafeAreaInsetLeadingMatchesDOMChildOrder() {
         let node = webDescribeView(
@@ -126,15 +140,21 @@ final class WebDescriptorTests: XCTestCase {
         }
     }
 
+    @MainActor
+
     func testSafeAreaContainerStyleClampsNegativeGap() {
         let style = webSafeAreaContainerStyle(edge: .top, spacing: -8)
         XCTAssertTrue(style.contains("gap: 0px"))
     }
 
+    @MainActor
+
     func testSafeAreaContentWrapperStyleUsesNegativeMarginForTopOverlap() {
         let style = webSafeAreaContentWrapperStyle(edge: .top, spacing: -8)
         XCTAssertTrue(style.contains("margin-top: -8px"))
     }
+
+    @MainActor
 
     func testSafeAreaInsetWrapperStyleUsesNegativeMarginForTrailingOverlap() {
         let style = webSafeAreaInsetWrapperStyle(edge: .trailing, alignment: .vertical(.bottom), spacing: -6)
@@ -143,6 +163,8 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     // MARK: - Identify
+
+    @MainActor
 
     func testIdentifyAssignsPaths() {
         let node = WebDescriptorNode(kind: .vStack, typeName: "VStack", children: [
@@ -157,6 +179,8 @@ final class WebDescriptorTests: XCTestCase {
 
     // MARK: - Match
 
+    @MainActor
+
     func testMatchSameStructure() {
         let desc = WebDescriptorNode(kind: .text, typeName: "Text",
                                        props: .text(WebTextDescriptor(content: "Hello")))
@@ -165,6 +189,8 @@ final class WebDescriptorTests: XCTestCase {
         let match = webMatchDescriptorTree(old: old, new: new)
         XCTAssertEqual(match.kind, .reuse)
     }
+
+    @MainActor
 
     func testMatchDifferentKind() {
         let oldDesc = WebDescriptorNode(kind: .text, typeName: "Text")
@@ -176,6 +202,8 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     // MARK: - Plan
+
+    @MainActor
 
     func testPlanTextChange() {
         let oldDesc = WebDescriptorNode(kind: .text, typeName: "Text",
@@ -189,6 +217,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(plan.updateIntent, .textContent)
     }
 
+    @MainActor
+
     func testPlanColorChange() {
         let oldDesc = WebDescriptorNode(kind: .color, typeName: "Color",
                                           props: .color(WebColorDescriptor(red: 1, green: 0, blue: 0, opacity: 1)))
@@ -201,6 +231,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(plan.updateIntent, .colorFill)
     }
 
+    @MainActor
+
     func testPlanStructuralChange() {
         let oldDesc = WebDescriptorNode(kind: .text, typeName: "Text")
         let newDesc = WebDescriptorNode(kind: .color, typeName: "Color")
@@ -210,6 +242,8 @@ final class WebDescriptorTests: XCTestCase {
         )
         XCTAssertEqual(plan.kind, .replace)
     }
+
+    @MainActor
 
     func testPlanNoChange() {
         let desc = WebDescriptorNode(kind: .text, typeName: "Text",
@@ -223,6 +257,8 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     // MARK: - Execute
+
+    @MainActor
 
     func testExecuteTextUpdate() {
         let oldDesc = WebDescriptorNode(kind: .text, typeName: "Text",
@@ -243,6 +279,8 @@ final class WebDescriptorTests: XCTestCase {
 
     // MARK: - Hook
 
+    @MainActor
+
     func testHookTextContent() {
         let oldDesc = WebDescriptorNode(kind: .text, typeName: "Text",
                                           props: .text(WebTextDescriptor(content: "Old")))
@@ -261,6 +299,8 @@ final class WebDescriptorTests: XCTestCase {
 
     // MARK: - Eligibility
 
+    @MainActor
+
     func testCanApplyTextColorMutation() {
         let oldDesc = WebDescriptorNode(kind: .text, typeName: "Text",
                                           props: .text(WebTextDescriptor(content: "Old")))
@@ -273,6 +313,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertTrue(webCanApplyTextColorHostMutation(plan: plan))
     }
 
+    @MainActor
+
     func testCannotApplyLayoutMutation() {
         let oldDesc = WebDescriptorNode(kind: .vStack, typeName: "VStack",
                                           props: .vStack(WebVStackDescriptor(spacing: 0, alignment: .center)))
@@ -284,6 +326,8 @@ final class WebDescriptorTests: XCTestCase {
         )
         XCTAssertFalse(webCanApplyTextColorHostMutation(plan: plan))
     }
+
+    @MainActor
 
     func testCanApplyMixedTextColorMutation() {
         let oldDesc = WebDescriptorNode(kind: .vStack, typeName: "VStack", children: [
@@ -305,6 +349,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertTrue(webCanApplyTextColorHostMutation(plan: plan))
     }
 
+    @MainActor
+
     func testOpaqueCompositeRejectsNarrowPath() {
         // An opaque composite (Body = Never, no describable conformance) with
         // no described children is rejected — child content is not captured
@@ -317,6 +363,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(plan.kind, .reuse)
         XCTAssertFalse(webCanApplyTextColorHostMutation(plan: plan))
     }
+
+    @MainActor
 
     func testOpaqueCompositeInsideVStackRejectsNarrowPath() {
         // A VStack with an opaque composite child should also reject.
@@ -333,6 +381,8 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     // MARK: - Slot assignment and validation
+
+    @MainActor
 
     func testSlotAssignment() {
         let desc = WebDescriptorNode(kind: .vStack, typeName: "VStack", children: [
@@ -355,6 +405,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(assigned.children[0].nativeSlotID, 42) // Text
         XCTAssertEqual(assigned.children[1].nativeSlotID, 43) // Color
     }
+
+    @MainActor
 
     func testExecutePlanWithSlots() {
         let oldDesc = WebDescriptorNode(kind: .text, typeName: "Text",
@@ -379,6 +431,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(action.resultingNode.nativeSlotID, 99)
     }
 
+    @MainActor
+
     func testAllSlotsValidWithNilSlot() {
         let oldDesc = WebDescriptorNode(kind: .text, typeName: "Text",
                                           props: .text(WebTextDescriptor(content: "Old")))
@@ -395,6 +449,8 @@ final class WebDescriptorTests: XCTestCase {
         // Without a slot, validation should fail for text update
         XCTAssertFalse(webAllSlotsValid(action: action))
     }
+
+    @MainActor
 
     func testFontModifiedViewDescribedAsFont() {
         // FontModifiedView now has WebDescribable — produces .font kind with child.
@@ -419,6 +475,8 @@ final class WebDescriptorTests: XCTestCase {
 
     // MARK: - Slider descriptor tests
 
+    @MainActor
+
     func testDescribeSlider() {
         let slider = Slider(value: .constant(0.5), in: 0...1, step: 0.1)
         let node = webDescribeView(slider)
@@ -431,6 +489,8 @@ final class WebDescriptorTests: XCTestCase {
             XCTFail("Expected slider props")
         }
     }
+
+    @MainActor
 
     func testPlanSliderValueChange() {
         let oldDesc = WebDescriptorNode(kind: .slider, typeName: "Slider",
@@ -445,6 +505,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(plan.updateIntent, .sliderValue)
     }
 
+    @MainActor
+
     func testPlanSliderConfigurationChange() {
         let oldDesc = WebDescriptorNode(kind: .slider, typeName: "Slider",
                                           props: .slider(WebSliderDescriptor(value: 0.5, range: 0...1, step: 0.01)))
@@ -458,6 +520,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(plan.updateIntent, .sliderConfiguration)
     }
 
+    @MainActor
+
     func testCanApplySliderValueMutation() {
         let oldDesc = WebDescriptorNode(kind: .slider, typeName: "Slider",
                                           props: .slider(WebSliderDescriptor(value: 0.3, range: 0...1, step: 0.01)))
@@ -470,6 +534,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertTrue(webCanApplyTextColorHostMutation(plan: plan))
     }
 
+    @MainActor
+
     func testCannotApplySliderConfigurationMutation() {
         let oldDesc = WebDescriptorNode(kind: .slider, typeName: "Slider",
                                           props: .slider(WebSliderDescriptor(value: 0.5, range: 0...1, step: 0.01)))
@@ -481,6 +547,8 @@ final class WebDescriptorTests: XCTestCase {
         )
         XCTAssertFalse(webCanApplyTextColorHostMutation(plan: plan))
     }
+
+    @MainActor
 
     func testMixedTextSliderMutation() {
         let oldDesc = WebDescriptorNode(kind: .vStack, typeName: "VStack", children: [
@@ -501,6 +569,8 @@ final class WebDescriptorTests: XCTestCase {
         )
         XCTAssertTrue(webCanApplyTextColorHostMutation(plan: plan))
     }
+
+    @MainActor
 
     func testSliderSlotSurvivesValueUpdate() {
         let oldDesc = WebDescriptorNode(kind: .slider, typeName: "Slider",
@@ -525,6 +595,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(action.updateIntent, .sliderValue)
     }
 
+    @MainActor
+
     func testSliderHookMutationWithSlot() {
         let oldDesc = WebDescriptorNode(kind: .slider, typeName: "Slider",
                                           props: .slider(WebSliderDescriptor(value: 0.3, range: 0...1, step: 0.01)))
@@ -545,6 +617,8 @@ final class WebDescriptorTests: XCTestCase {
 
     // MARK: - Wrapper mutation tests
 
+    @MainActor
+
     func testPlanBackgroundColorChange() {
         let oldDesc = WebDescriptorNode(kind: .background, typeName: "BackgroundView",
                                          props: .background(WebColorDescriptor(red: 1, green: 0, blue: 0, opacity: 1)),
@@ -560,6 +634,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(plan.kind, .update)
         XCTAssertEqual(plan.updateIntent, .backgroundColor)
     }
+
+    @MainActor
 
     func testPlanForegroundColorChange() {
         let oldDesc = WebDescriptorNode(kind: .foregroundColor, typeName: "ForegroundColorView",
@@ -577,6 +653,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(plan.updateIntent, .foregroundColor)
     }
 
+    @MainActor
+
     func testPlanPaddingChange() {
         let oldDesc = WebDescriptorNode(kind: .padding, typeName: "PaddedView",
                                          props: .padding(WebPaddingDescriptor(top: 8, bottom: 8, leading: 8, trailing: 8)),
@@ -593,6 +671,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(plan.updateIntent, .paddingLayout)
     }
 
+    @MainActor
+
     func testCanApplyBackgroundColorMutation() {
         let oldDesc = WebDescriptorNode(kind: .background, typeName: "BackgroundView",
                                          props: .background(WebColorDescriptor(red: 1, green: 0, blue: 0, opacity: 1)),
@@ -607,6 +687,8 @@ final class WebDescriptorTests: XCTestCase {
             new: webIdentifyDescriptorTree(newDesc))
         XCTAssertTrue(webCanApplyTextColorHostMutation(plan: plan))
     }
+
+    @MainActor
 
     func testCanApplyForegroundColorMutation() {
         let oldDesc = WebDescriptorNode(kind: .foregroundColor, typeName: "ForegroundColorView",
@@ -623,6 +705,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertTrue(webCanApplyTextColorHostMutation(plan: plan))
     }
 
+    @MainActor
+
     func testCanApplyPaddingMutation() {
         let oldDesc = WebDescriptorNode(kind: .padding, typeName: "PaddedView",
                                          props: .padding(WebPaddingDescriptor(top: 8, bottom: 8, leading: 8, trailing: 8)),
@@ -637,6 +721,8 @@ final class WebDescriptorTests: XCTestCase {
             new: webIdentifyDescriptorTree(newDesc))
         XCTAssertTrue(webCanApplyTextColorHostMutation(plan: plan))
     }
+
+    @MainActor
 
     func testWrapperSlotSurvivesUpdate() {
         let oldDesc = WebDescriptorNode(kind: .background, typeName: "BackgroundView",
@@ -662,6 +748,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(action.resultingNode.children[0].nativeSlotID, 61)
     }
 
+    @MainActor
+
     func testMixedWrapperAndLeafMutation() {
         let oldDesc = WebDescriptorNode(kind: .background, typeName: "BackgroundView",
                                          props: .background(WebColorDescriptor(red: 1, green: 0, blue: 0, opacity: 1)),
@@ -679,6 +767,8 @@ final class WebDescriptorTests: XCTestCase {
 
     // MARK: - Phase 9: ColorMixer proof tests
 
+    @MainActor
+
     func testDescribeFontModifiedView() {
         let node = webDescribeView(Text("Hello").font(.title))
         XCTAssertEqual(node.kind, .font)
@@ -691,17 +781,23 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(node.children[0].kind, .text)
     }
 
+    @MainActor
+
     func testDescribeDivider() {
         let node = webDescribeView(SwiftOpenUICore.Divider())
         XCTAssertEqual(node.kind, .divider)
         XCTAssertTrue(node.children.isEmpty)
     }
 
+    @MainActor
+
     func testDescribeSpacer() {
         let node = webDescribeView(Spacer())
         XCTAssertEqual(node.kind, .spacer)
         XCTAssertTrue(node.children.isEmpty)
     }
+
+    @MainActor
 
     func testFontChangeRejectsNarrowPath() {
         let oldDesc = WebDescriptorNode(kind: .font, typeName: "FontModifiedView",
@@ -719,6 +815,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(plan.updateIntent, .fontStyle)
         XCTAssertFalse(webCanApplyTextColorHostMutation(plan: plan))
     }
+
+    @MainActor
 
     func testColorMixerSliderSubtreeEligible() {
         // Model the ColorMixer slider-dependent subtree (header, swatch, sliders).
@@ -790,6 +888,8 @@ final class WebDescriptorTests: XCTestCase {
 
     // MARK: - Searchable Descriptor Tests
 
+    @MainActor
+
     func testDescribeSearchableDefault() {
         @SwiftOpenUICore.State var query = ""
         let view = Text("Content").searchable(text: $query)
@@ -815,6 +915,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(node.children.count, 1)
         XCTAssertEqual(node.children[0].kind, .text)
     }
+
+    @MainActor
 
     func testDescribeSearchableWithPlacement() {
         @SwiftOpenUICore.State var query = ""
@@ -844,6 +946,8 @@ final class WebDescriptorTests: XCTestCase {
         )
     }
 
+    @MainActor
+
     func testDescribeSearchableWithIsPresented() {
         @SwiftOpenUICore.State var query = ""
         @SwiftOpenUICore.State var presented = true
@@ -872,6 +976,8 @@ final class WebDescriptorTests: XCTestCase {
         )
     }
 
+    @MainActor
+
     func testDescribeSearchableIsPresentedFalse() {
         @SwiftOpenUICore.State var query = ""
         @SwiftOpenUICore.State var presented = false
@@ -898,6 +1004,8 @@ final class WebDescriptorTests: XCTestCase {
         )
     }
 
+    @MainActor
+
     func testDescribeSearchableNavigationBarDrawerPlacement() {
         @SwiftOpenUICore.State var query = ""
         let view = Text("Content").searchable(
@@ -922,6 +1030,8 @@ final class WebDescriptorTests: XCTestCase {
             )
         )
     }
+
+    @MainActor
 
     func testDescribeSearchableSidebarPlacement() {
         @SwiftOpenUICore.State var query = ""
@@ -950,6 +1060,8 @@ final class WebDescriptorTests: XCTestCase {
 
     // MARK: - Safe Area Padding Descriptor Tests
 
+    @MainActor
+
     func testDescribeSafeAreaPaddingDefault() {
         let view = Text("Content").safeAreaPadding()
         let node = webDescribeView(view)
@@ -967,6 +1079,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertEqual(node.children[0].kind, .text)
     }
 
+    @MainActor
+
     func testDescribeSafeAreaPaddingExplicitLength() {
         let view = Text("Content").safeAreaPadding(24)
         let node = webDescribeView(view)
@@ -979,6 +1093,8 @@ final class WebDescriptorTests: XCTestCase {
         )
     }
 
+    @MainActor
+
     func testDescribeSafeAreaPaddingSelectedEdgesExplicit() {
         let view = Text("Content").safeAreaPadding(.horizontal, 10)
         let node = webDescribeView(view)
@@ -990,6 +1106,8 @@ final class WebDescriptorTests: XCTestCase {
             )
         )
     }
+
+    @MainActor
 
     func testDescribeSafeAreaPaddingSelectedEdgesNilLength() {
         let view = Text("Content").safeAreaPadding(.vertical)
@@ -1004,6 +1122,8 @@ final class WebDescriptorTests: XCTestCase {
         )
     }
 
+    @MainActor
+
     func testDescribeSafeAreaPaddingTopOnly() {
         let view = Text("Content").safeAreaPadding(.top, 8)
         let node = webDescribeView(view)
@@ -1015,6 +1135,8 @@ final class WebDescriptorTests: XCTestCase {
             )
         )
     }
+
+    @MainActor
 
     func testDescribeSafeAreaPaddingNegativeClampsToZero() {
         let view = Text("Content").safeAreaPadding(-8)
@@ -1034,6 +1156,8 @@ final class WebDescriptorTests: XCTestCase {
     // These test the transition detection algorithm directly using plain
     // dictionaries, matching the logic in WebViewHost.rebuild(). We cannot
     // instantiate WebViewHost in unit tests (requires JavaScriptKit runtime).
+
+    @MainActor
 
     func testSheetTransitionTrackingPresentedThenDismissed() {
         var previousState: [Int: (() -> Void)?] = [:]
@@ -1063,6 +1187,8 @@ final class WebDescriptorTests: XCTestCase {
         XCTAssertTrue(dismissed, "onDismiss should fire on presented→dismissed transition")
     }
 
+    @MainActor
+
     func testSheetTransitionTrackingStaysPresented() {
         var previousState: [Int: (() -> Void)?] = [:]
         var currentState: [Int: (() -> Void)?] = [:]
@@ -1085,6 +1211,8 @@ final class WebDescriptorTests: XCTestCase {
         }
     }
 
+    @MainActor
+
     func testSheetTransitionTrackingNeverPresented() {
         let previousState: [Int: (() -> Void)?] = [:]
         let currentState: [Int: (() -> Void)?] = [:]
@@ -1096,6 +1224,8 @@ final class WebDescriptorTests: XCTestCase {
             }
         }
     }
+
+    @MainActor
 
     func testSheetTransitionTrackingNoCrossTalkBetweenSiblings() {
         var previousState: [Int: (() -> Void)?] = [:]
@@ -1121,6 +1251,8 @@ final class WebDescriptorTests: XCTestCase {
 
         XCTAssertFalse(aDismissed, "Sheet A should not have onDismiss fired — it's still presenting")
     }
+
+    @MainActor
 
     func testSheetTransitionTrackingOnlyDismissedSheetFires() {
         var previousState: [Int: (() -> Void)?] = [:]
@@ -1156,6 +1288,8 @@ final class WebDescriptorTests: XCTestCase {
         let id: String
         let name: String
     }
+
+    @MainActor
 
     func testDescribeSearchableWithTokens() {
         @SwiftOpenUICore.State var query = ""
@@ -1194,6 +1328,8 @@ final class WebDescriptorTests: XCTestCase {
         )
     }
 
+    @MainActor
+
     func testDescribeSearchableWithEditableTokens() {
         @SwiftOpenUICore.State var query = ""
         @SwiftOpenUICore.State var tokens = [
@@ -1227,6 +1363,8 @@ final class WebDescriptorTests: XCTestCase {
         )
     }
 
+    @MainActor
+
     func testDescribeSearchableWithEmptyTokens() {
         @SwiftOpenUICore.State var query = ""
         @SwiftOpenUICore.State var tokens: [TestToken] = []
@@ -1257,6 +1395,8 @@ final class WebDescriptorTests: XCTestCase {
     }
 
     // MARK: - Search Suggestions Descriptor Tests
+
+    @MainActor
 
     func testDescribeSearchableWithSuggestions() {
         @SwiftOpenUICore.State var query = ""
@@ -1290,6 +1430,8 @@ final class WebDescriptorTests: XCTestCase {
         )
     }
 
+    @MainActor
+
     func testDescribeSearchableWithSearchCompletion() {
         @SwiftOpenUICore.State var query = ""
         let view = Text("Content")
@@ -1317,6 +1459,8 @@ final class WebDescriptorTests: XCTestCase {
             )
         )
     }
+
+    @MainActor
 
     func testDescribeSearchableWithEmptySuggestions() {
         @SwiftOpenUICore.State var query = ""
@@ -1350,6 +1494,8 @@ final class WebDescriptorTests: XCTestCase {
         case music = "Music"
     }
 
+    @MainActor
+
     func testDescribeSearchableWithScopes() {
         @SwiftOpenUICore.State var query = ""
         @SwiftOpenUICore.State var scope = TestScope.all
@@ -1382,6 +1528,8 @@ final class WebDescriptorTests: XCTestCase {
             )
         )
     }
+
+    @MainActor
 
     func testDescribeSearchableWithScopesAndSuggestions() {
         @SwiftOpenUICore.State var query = ""

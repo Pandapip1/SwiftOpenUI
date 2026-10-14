@@ -5,14 +5,14 @@ final class GradientTests: XCTestCase {
 
     // MARK: - Gradient
 
-    func testGradientFromColors() {
+    @MainActor func testGradientFromColors() {
         let g = Gradient(colors: [.red, .blue])
         XCTAssertEqual(g.stops.count, 2)
         XCTAssertEqual(g.stops[0].location, 0)
         XCTAssertEqual(g.stops[1].location, 1)
     }
 
-    func testGradientFromStops() {
+    @MainActor func testGradientFromStops() {
         let g = Gradient(stops: [
             .init(color: .red, location: 0.2),
             .init(color: .blue, location: 0.8)
@@ -21,18 +21,18 @@ final class GradientTests: XCTestCase {
         XCTAssertEqual(g.stops[0].location, 0.2)
     }
 
-    func testGradientSingleColor() {
+    @MainActor func testGradientSingleColor() {
         let g = Gradient(colors: [.red])
         XCTAssertEqual(g.stops.count, 1)
         XCTAssertEqual(g.stops[0].location, 0)
     }
 
-    func testGradientEmpty() {
+    @MainActor func testGradientEmpty() {
         let g = Gradient(colors: [])
         XCTAssertEqual(g.stops.count, 0)
     }
 
-    func testGradientThreeColors() {
+    @MainActor func testGradientThreeColors() {
         let g = Gradient(colors: [.red, .green, .blue])
         XCTAssertEqual(g.stops.count, 3)
         XCTAssertEqual(g.stops[0].location, 0, accuracy: 0.01)
@@ -42,14 +42,14 @@ final class GradientTests: XCTestCase {
 
     // MARK: - LinearGradient
 
-    func testLinearGradientFromColors() {
+    @MainActor func testLinearGradientFromColors() {
         let lg = LinearGradient(colors: [.red, .blue], startPoint: .leading, endPoint: .trailing)
         XCTAssertEqual(lg.gradient.stops.count, 2)
         XCTAssertEqual(lg.startPoint, .leading)
         XCTAssertEqual(lg.endPoint, .trailing)
     }
 
-    func testLinearGradientFromGradient() {
+    @MainActor func testLinearGradientFromGradient() {
         let g = Gradient(colors: [.red, .green, .blue])
         let lg = LinearGradient(gradient: g, startPoint: .top, endPoint: .bottom)
         XCTAssertEqual(lg.gradient.stops.count, 3)
@@ -57,7 +57,7 @@ final class GradientTests: XCTestCase {
         XCTAssertEqual(lg.endPoint, .bottom)
     }
 
-    func testLinearGradientFromStops() {
+    @MainActor func testLinearGradientFromStops() {
         let lg = LinearGradient(stops: [
             .init(color: .red, location: 0),
             .init(color: .blue, location: 1)
@@ -67,7 +67,7 @@ final class GradientTests: XCTestCase {
 
     // MARK: - RadialGradient
 
-    func testRadialGradientFromColors() {
+    @MainActor func testRadialGradientFromColors() {
         let rg = RadialGradient(colors: [.red, .blue], center: .center, startRadius: 0, endRadius: 100)
         XCTAssertEqual(rg.gradient.stops.count, 2)
         XCTAssertEqual(rg.center, .center)
@@ -75,7 +75,7 @@ final class GradientTests: XCTestCase {
         XCTAssertEqual(rg.endRadius, 100)
     }
 
-    func testRadialGradientFromGradient() {
+    @MainActor func testRadialGradientFromGradient() {
         let g = Gradient(colors: [.white, .black])
         let rg = RadialGradient(gradient: g, center: .top, startRadius: 10, endRadius: 200)
         XCTAssertEqual(rg.center, .top)

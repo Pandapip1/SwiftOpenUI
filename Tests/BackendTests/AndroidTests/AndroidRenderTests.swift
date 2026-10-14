@@ -6,14 +6,16 @@ final class AndroidRenderTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        androidBeginRenderPass()
-        androidStateCache.removeAll()
-        androidCurrentHost = nil
+        MainActor.assumeIsolated {
+            androidBeginRenderPass()
+            androidStateCache.removeAll()
+            androidCurrentHost = nil
+        }
     }
 
     // MARK: - TextField rendering
 
-    func testTextFieldRendersWithPlaceholderAndText() {
+    @MainActor func testTextFieldRendersWithPlaceholderAndText() {
         let state = State<String>(wrappedValue: "hello")
         let field = TextField("Enter name", text: state.projectedValue)
         let node = androidRenderView(field)
@@ -23,7 +25,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["text"], "hello")
     }
 
-    func testTextFieldEmptyText() {
+    @MainActor func testTextFieldEmptyText() {
         let state = State<String>(wrappedValue: "")
         let field = TextField("Placeholder", text: state.projectedValue)
         let node = androidRenderView(field)
@@ -32,7 +34,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["placeholder"], "Placeholder")
     }
 
-    func testTextFieldRegistersBinding() {
+    @MainActor func testTextFieldRegistersBinding() {
         let state = State<String>(wrappedValue: "test")
         let field = TextField("", text: state.projectedValue)
 
@@ -41,7 +43,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(androidTextBindings.count, 1)
     }
 
-    func testTextFieldBindingUpdatesState() {
+    @MainActor func testTextFieldBindingUpdatesState() {
         let state = State<String>(wrappedValue: "original")
         let field = TextField("", text: state.projectedValue)
         _ = androidRenderView(field)
@@ -55,7 +57,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(state.wrappedValue, "updated")
     }
 
-    func testMultipleTextFieldsRegisterSeparateBindings() {
+    @MainActor func testMultipleTextFieldsRegisterSeparateBindings() {
         let state1 = State<String>(wrappedValue: "a")
         let state2 = State<String>(wrappedValue: "b")
 
@@ -70,7 +72,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - TextField in JSON output
 
-    func testTextFieldJSON() {
+    @MainActor func testTextFieldJSON() {
         let state = State<String>(wrappedValue: "world")
         let field = TextField("Name", text: state.projectedValue)
         let node = androidRenderView(field)
@@ -83,7 +85,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - Button action registry
 
-    func testButtonRegistersAction() {
+    @MainActor func testButtonRegistersAction() {
         var tapped = false
         let button = Button("Tap") { tapped = true }
 
@@ -96,7 +98,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertTrue(tapped)
     }
 
-    func testBeginRenderPassClearsRegistries() {
+    @MainActor func testBeginRenderPassClearsRegistries() {
         let textState = State<String>(wrappedValue: "")
         let boolState = State<Bool>(wrappedValue: false)
         let doubleState = State<Double>(wrappedValue: 0.0)
@@ -123,7 +125,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - SecureField, TextEditor, ProgressView Tests
 
-    func testSecureFieldRenders() {
+    @MainActor func testSecureFieldRenders() {
         let state = State<String>(wrappedValue: "secret")
         let field = SecureField("Password", text: state.projectedValue)
         let node = androidRenderView(field)
@@ -133,7 +135,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["text"], "secret")
     }
 
-    func testTextEditorRenders() {
+    @MainActor func testTextEditorRenders() {
         let state = State<String>(wrappedValue: "body")
         let editor = TextEditor(text: state.projectedValue)
         let node = androidRenderView(editor)
@@ -142,7 +144,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["text"], "body")
     }
 
-    func testProgressViewDeterminateRenders() {
+    @MainActor func testProgressViewDeterminateRenders() {
         let view = ProgressView(value: 0.5, total: 2.0)
         let node = androidRenderView(view)
 
@@ -150,7 +152,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["progress"], "0.25")
     }
 
-    func testProgressViewIndeterminateRenders() {
+    @MainActor func testProgressViewIndeterminateRenders() {
         let view = ProgressView()
         let node = androidRenderView(view)
 
@@ -160,7 +162,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - Toggle and Slider Tests
 
-    func testToggleRenders() {
+    @MainActor func testToggleRenders() {
         let state = State<Bool>(wrappedValue: true)
         let toggle = Toggle("Wi-Fi", isOn: state.projectedValue)
         let node = androidRenderView(toggle)
@@ -170,7 +172,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["isOn"], "true")
     }
 
-    func testToggleRegistersBinding() {
+    @MainActor func testToggleRegistersBinding() {
         let state = State<Bool>(wrappedValue: false)
         let toggle = Toggle("", isOn: state.projectedValue)
 
@@ -179,7 +181,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(androidToggleBindings.count, 1)
     }
 
-    func testToggleBindingUpdatesState() {
+    @MainActor func testToggleBindingUpdatesState() {
         let state = State<Bool>(wrappedValue: false)
         let toggle = Toggle("", isOn: state.projectedValue)
         _ = androidRenderView(toggle)
@@ -192,7 +194,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(state.wrappedValue, true)
     }
 
-    func testSliderRendersWithStep() {
+    @MainActor func testSliderRendersWithStep() {
         let state = State<Double>(wrappedValue: 0.5)
         let slider = Slider(value: state.projectedValue, in: 0...1, step: 0.1)
         let node = androidRenderView(slider)
@@ -204,7 +206,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["step"], "0.1")
     }
 
-    func testSliderRegistersBinding() {
+    @MainActor func testSliderRegistersBinding() {
         let state = State<Double>(wrappedValue: 0.0)
         let slider = Slider(value: state.projectedValue)
 
@@ -213,7 +215,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(androidSliderBindings.count, 1)
     }
 
-    func testSliderBindingUpdatesState() {
+    @MainActor func testSliderBindingUpdatesState() {
         let state = State<Double>(wrappedValue: 0.0)
         let slider = Slider(value: state.projectedValue)
         _ = androidRenderView(slider)
@@ -228,7 +230,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - ScrollView Tests
 
-    func testScrollViewRendersVertical() {
+    @MainActor func testScrollViewRendersVertical() {
         let view = ScrollView(.vertical) { Text("Scroll") }
         let node = androidRenderView(view)
 
@@ -237,7 +239,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.children.count, 1)
     }
 
-    func testScrollViewRendersHorizontal() {
+    @MainActor func testScrollViewRendersHorizontal() {
         let view = ScrollView(.horizontal) { Text("Scroll") }
         let node = androidRenderView(view)
 
@@ -246,7 +248,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.children.count, 1)
     }
 
-    func testScrollViewRendersBothAxes() {
+    @MainActor func testScrollViewRendersBothAxes() {
         let view = ScrollView([.horizontal, .vertical]) { Text("Scroll") }
         let node = androidRenderView(view)
 
@@ -257,7 +259,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - List Tests
 
-    func testListRenders() {
+    @MainActor func testListRenders() {
         let view = List { Text("Row 1"); Text("Row 2") }
         let node = androidRenderView(view)
 
@@ -269,7 +271,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - Stable node IDs
 
-    func testNodeIdsAreStableAcrossRenders() {
+    @MainActor func testNodeIdsAreStableAcrossRenders() {
         let state = State<String>(wrappedValue: "v1")
         let field = TextField("F", text: state.projectedValue)
 
@@ -285,7 +287,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertNotEqual(id1, 0, "Node ID should not be zero")
     }
 
-    func testDifferentFieldsGetDifferentIds() {
+    @MainActor func testDifferentFieldsGetDifferentIds() {
         let s1 = State<String>(wrappedValue: "")
         let s2 = State<String>(wrappedValue: "")
 
@@ -302,7 +304,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - Focus modifier
 
-    func testFocusedViewRendersFocusProp() {
+    @MainActor func testFocusedViewRendersFocusProp() {
         let state = State<String>(wrappedValue: "hi")
         let focus = FocusState<Bool>()
         let view = TextField("F", text: state.projectedValue)
@@ -314,7 +316,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["focused"], "false")
     }
 
-    func testFocusedViewPropTrueWhenFocused() {
+    @MainActor func testFocusedViewPropTrueWhenFocused() {
         let state = State<String>(wrappedValue: "")
         let focus = FocusState<Bool>()
         focus.wrappedValue = true
@@ -325,7 +327,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["focused"], "true")
     }
 
-    func testFocusedViewRegistersFocusHandler() {
+    @MainActor func testFocusedViewRegistersFocusHandler() {
         let state = State<String>(wrappedValue: "")
         let focus = FocusState<Bool>()
         let view = TextField("F", text: state.projectedValue)
@@ -341,7 +343,7 @@ final class AndroidRenderTests: XCTestCase {
             "Focus handler should be keyed to the child node's ID")
     }
 
-    func testFocusHandlerUpdatesFocusState() {
+    @MainActor func testFocusHandlerUpdatesFocusState() {
         let state = State<String>(wrappedValue: "")
         let focus = FocusState<Bool>()
         let view = TextField("F", text: state.projectedValue)
@@ -360,7 +362,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(focus.storage.value, false)
     }
 
-    func testFocusedEqualsViewRendersFocusProp() {
+    @MainActor func testFocusedEqualsViewRendersFocusProp() {
         enum Field: Hashable { case name, email }
         let state = State<String>(wrappedValue: "")
         let focus = FocusState<Field?>()
@@ -371,7 +373,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["focused"], "false")
     }
 
-    func testFocusedEqualsViewPropTrueWhenMatched() {
+    @MainActor func testFocusedEqualsViewPropTrueWhenMatched() {
         enum Field: Hashable { case name, email }
         let state = State<String>(wrappedValue: "")
         let focus = FocusState<Field?>()
@@ -383,7 +385,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["focused"], "true")
     }
 
-    func testFocusedEqualsHandlerSetsValue() {
+    @MainActor func testFocusedEqualsHandlerSetsValue() {
         enum Field: Hashable { case name, email }
         let state = State<String>(wrappedValue: "")
         let focus = FocusState<Field?>()
@@ -402,7 +404,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertNil(focus.storage.value as Any?)
     }
 
-    func testBeginRenderPassClearsFocusHandlers() {
+    @MainActor func testBeginRenderPassClearsFocusHandlers() {
         let state = State<String>(wrappedValue: "")
         let focus = FocusState<Bool>()
         _ = androidRenderView(TextField("", text: state.projectedValue).focused(focus))
@@ -414,25 +416,25 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - Primitive views
 
-    func testTextRenders() {
+    @MainActor func testTextRenders() {
         let node = androidRenderView(Text("Hello"))
         XCTAssertEqual(node.type, "text")
         XCTAssertEqual(node.props["content"], "Hello")
     }
 
-    func testSpacerRenders() {
+    @MainActor func testSpacerRenders() {
         let node = androidRenderView(Spacer())
         XCTAssertEqual(node.type, "spacer")
     }
 
-    func testDividerRenders() {
+    @MainActor func testDividerRenders() {
         let node = androidRenderView(Divider())
         XCTAssertEqual(node.type, "divider")
     }
 
     // MARK: - Container views
 
-    func testVStackRendersChildren() {
+    @MainActor func testVStackRendersChildren() {
         let view = VStack {
             Text("A")
             Text("B")
@@ -444,7 +446,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.children[1].type, "text")
     }
 
-    func testVStackPrecisionLayout() {
+    @MainActor func testVStackPrecisionLayout() {
         let view = VStack(spacing: 10) {
             Text("Line 1")
             Text("Line 2")
@@ -471,7 +473,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(child2.layout?["y"], child1H + 10.0)
     }
 
-    func testVStackLayoutFallback() {
+    @MainActor func testVStackLayoutFallback() {
         // Stacks containing Spacers or non-allowlisted views should NOT have layout info
         let viewWithSpacer = VStack {
             Text("A")
@@ -494,7 +496,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertNil(node3.layout, "VStack with padded child should use Compose fallback")
     }
 
-    func testHStackRendersChildren() {
+    @MainActor func testHStackRendersChildren() {
         let view = HStack {
             Text("L")
             Spacer()
@@ -506,7 +508,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.children[1].type, "spacer")
     }
 
-    func testTopLevelTupleViewRendersAsGroup() {
+    @MainActor func testTopLevelTupleViewRendersAsGroup() {
         let tuple = TupleView(Text("A"), Text("B"))
         let node = androidRenderView(tuple)
 
@@ -520,7 +522,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - Modifier views
 
-    func testPaddingModifier() {
+    @MainActor func testPaddingModifier() {
         let view = Text("Padded").padding(8)
         let node = androidRenderView(view)
         XCTAssertEqual(node.type, "padding")
@@ -528,7 +530,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.children[0].type, "text")
     }
 
-    func testFontModifier() {
+    @MainActor func testFontModifier() {
         let view = Text("Title").font(.title)
         let node = androidRenderView(view)
         XCTAssertEqual(node.type, "font")
@@ -536,14 +538,14 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["weight"], "bold")
     }
 
-    func testForegroundColorModifier() {
+    @MainActor func testForegroundColorModifier() {
         let view = Text("Red").foregroundColor(.red)
         let node = androidRenderView(view)
         XCTAssertEqual(node.type, "foregroundColor")
         XCTAssertEqual(node.children.count, 1)
     }
 
-    func testFrameModifier() {
+    @MainActor func testFrameModifier() {
         let view = Text("Framed").frame(width: 100, height: 50)
         let node = androidRenderView(view)
         XCTAssertEqual(node.type, "frame")
@@ -553,7 +555,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - Conditional rendering
 
-    func testConditionalTrue() {
+    @MainActor func testConditionalTrue() {
         let show = true
         let view = VStack {
             if show {
@@ -565,7 +567,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.children[0].type, "text")
     }
 
-    func testConditionalFalse() {
+    @MainActor func testConditionalFalse() {
         let show = false
         let view = VStack {
             if show {
@@ -573,14 +575,13 @@ final class AndroidRenderTests: XCTestCase {
             }
         }
         let node = androidRenderView(view)
-        // Optional<Text> when false renders as empty
-        XCTAssertEqual(node.children.count, 1)
-        XCTAssertEqual(node.children[0].type, "empty")
+        // An absent optional contributes no native child.
+        XCTAssertTrue(node.children.isEmpty)
     }
 
     // MARK: - Structural state cache
 
-    func testNestedStateRestoredAcrossRenders() {
+    @MainActor func testNestedStateRestoredAcrossRenders() {
         // A child view with its own @State
         struct ChildCounter: View {
             @SwiftOpenUICore.State var count: Int = 0
@@ -617,7 +618,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - Drag gesture
 
-    func testDragGestureRegistersHandler() {
+    @MainActor func testDragGestureRegistersHandler() {
         var changedValue: DragGestureValue?
         var endedValue: DragGestureValue?
 
@@ -657,7 +658,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - Navigation back button
 
-    func testNavigationStackBackNodeIdWiredOnPush() {
+    @MainActor func testNavigationStackBackNodeIdWiredOnPush() {
         let host = MockViewHost()
         androidCurrentHost = host
 
@@ -713,7 +714,7 @@ final class AndroidRenderTests: XCTestCase {
         androidCurrentHost = nil
     }
 
-    func testNavigationLinkWithCustomLabelRendersNestedLabelNode() {
+    @MainActor func testNavigationLinkWithCustomLabelRendersNestedLabelNode() {
         let node = androidRenderView(
             NavigationLink(title: "Detail") {
                 Text("Destination")
@@ -732,7 +733,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.children[0].type, "hstack")
     }
 
-    func testBackgroundViewUsesZStackForCustomBackground() {
+    @MainActor func testBackgroundViewUsesZStackForCustomBackground() {
         let node = androidRenderView(
             Text("Hello").background(Text("BG"), alignment: .bottom)
         )
@@ -747,7 +748,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - Shape Tests
 
-    func testCircleRenders() {
+    @MainActor func testCircleRenders() {
         let node = androidRenderView(Circle().foregroundColor(.red))
         XCTAssertEqual(node.type, "foregroundColor")
         let shapeNode = node.children[0]
@@ -756,7 +757,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(shapeNode.props["r"], "1.0")
     }
 
-    func testRoundedRectangleRenders() {
+    @MainActor func testRoundedRectangleRenders() {
         let node = androidRenderView(RoundedRectangle(cornerRadius: 12).fill(.blue))
         XCTAssertEqual(node.type, "filledShape")
         XCTAssertEqual(node.props["shapeType"], "roundedRectangle")
@@ -764,7 +765,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["b"], "1.0")
     }
 
-    func testStrokedShapeRenders() {
+    @MainActor func testStrokedShapeRenders() {
         let node = androidRenderView(Rectangle().stroke(.green, lineWidth: 4))
         XCTAssertEqual(node.type, "strokedShape")
         XCTAssertEqual(node.props["shapeType"], "rectangle")
@@ -772,14 +773,14 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["g"], "0.667")
     }
 
-    func testEllipseRenders() {
+    @MainActor func testEllipseRenders() {
         let node = androidRenderView(Ellipse().fill(.blue))
         XCTAssertEqual(node.type, "filledShape")
         XCTAssertEqual(node.props["shapeType"], "ellipse")
         XCTAssertEqual(node.props["b"], "1.0")
     }
 
-    func testCapsuleRenders() {
+    @MainActor func testCapsuleRenders() {
         let node = androidRenderView(Capsule().fill(.orange))
         XCTAssertEqual(node.type, "filledShape")
         XCTAssertEqual(node.props["shapeType"], "capsule")
@@ -787,7 +788,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(node.props["g"], "0.533")
     }
 
-    func testClipShapeModifier() {
+    @MainActor func testClipShapeModifier() {
         let node = androidRenderView(Text("A").clipShape(Circle()))
         XCTAssertEqual(node.type, "clipShape")
         XCTAssertEqual(node.props["shapeType"], "circle")
@@ -797,7 +798,7 @@ final class AndroidRenderTests: XCTestCase {
 
     // MARK: - Presentation Tests
 
-    func testSheetModifierRenders() {
+    @MainActor func testSheetModifierRenders() {
         let isPresented = State(wrappedValue: true)
         let view = Text("Main").sheet(isPresented: isPresented.projectedValue) {
             Text("Sheet Content")
@@ -819,7 +820,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertFalse(isPresented.wrappedValue)
     }
 
-    func testAlertModifierRenders() {
+    @MainActor func testAlertModifierRenders() {
         let isPresented = State(wrappedValue: true)
         let view = Text("Main").alert("Title", isPresented: isPresented.projectedValue, actions: [AlertButton("OK") { }], message: "Message")
         
@@ -843,7 +844,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertFalse(isPresented.wrappedValue)
     }
 
-    func testAlertButtonDestructiveRole() {
+    @MainActor func testAlertButtonDestructiveRole() {
         let isPresented = State(wrappedValue: true)
         let view = Text("Main").alert("Delete?", isPresented: isPresented.projectedValue, actions: [
             AlertButton("Delete", role: .destructive) { }
@@ -855,7 +856,7 @@ final class AndroidRenderTests: XCTestCase {
         XCTAssertEqual(btnNode.props["role"], "destructive")
     }
 
-    func testListWithSheetModifier() {
+    @MainActor func testListWithSheetModifier() {
         let isPresented = State(wrappedValue: true)
         let view = List {
             Text("Row 1")
@@ -873,6 +874,7 @@ final class AndroidRenderTests: XCTestCase {
     }
 
     /// Helper to find a node by type in the render tree.
+    @MainActor
     private func findNode(_ node: RenderNode, type: String) -> RenderNode? {
         if node.type == type { return node }
         for child in node.children {

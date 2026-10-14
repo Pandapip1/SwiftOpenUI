@@ -15,11 +15,11 @@ public enum AsyncImagePhase {
 
 /// Downloads images over HTTP into a bounded persistent cache so backends can display them from a file path.
 public enum AsyncImageLoader {
-    private static let lock = NSLock()
-    nonisolated(unsafe) private static var inflight: [URL: [(Result<String, Error>) -> Void]] = [:]
+    nonisolated private static let lock = NSLock()
+    nonisolated(unsafe) private static var inflight: [URL: [@Sendable (Result<String, Error>) -> Void]] = [:]
     nonisolated(unsafe) private static var cached: [URL: String] = [:]
 
-    static let directory: URL = {
+    nonisolated static let directory: URL = {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         let dir = base.appendingPathComponent("SwiftOpenUI/AsyncImage", isDirectory: true)
@@ -27,11 +27,14 @@ public enum AsyncImageLoader {
         return dir
     }()
 
-    private static let maximumFiles = 512
-    private static let maximumBytes: UInt64 = 256 * 1024 * 1024
+    nonisolated private static let maximumFiles = 512
+    nonisolated private static let maximumBytes: UInt64 = 256 * 1024 * 1024
 
     /// Calls `completion` (on an arbitrary thread) with the cached file's path.
-    public static func load(_ url: URL, completion: @escaping (Result<String, Error>) -> Void) {
+    nonisolated public static func load(
+        _ url: URL,
+        completion: @escaping @Sendable (Result<String, Error>) -> Void
+    ) {
         lock.lock()
         if let path = cached[url], FileManager.default.fileExists(atPath: path) {
             lock.unlock(); completion(.success(path)); return
@@ -68,7 +71,7 @@ public enum AsyncImageLoader {
         #endif
     }
 
-    static func cacheFile(for url: URL) -> URL {
+    nonisolated static func cacheFile(for url: URL) -> URL {
         // FNV-1a is stable across launches (unlike Swift.Hashable) and the two
         // independent passes make accidental URL collisions vanishingly rare.
         func fnv(_ bytes: some Sequence<UInt8>, seed: UInt64) -> UInt64 {
@@ -83,7 +86,7 @@ public enum AsyncImageLoader {
         return directory.appendingPathComponent(String(format: "%016llx%016llx.%@", first, second, ext))
     }
 
-    private static func pruneCache() {
+    nonisolated private static func pruneCache() {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
         guard var files = try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]
@@ -101,7 +104,7 @@ public enum AsyncImageLoader {
         }
     }
 
-    private static func finish(_ url: URL, _ result: Result<String, Error>) {
+    nonisolated private static func finish(_ url: URL, _ result: Result<String, Error>) {
         lock.lock()
         if case .success(let path) = result { cached[url] = path }
         let waiting = inflight.removeValue(forKey: url) ?? []
@@ -130,9 +133,11 @@ public struct AsyncImage<Content: View>: View {
             guard let target, loaded.value != target else { return }
             loaded.setValue(target)
             AsyncImageLoader.load(target) { result in
-                switch result {
-                case .success(let path): storage.setValue(.success(Image(filePath: path).resizable()))
-                case .failure(let error): storage.setValue(.failure(error))
+                Task { @MainActor in
+                    switch result {
+                    case .success(let path): storage.setValue(.success(Image(filePath: path).resizable()))
+                    case .failure(let error): storage.setValue(.failure(error))
+                    }
                 }
             }
         }

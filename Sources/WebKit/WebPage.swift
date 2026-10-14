@@ -63,14 +63,14 @@ public final class WebPage {
     }
 
     @discardableResult
-    public func load(_ request: URLRequest) -> some AsyncSequence<NavigationEvent, any Error> {
+    public func load(_ request: URLRequest) -> AsyncThrowingStream<NavigationEvent, any Error> {
         pendingLoad = .request(request)
         perform(.request(request))
         return eventsForCurrentNavigation()
     }
 
     @discardableResult
-    public func load(_ url: URL?) -> some AsyncSequence<NavigationEvent, any Error> {
+    public func load(_ url: URL?) -> AsyncThrowingStream<NavigationEvent, any Error> {
         guard let url else {
             return AsyncThrowingStream { $0.finish(throwing: NavigationError.invalidURL) }
         }
@@ -81,14 +81,17 @@ public final class WebPage {
     }
 
     @discardableResult
-    public func load(html: String, baseURL: URL = URL(string: "about:blank")!) -> some AsyncSequence<NavigationEvent, any Error> {
+    public func load(
+        html: String,
+        baseURL: URL = URL(string: "about:blank")!
+    ) -> AsyncThrowingStream<NavigationEvent, any Error> {
         pendingLoad = .html(html, baseURL)
         perform(.html(html, baseURL))
         return eventsForCurrentNavigation()
     }
 
     @discardableResult
-    public func reload(fromOrigin: Bool) -> some AsyncSequence<NavigationEvent, any Error> {
+    public func reload(fromOrigin: Bool) -> AsyncThrowingStream<NavigationEvent, any Error> {
         _backend?.reload(fromOrigin: fromOrigin)
         return eventsForCurrentNavigation()
     }
@@ -162,5 +165,5 @@ public protocol _WebPageBackend: AnyObject {
     func stopLoading()
     func configure(persistentDataStore: Bool, userScripts: [WKUserScript])
     func getAllCookies(_ completion: @escaping ([HTTPCookie]) -> Void)
-    func evaluateJavaScript(_ source: String) async throws -> Any?
+    func evaluateJavaScript(_ source: String) async throws -> sending Any?
 }

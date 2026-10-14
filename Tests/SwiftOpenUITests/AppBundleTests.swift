@@ -6,7 +6,7 @@ final class AppBundleTests: XCTestCase {
 
     // MARK: - BundleInfo Codable
 
-    func testBundleInfoDecodesFullJSON() throws {
+    @MainActor func testBundleInfoDecodesFullJSON() throws {
         let json = """
         {
           "bundleIdentifier": "com.example.myapp",
@@ -29,7 +29,7 @@ final class AppBundleTests: XCTestCase {
         XCTAssertEqual(info.icon, "Resources/icons/app.png")
     }
 
-    func testBundleInfoDecodesMinimalJSON() throws {
+    @MainActor func testBundleInfoDecodesMinimalJSON() throws {
         let json = """
         {
           "bundleIdentifier": "com.example.minimal",
@@ -47,7 +47,7 @@ final class AppBundleTests: XCTestCase {
         XCTAssertNil(info.icon)
     }
 
-    func testBundleInfoEncodesRoundTrip() throws {
+    @MainActor func testBundleInfoEncodesRoundTrip() throws {
         let original = BundleInfo(
             bundleIdentifier: "com.test.roundtrip",
             bundleName: "RoundTrip",
@@ -68,7 +68,7 @@ final class AppBundleTests: XCTestCase {
 
     // MARK: - AppBundle path resolution
 
-    func testResourcePathWithExtensionAndSubdirectory() throws {
+    @MainActor func testResourcePathWithExtensionAndSubdirectory() throws {
         let tmpDir = NSTemporaryDirectory() + "AppBundleTest_\(ProcessInfo.processInfo.globallyUniqueString)"
         let fm = FileManager.default
 
@@ -107,7 +107,7 @@ final class AppBundleTests: XCTestCase {
         try fm.removeItem(atPath: tmpDir)
     }
 
-    func testResourcePathWithoutExtension() throws {
+    @MainActor func testResourcePathWithoutExtension() throws {
         let tmpDir = NSTemporaryDirectory() + "AppBundleTest_\(ProcessInfo.processInfo.globallyUniqueString)"
         let fm = FileManager.default
 
@@ -136,7 +136,7 @@ final class AppBundleTests: XCTestCase {
 
     // MARK: - Derived paths
 
-    func testLibrariesPathLinux() {
+    @MainActor func testLibrariesPathLinux() {
         let bundle = AppBundle(
             bundlePath: "/opt/MyApp.app",
             executablePath: "/opt/MyApp.app/bin/x86_64/MyApp",
@@ -151,7 +151,7 @@ final class AppBundleTests: XCTestCase {
         #endif
     }
 
-    func testLibrariesPathWindowsSingleArch() throws {
+    @MainActor func testLibrariesPathWindowsSingleArch() throws {
         #if !canImport(WinSDK)
         throw XCTSkip("Windows-specific test")
         #else
@@ -171,7 +171,7 @@ final class AppBundleTests: XCTestCase {
         #endif
     }
 
-    func testLibrariesPathWindowsMultiArch() throws {
+    @MainActor func testLibrariesPathWindowsMultiArch() throws {
         #if !canImport(WinSDK)
         throw XCTSkip("Windows-specific test")
         #else
@@ -189,7 +189,7 @@ final class AppBundleTests: XCTestCase {
         #endif
     }
 
-    func testResourcesPath() {
+    @MainActor func testResourcesPath() {
         let bundle = AppBundle(
             bundlePath: "/opt/MyApp.app",
             executablePath: "/opt/MyApp.app/bin/x86_64/MyApp",
@@ -208,7 +208,7 @@ final class AppBundleTests: XCTestCase {
 
     // MARK: - Bundle discovery
 
-    func testDiscoveryWalksUpToFindInfoJson() throws {
+    @MainActor func testDiscoveryWalksUpToFindInfoJson() throws {
         // Tests that _findBundleRoot walks up from a nested directory
         // and finds Info.json at the bundle root.
         #if canImport(Darwin)
@@ -243,7 +243,7 @@ final class AppBundleTests: XCTestCase {
         #endif
     }
 
-    func testDiscoveryReturnsNilWithNoInfoJson() throws {
+    @MainActor func testDiscoveryReturnsNilWithNoInfoJson() throws {
         #if canImport(Darwin)
         throw XCTSkip("_findBundleRoot is not available on macOS")
         #else
@@ -260,7 +260,7 @@ final class AppBundleTests: XCTestCase {
         #endif
     }
 
-    func testResolveExecutablePathReturnsNonNil() throws {
+    @MainActor func testResolveExecutablePathReturnsNonNil() throws {
         #if !canImport(Glibc)
         throw XCTSkip("Linux-specific test")
         #else
@@ -273,7 +273,7 @@ final class AppBundleTests: XCTestCase {
 
     // MARK: - Development mode discovery
 
-    func testDevDiscoveryFindsPackageRootWithResources() throws {
+    @MainActor func testDevDiscoveryFindsPackageRootWithResources() throws {
         let tmpDir = NSTemporaryDirectory() + "AppBundleDev_\(ProcessInfo.processInfo.globallyUniqueString)"
         let fm = FileManager.default
 
@@ -308,7 +308,7 @@ final class AppBundleTests: XCTestCase {
         try fm.removeItem(atPath: tmpDir)
     }
 
-    func testDevDiscoveryReturnsNilWithoutResources() throws {
+    @MainActor func testDevDiscoveryReturnsNilWithoutResources() throws {
         let tmpDir = NSTemporaryDirectory() + "AppBundleDevNoRes_\(ProcessInfo.processInfo.globallyUniqueString)"
         let fm = FileManager.default
 
@@ -327,7 +327,7 @@ final class AppBundleTests: XCTestCase {
         try fm.removeItem(atPath: tmpDir)
     }
 
-    func testDevDiscoveryReturnsNilWithoutPackageSwift() throws {
+    @MainActor func testDevDiscoveryReturnsNilWithoutPackageSwift() throws {
         let tmpDir = NSTemporaryDirectory() + "AppBundleDevNoPkg_\(ProcessInfo.processInfo.globallyUniqueString)"
         let fm = FileManager.default
 
@@ -346,7 +346,7 @@ final class AppBundleTests: XCTestCase {
         try fm.removeItem(atPath: tmpDir)
     }
 
-    func testNonDevelopmentBundleResourcesPath() {
+    @MainActor func testNonDevelopmentBundleResourcesPath() {
         let bundle = AppBundle(
             bundlePath: "/opt/MyApp.app",
             executablePath: "/opt/MyApp.app/bin/x86_64/MyApp",
