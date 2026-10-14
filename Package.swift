@@ -82,6 +82,35 @@ var targets: [Target] = [
     ),
 ]
 
+// Compatibility modules use the same module and declaration names as Apple's
+// frameworks. Apple builds import the system frameworks; Linux builds receive
+// equivalent implementations from SwiftOpenUI.
+#if os(Linux)
+targets += [
+    .target(
+        name: "AuthenticationServices",
+        dependencies: ["SwiftOpenUICore"],
+        path: "Sources/AuthenticationServices"
+    ),
+    .systemLibrary(
+        name: "CSecret",
+        path: "Sources/CSecret",
+        pkgConfig: "libsecret-1",
+        providers: [.apt(["libsecret-1-dev"])]
+    ),
+    .target(
+        name: "Security",
+        dependencies: ["CSecret"],
+        path: "Sources/Security"
+    ),
+]
+#else
+targets += [
+    .target(name: "AuthenticationServicesCompatStub", path: "Sources/AuthenticationServicesCompatStub"),
+    .target(name: "SecurityCompatStub", path: "Sources/SecurityCompatStub"),
+]
+#endif
+
 // Example runner dependencies:
 // - SwiftOpenUI for the core framework
 // - Backend libraries on their native platforms
@@ -537,6 +566,15 @@ let package = Package(
         p.append(.library(name: "BrowserTabs", targets: ["BrowserTabs"]))
         }
         p.append(.library(name: "BackendAndroid", type: .dynamic, targets: ["BackendAndroid"]))
+        #endif
+        #if os(Linux)
+        p.append(.library(name: "AuthenticationServices", targets: ["AuthenticationServices"]))
+        p.append(.library(name: "Security", targets: ["Security"]))
+        #else
+        // Product placeholders let downstream manifests declare platform-
+        // conditional dependencies; Apple source imports the system modules.
+        p.append(.library(name: "AuthenticationServices", targets: ["AuthenticationServicesCompatStub"]))
+        p.append(.library(name: "Security", targets: ["SecurityCompatStub"]))
         #endif
         return p
     }(),

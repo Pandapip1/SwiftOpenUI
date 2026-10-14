@@ -21,6 +21,19 @@ backend.
 
 ---
 
+## 2026-10-14 — Linux/Shared — AuthenticationServices and Security compatibility
+
+- **Shared surface:** added Linux modules matching Apple's current
+  `ASWebAuthenticationSession` callback API and Security `SecItem` credential
+  API; added an internal system-service callback URL interception hook.
+- **Impact:** portable OAuth clients can import the same framework APIs on
+  Apple and Linux. Linux credentials are stored by Secret Service; GTK
+  registers GApplication URL-open handling so custom-scheme callbacks reach
+  the active authentication session, including when forwarded to an existing
+  process.
+- **Ping:** authentication, GTK lifecycle, and package integrators.
+- **Refs:** `Sources/AuthenticationServices`, `Sources/Security`, `Sources/CSecret`.
+
 ## 2026-10-08 — Apple/Shared — SwiftUI backend and stable facade
 
 - **Shared surface:** split the portable declarations into `SwiftOpenUICore`,

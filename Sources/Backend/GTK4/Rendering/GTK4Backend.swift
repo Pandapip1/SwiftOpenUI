@@ -753,7 +753,11 @@ public struct GTK4Backend: RenderBackend {
         gtkRegisterBundledIconFont()
         gtkInstallSystemServices()
 
-        let gtkApp = gtk_application_new(nil, GApplicationFlags(rawValue: 0))!
+        let candidateID = AppBundle.main?.info.bundleIdentifier
+            ?? Bundle.main.bundleIdentifier ?? "dev.swiftopenui.application"
+        let applicationID = g_application_id_is_valid(candidateID) != 0
+            ? candidateID : "dev.swiftopenui.application"
+        let gtkApp = gtk_application_new(applicationID, GApplicationFlags(rawValue: 1 << 2))!
         let appPtr = OpaquePointer(gtkApp)
 
         let factory: (OpaquePointer) -> Void = { appPtr in
@@ -796,6 +800,25 @@ public struct GTK4Backend: RenderBackend {
             GConnectFlags(rawValue: 0)
         )
 
+        // Match G_APPLICATION_HANDLES_OPEN: desktop custom-scheme launches are
+        // delivered here, including launches forwarded to an existing process.
+        g_signal_connect_data(
+            gpointer(appPtr),
+            "open",
+            unsafeBitCast({ (_: gpointer?, files: UnsafeMutablePointer<OpaquePointer?>?, count: gint,
+                              _: UnsafePointer<CChar>?, _: gpointer?) in
+                guard let files else { return }
+                for index in 0..<Int(count) {
+                    guard let file = files[index], let rawURI = g_file_get_uri(file) else { continue }
+                    defer { g_free(rawURI) }
+                    guard let url = URL(string: String(cString: rawURI)) else { continue }
+                    _ = SystemServices.handleAuthenticationURL(url)
+                }
+            } as @convention(c) (gpointer?, UnsafeMutablePointer<OpaquePointer?>?, gint,
+                                  UnsafePointer<CChar>?, gpointer?) -> Void, to: GCallback.self),
+            nil, nil, GConnectFlags(rawValue: 0)
+        )
+
         // Pump Foundation RunLoop sources (Timer, etc.) periodically.
         // GTK4's g_application_run blocks in GMainLoop, so Foundation
         // timers (e.g. Timer.scheduledTimer) never fire unless we
@@ -806,7 +829,9 @@ public struct GTK4Backend: RenderBackend {
             return 1 // G_SOURCE_CONTINUE
         }, nil)
 
-        let status = g_application_run(applicationPointer(appPtr), 0, nil)
+        let status = g_application_run(
+            applicationPointer(appPtr), CommandLine.argc, CommandLine.unsafeArgv
+        )
         g_object_unref(gpointer(appPtr))
 
         if status != 0 {
