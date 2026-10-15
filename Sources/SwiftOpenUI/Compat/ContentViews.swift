@@ -93,6 +93,8 @@ extension LabeledContent where C == Text {
 public struct ShareLink<L: View>: View {
     let text: String
     let label: L
+    @State private var copied = false
+    @State private var feedbackID = UUID()
 
     public init(item: String, @ViewBuilder label: () -> L) {
         self.text = item
@@ -106,7 +108,22 @@ public struct ShareLink<L: View>: View {
 
     public var body: some View {
         let value = text
-        return Button(action: { SystemServices.copyToClipboard(value) }, label: { label })
+        return Button {
+            SystemServices.copyToClipboard(value)
+            copied = true
+            let id = UUID()
+            feedbackID = id
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                if feedbackID == id { copied = false }
+            }
+        } label: {
+            if copied {
+                Label("Copied", systemImage: "checkmark")
+            } else {
+                label
+            }
+        }
     }
 }
 
