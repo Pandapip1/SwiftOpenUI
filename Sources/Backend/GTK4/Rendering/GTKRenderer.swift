@@ -7045,6 +7045,33 @@ extension Menu: GTKRenderable {
         gtk_swift_popover_set_child(popover, contentWidget)
         gtk_swift_menu_button_set_popover(button, popover)
 
+        // A keyboard shortcut on a Menu presents the menu; it must not invoke
+        // one of its actions implicitly. This lets semantic new-tab choosers
+        // use Command-T without manufacturing a destination-less tab.
+        if let shortcut = getCurrentEnvironment().keyboardShortcut {
+            let windowID = getCurrentEnvironment().windowID
+            let regID = KeyboardShortcutRegistry.shared.register(
+                shortcut,
+                windowID: windowID,
+                action: { gtk_swift_popover_popup(popover) }
+            )
+            let destroyBox = Unmanaged.passRetained(ClosureBox {
+                KeyboardShortcutRegistry.shared.unregister(id: regID)
+            }).toOpaque()
+            g_signal_connect_data(
+                gpointer(button), "destroy",
+                unsafeBitCast({ (_: gpointer?, userData: gpointer?) in
+                    guard let userData else { return }
+                    Unmanaged<ClosureBox>.fromOpaque(userData).takeUnretainedValue().closure()
+                } as @convention(c) (gpointer?, gpointer?) -> Void, to: GCallback.self),
+                destroyBox,
+                { data, _ in
+                    if let data { Unmanaged<ClosureBox>.fromOpaque(data).release() }
+                },
+                GConnectFlags(rawValue: 0)
+            )
+        }
+
         // A custom (non-model) popover doesn't auto-close on item tap, so
         // dismiss after each item button fires. Act-then-dismiss is safe:
         // `@State` lives in the view model, not the widget, so hiding the
