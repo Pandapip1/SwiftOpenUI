@@ -21,12 +21,13 @@ public struct BrowserTabItem: Identifiable, Equatable, Sendable {
 
 #if !BACKEND_GTK
 public struct BrowserHistoryControls: View {
-    private let canGoBack: Bool
-    private let canGoForward: Bool
+    private let canGoBack: () -> Bool
+    private let canGoForward: () -> Bool
     private let goBack: () -> Void
     private let goForward: () -> Void
 
-    public init(canGoBack: Bool, canGoForward: Bool,
+    public init(canGoBack: @autoclosure @escaping () -> Bool,
+                canGoForward: @autoclosure @escaping () -> Bool,
                 goBack: @escaping () -> Void, goForward: @escaping () -> Void) {
         self.canGoBack = canGoBack
         self.canGoForward = canGoForward
@@ -37,9 +38,9 @@ public struct BrowserHistoryControls: View {
     public var body: some View {
         ControlGroup {
             Button(action: goBack) { Image(systemName: "chevron.left") }
-                .disabled(!canGoBack).accessibilityLabel("Back")
+                .disabled(!canGoBack()).accessibilityLabel("Back")
             Button(action: goForward) { Image(systemName: "chevron.right") }
-                .disabled(!canGoForward).accessibilityLabel("Forward")
+                .disabled(!canGoForward()).accessibilityLabel("Forward")
         }
         .controlGroupStyle(.navigation)
     }
@@ -812,12 +813,13 @@ extension BrowserTabContainer: GTKRenderable {
 
 public struct BrowserHistoryControls: View, PrimitiveView {
     public typealias Body = Never
-    let canGoBack: Bool
-    let canGoForward: Bool
+    let canGoBack: () -> Bool
+    let canGoForward: () -> Bool
     let goBack: () -> Void
     let goForward: () -> Void
 
-    public init(canGoBack: Bool, canGoForward: Bool,
+    public init(canGoBack: @autoclosure @escaping () -> Bool,
+                canGoForward: @autoclosure @escaping () -> Bool,
                 goBack: @escaping () -> Void, goForward: @escaping () -> Void) {
         self.canGoBack = canGoBack
         self.canGoForward = canGoForward
@@ -832,18 +834,68 @@ extension BrowserHistoryControls: GTKRenderable {
     public func gtkCreateWidget() -> OpaquePointer {
         let box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
         gtk_widget_add_css_class(box, "linked")
+        let state = BrowserHistoryControlState(
+            canGoBack: canGoBack, canGoForward: canGoForward,
+            goBack: goBack, goForward: goForward
+        )
         let back = UnsafeMutableRawPointer(gtkRenderView(
-            Button(action: goBack) { Image(systemName: "chevron.left") }
-                .disabled(!canGoBack).accessibilityLabel("Back")
+            Button(action: { state.navigateBack() }) { Image(systemName: "chevron.left") }
+                .accessibilityLabel("Back")
         )).assumingMemoryBound(to: GtkWidget.self)
         let forward = UnsafeMutableRawPointer(gtkRenderView(
-            Button(action: goForward) { Image(systemName: "chevron.right") }
-                .disabled(!canGoForward).accessibilityLabel("Forward")
+            Button(action: { state.navigateForward() }) { Image(systemName: "chevron.right") }
+                .accessibilityLabel("Forward")
         )).assumingMemoryBound(to: GtkWidget.self)
+        state.back = gtkFirstButton(in: back) ?? back
+        state.forward = gtkFirstButton(in: forward) ?? forward
+        state.refresh()
         let gtkBox = UnsafeMutableRawPointer(box).assumingMemoryBound(to: GtkBox.self)
         gtk_box_append(gtkBox, back)
         gtk_box_append(gtkBox, forward)
         return OpaquePointer(box)
+    }
+}
+
+private func gtkFirstButton(in widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget>? {
+    if String(cString: g_type_name(gtk_swift_get_widget_type(widget))) == "GtkButton" { return widget }
+    var child = gtk_widget_get_first_child(widget)
+    while let current = child {
+        if let button = gtkFirstButton(in: current) { return button }
+        child = gtk_widget_get_next_sibling(current)
+    }
+    return nil
+}
+
+@MainActor
+private final class BrowserHistoryControlState {
+    let canGoBack: () -> Bool
+    let canGoForward: () -> Bool
+    let goBack: () -> Void
+    let goForward: () -> Void
+    var back: UnsafeMutablePointer<GtkWidget>?
+    var forward: UnsafeMutablePointer<GtkWidget>?
+
+    init(canGoBack: @escaping () -> Bool, canGoForward: @escaping () -> Bool,
+         goBack: @escaping () -> Void, goForward: @escaping () -> Void) {
+        self.canGoBack = canGoBack
+        self.canGoForward = canGoForward
+        self.goBack = goBack
+        self.goForward = goForward
+    }
+
+    func navigateBack() {
+        goBack()
+        refresh()
+    }
+
+    func navigateForward() {
+        goForward()
+        refresh()
+    }
+
+    func refresh() {
+        if let back { gtk_widget_set_sensitive(back, canGoBack() ? 1 : 0) }
+        if let forward { gtk_widget_set_sensitive(forward, canGoForward() ? 1 : 0) }
     }
 }
 

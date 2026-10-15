@@ -236,5 +236,19 @@ int main(void) {
     swift_openui_gst_player_stop(p);
     swift_openui_gst_player_free(p);
     g_print("split replacement failure: released graph is not retained as pipeline\n");
+
+    // Older/minimal installations can provide playbin without playbin3. The
+    // direct backend must keep working instead of treating that as fatal.
+    GstRegistry *registry = gst_registry_get();
+    GstPluginFeature *playbin3 = gst_registry_find_feature(
+        registry, "playbin3", GST_TYPE_ELEMENT_FACTORY);
+    g_assert_nonnull(playbin3);
+    gst_registry_remove_feature(registry, playbin3);
+    p = swift_openui_gst_player_new();
+    g_assert_nonnull(p);
+    g_assert_cmpstr(GST_OBJECT_NAME(gst_element_get_factory(p->playbin)), ==, "playbin");
+    swift_openui_gst_player_free(p);
+    gst_object_unref(playbin3);
+    g_print("missing playbin3: playbin fallback selected\n");
     return 0;
 }

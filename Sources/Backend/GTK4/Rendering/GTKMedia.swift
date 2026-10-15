@@ -110,7 +110,7 @@ final class GTKVideoDriver: _AVPlayerDriver {
         }
         guard let gst else {
             stop()
-            player?._swiftOpenUIOnFailure?("GStreamer playbin3 is unavailable")
+            player?._swiftOpenUIOnFailure?("GStreamer playback factories are unavailable")
             return
         }
         sourceVideoURL = videoURL

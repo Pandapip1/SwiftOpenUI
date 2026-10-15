@@ -261,7 +261,10 @@ static inline SwiftOpenUIGStreamerPlayer *swift_openui_gst_player_new_with_paint
     player->prefer_paintable = prefer_paintable;
     player->target_state = GST_STATE_NULL;
     player->buffering_percent = 100;
+    // Prefer playbin3 for its stream-collection support, but retain playback
+    // on installations that only provide the stable playbin factory.
     player->playbin = gst_element_factory_make("playbin3", NULL);
+    if (!player->playbin) player->playbin = gst_element_factory_make("playbin", NULL);
     if (prefer_paintable) player->video_bin = swift_openui_gst_player_make_gl_sink(&player->normal_paintable);
     if (!player->video_bin) player->video_bin = gst_parse_bin_from_description(
         "videoconvert ! video/x-raw,format=RGBA ! appsink name=swiftappsink",
