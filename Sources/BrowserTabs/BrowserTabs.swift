@@ -19,6 +19,20 @@ public struct BrowserTabItem: Identifiable, Equatable, Sendable {
     }
 }
 
+public extension View {
+    /// Installs the conventional new-tab command where the platform supports
+    /// hardware keyboard shortcuts. The visible control remains unchanged on
+    /// focus-only platforms such as tvOS.
+    @ViewBuilder
+    func browserNewTabKeyboardShortcut() -> some View {
+        #if os(tvOS)
+        self
+        #else
+        keyboardShortcut("t")
+        #endif
+    }
+}
+
 #if !BACKEND_GTK
 public struct BrowserHistoryControls: View {
     private let canGoBack: () -> Bool
@@ -42,7 +56,7 @@ public struct BrowserHistoryControls: View {
             Button(action: goForward) { Image(systemName: "chevron.right") }
                 .disabled(!canGoForward()).accessibilityLabel("Forward")
         }
-        .controlGroupStyle(.navigation)
+        .modifier(BrowserNavigationControlGroupStyle())
     }
 }
 #endif
@@ -242,7 +256,9 @@ public struct BrowserTabContainer<Content: View>: View {
         let principalItems = contextualItems.filter { $0.placement == .principal }
         let trailingItems = contextualItems.filter { $0.placement == .trailing }
         if !leadingItems.isEmpty {
+            #if os(macOS) || os(iOS)
             if #available(macOS 26.0, iOS 26.0, *) { ToolbarSpacer(.fixed, placement: .navigation) }
+            #endif
             ToolbarItem(placement: .automatic) {
                 ControlGroup { ForEach(leadingItems) { $0.content } }
                     .controlGroupStyle(.navigation)
@@ -258,7 +274,9 @@ public struct BrowserTabContainer<Content: View>: View {
                 ControlGroup { ForEach(trailingItems) { $0.content } }
                     .controlGroupStyle(.navigation)
             }
+            #if os(macOS) || os(iOS)
             if #available(macOS 26.0, iOS 26.0, *) { ToolbarSpacer(.fixed, placement: .primaryAction) }
+            #endif
         }
         #if os(iOS)
         ToolbarItem(placement: .topBarTrailing) {
@@ -563,7 +581,16 @@ public struct BrowserTabBar: View {
 private struct BrowserTabActiveStyle: ViewModifier {
     let isActive: Bool
 
+    @ViewBuilder
     func body(content: Content) -> some View {
+        #if os(visionOS)
+        if isActive {
+            content.background(Capsule().fill(.regularMaterial)
+                .overlay(Capsule().stroke(Color.secondary.opacity(0.18), lineWidth: 0.5)))
+        } else {
+            content
+        }
+        #else
         if #available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *) {
             if isActive {
                 content.glassEffect(.regular)
@@ -576,6 +603,7 @@ private struct BrowserTabActiveStyle: ViewModifier {
         } else {
             content
         }
+        #endif
     }
 }
 #else

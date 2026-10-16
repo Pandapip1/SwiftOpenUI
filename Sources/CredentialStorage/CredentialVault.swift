@@ -159,7 +159,7 @@ public struct PlatformCredentialVault: CredentialDataVault {
         var result = baseQuery(account: account)
         result[kSecReturnData] = true
         result[kSecMatchLimit] = kSecMatchLimitOne
-        #if canImport(LocalAuthentication)
+        #if canImport(LocalAuthentication) && !os(tvOS)
         let context = LAContext()
         context.interactionNotAllowed = !interactive
         result[kSecUseAuthenticationContext] = context

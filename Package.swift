@@ -92,7 +92,9 @@ if !gtkBackendEnabled {
         dependencies: ["SwiftOpenUICore"],
         path: "Sources/Backend/SwiftUI",
         swiftSettings: gtkSwiftSettings,
-        linkerSettings: [.linkedFramework("WebKit")]
+        linkerSettings: [
+            .linkedFramework("WebKit", .when(platforms: [.iOS, .macOS, .visionOS])),
+        ]
     ))
 }
 
