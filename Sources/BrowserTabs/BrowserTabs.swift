@@ -231,6 +231,10 @@ public struct BrowserTabContainer<Content: View>: View {
                 content(item)
                     .opacity(selection.wrappedValue == item.id ? 1 : 0)
                     .allowsHitTesting(selection.wrappedValue == item.id)
+                    // Embedded native surfaces such as WKWebView maintain their
+                    // own backing view. Explicitly promote the selected page so
+                    // insertion order cannot leave an inactive surface above it.
+                    .zIndex(selection.wrappedValue == item.id ? 1 : 0)
                     .accessibilityHidden(selection.wrappedValue != item.id)
                     .environment(\.isBrowserTabToolbarActive,
                                  selection.wrappedValue == item.id && !isShowingOverview)
