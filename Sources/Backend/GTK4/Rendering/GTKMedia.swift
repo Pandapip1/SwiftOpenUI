@@ -38,7 +38,8 @@ final class GTKVideoDriver: _AVPlayerDriver {
     private var downloadTask: URLSessionDownloadTask?
     private var sourceGeneration: UInt = 0
     private weak var mediaSelectionAsset: AVAsset?
-    private var mediaSelectionGeneration: UInt64 = 0
+    // glib's own type: guint64 imports as UInt on 64-bit Linux, not UInt64.
+    private var mediaSelectionGeneration: guint64 = 0
 
     init(player: AVPlayer) {
         self.player = player

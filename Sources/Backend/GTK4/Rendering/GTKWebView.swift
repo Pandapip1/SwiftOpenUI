@@ -144,12 +144,12 @@ private final class CookieState {
 }
 
 extension WebView: GTKRenderable {
+    // Already on the main actor: this target's default isolation is MainActor,
+    // so GTKRenderable's requirement is too.
     public func gtkCreateWidget() -> OpaquePointer {
-        MainActor.assumeIsolated {
-            let backend = (page._backend as? GTKWebPageBackend) ?? GTKWebPageBackend(page: page)
-            if page._backend == nil { page._backend = backend }
-            if gtk_widget_get_parent(backend.widget) != nil { gtk_widget_unparent(backend.widget) }
-            return OpaquePointer(backend.widget)
-        }
+        let backend = (page._backend as? GTKWebPageBackend) ?? GTKWebPageBackend(page: page)
+        if page._backend == nil { page._backend = backend }
+        if gtk_widget_get_parent(backend.widget) != nil { gtk_widget_unparent(backend.widget) }
+        return OpaquePointer(backend.widget)
     }
 }
