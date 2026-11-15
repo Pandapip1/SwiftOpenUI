@@ -17,7 +17,14 @@ import Darwin
 /// In every case the bytes sit flush against the end of the usable region,
 /// so on the guarded platforms an overrun faults on the trailing guard page.
 /// Between accesses the data pages are made inaccessible.
-struct ProtectedRegion {
+///
+/// `@unchecked Sendable`: Swift has no Sendable raw pointer, so this is the
+/// one place the claim is made rather than checked. Every stored property is
+/// a `let` fixed at allocation. The bytes are written only while
+/// `SecureBytes.init` fills them, before the region is shared, and the
+/// protection changes (`makeReadOnly`, `makeInaccessible`) only happen under
+/// `SecureBytes`' reader lock.
+struct ProtectedRegion: @unchecked Sendable {
     let start: UnsafeMutableRawPointer
     let count: Int
     #if !os(Linux) && canImport(Darwin)

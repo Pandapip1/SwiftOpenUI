@@ -17,7 +17,6 @@ final class SecureBytesTests: XCTestCase {
         XCTAssertEqual(secret.withUnsafeBytes { Array($0) }, original)
     }
 
-    @available(macOS 15, iOS 18, tvOS 18, visionOS 2, *)
     func testRoundTripsThroughAVault() throws {
         let vault = MemoryVault()
         let credential = Credential(user: "alice", token: "s3cr3t-token")
@@ -96,7 +95,6 @@ private struct Credential: Codable, Equatable {
     let token: String
 }
 
-@available(macOS 15, iOS 18, tvOS 18, visionOS 2, *)
 private final class MemoryVault: CredentialDataVault {
     private let secrets = Mutex<[String: SecureBytes]>([:])
     func load(account: String) -> SecureBytes? { secrets.withLock { $0[account] } }

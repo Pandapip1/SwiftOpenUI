@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// A secret held in protected memory for its whole lifetime.
 ///
@@ -16,15 +17,16 @@ import Foundation
 /// protection ends. `description`, `debugDescription` and reflection are
 /// redacted so secrets don't reach logs through string interpolation.
 ///
-/// `@unchecked Sendable`: the only mutable state is `activeReaders`, which is
-/// read and written only while holding `lock`. The region's pointer and
-/// count never change after `init`, and its bytes are never written after
-/// `init` returns, so concurrent readers are safe. The pointer type itself is
-/// not `Sendable`, which is why the conformance can't be checked.
-public final class SecureBytes: @unchecked Sendable {
+/// `Sendable` is checked: the region is immutable (see ``ProtectedRegion``
+/// for the one unchecked claim, about its raw pointer), and the only mutable
+/// state, the count of readers that decides when the memory is readable,
+/// lives in a `Mutex`.
+public final class SecureBytes: Sendable {
     private let region: ProtectedRegion
-    private let lock = NSLock()
-    private var activeReaders = 0
+    private let readers = Mutex(0)
+
+    /// The number of bytes held. Lengths are not treated as secret.
+    public var count: Int { region.count }
 
     /// Allocates `count` bytes of protected memory and lets `initializer`
     /// fill them. If `initializer` throws, the memory is wiped and released.
@@ -83,10 +85,7 @@ public final class SecureBytes: @unchecked Sendable {
         region.release()
     }
 
-    /// The number of bytes held. Lengths are not treated as secret.
-    public var count: Int { region.count }
-
-    public var isEmpty: Bool { region.count == 0 }
+    public var isEmpty: Bool { count == 0 }
 
     /// Calls `body` with read-only access to the secret.
     ///
@@ -95,15 +94,15 @@ public final class SecureBytes: @unchecked Sendable {
     public func withUnsafeBytes<Result>(
         _ body: (UnsafeRawBufferPointer) throws -> Result
     ) rethrows -> Result {
-        lock.lock()
-        if activeReaders == 0 { region.makeReadOnly() }
-        activeReaders += 1
-        lock.unlock()
+        readers.withLock { count in
+            if count == 0 { region.makeReadOnly() }
+            count += 1
+        }
         defer {
-            lock.lock()
-            activeReaders -= 1
-            if activeReaders == 0 { region.makeInaccessible() }
-            lock.unlock()
+            readers.withLock { count in
+                count -= 1
+                if count == 0 { region.makeInaccessible() }
+            }
         }
         return try body(UnsafeRawBufferPointer(start: region.start, count: region.count))
     }
