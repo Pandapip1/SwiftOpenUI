@@ -1,6 +1,15 @@
 import CSecret
-import CoreFoundation
 import Foundation
+
+// The Core Foundation types Security's API is written in, as the Swift types
+// they bridge to on Apple platforms. Swift's Foundation on Linux does not
+// bridge Swift and Core Foundation types (`"x" as CFString` doesn't compile),
+// so callers shared with Apple platforms (`query as CFDictionary`,
+// `item as? Data`) compile here against these instead.
+public typealias CFString = String
+public typealias CFData = Data
+public typealias CFDictionary = [CFString: Any]
+public typealias CFTypeRef = AnyObject
 
 public typealias OSStatus = Int32
 
@@ -34,9 +43,8 @@ private struct Query {
     let label: String
     let data: Data?
 
-    init?(_ dictionary: CFDictionary) {
-        let values = dictionary as NSDictionary
-        guard (values[kSecClass] as? String) == (kSecClassGenericPassword as String),
+    init?(_ values: CFDictionary) {
+        guard (values[kSecClass] as? String) == kSecClassGenericPassword,
               let service = values[kSecAttrService] as? String,
               let account = values[kSecAttrAccount] as? String else { return nil }
         self.service = service
@@ -58,8 +66,7 @@ public func SecItemAdd(_ attributes: CFDictionary, _ result: UnsafeMutablePointe
 public func SecItemUpdate(_ query: CFDictionary, _ attributesToUpdate: CFDictionary) -> OSStatus {
     guard var item = Query(query) else { return errSecParam }
     guard lookup(item) != nil else { return errSecItemNotFound }
-    let updates = attributesToUpdate as NSDictionary
-    guard let data = updates[kSecValueData] as? Data else { return errSecParam }
+    guard let data = attributesToUpdate[kSecValueData] as? Data else { return errSecParam }
     item = QueryFields.replacingData(item, data: data)
     return store(item, data: data)
 }
@@ -68,7 +75,7 @@ public func SecItemUpdate(_ query: CFDictionary, _ attributesToUpdate: CFDiction
 public func SecItemCopyMatching(_ query: CFDictionary, _ result: UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus {
     guard let item = Query(query) else { return errSecParam }
     guard let data = lookup(item) else { return errSecItemNotFound }
-    result?.pointee = data as CFData
+    result?.pointee = data as CFTypeRef
     return errSecSuccess
 }
 
