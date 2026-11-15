@@ -53,8 +53,8 @@ private final class CountingVault: UnlockableCredentialVault, @unchecked Sendabl
     var unlockCount: Int { lock.withLock { count } }
     func requiresExplicitUnlock() -> Bool { lock.withLock { locked } }
     func requestUnlock() { lock.withLock { count += 1; locked = false } }
-    func load(account: String) -> Data? { nil }
-    func save(_ data: Data?, account: String) {}
+    func load(account: String) -> SecureBytes? { nil }
+    func save(_ secret: SecureBytes?, account: String) {}
 }
 
 private final class BlockingVault: UnlockableCredentialVault, @unchecked Sendable {
@@ -73,6 +73,6 @@ private final class BlockingVault: UnlockableCredentialVault, @unchecked Sendabl
         release.wait()
         lock.withLock { locked = false }
     }
-    func load(account: String) -> Data? { nil }
-    func save(_ data: Data?, account: String) {}
+    func load(account: String) -> SecureBytes? { nil }
+    func save(_ secret: SecureBytes?, account: String) {}
 }

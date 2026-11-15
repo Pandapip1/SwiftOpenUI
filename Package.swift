@@ -15,13 +15,26 @@ let gtkSwiftSettings: [SwiftSetting] = [
 ] + (gtkBackendEnabled ? [.define("BACKEND_GTK")] : [])
 
 var targets: [Target] = [
+    // Protected memory for secrets (SecureBytes): libsodium on Linux,
+    // mmap/mprotect/mlock on Apple platforms, which have no libsodium.
+    .target(
+        name: "SecureMemory",
+        dependencies: {
+            #if os(Linux)
+            return ["CSodium"]
+            #else
+            return []
+            #endif
+        }(),
+        path: "Sources/SecureMemory"
+    ),
     .target(
         name: "CredentialStorage",
         dependencies: {
             #if os(Linux)
-            return ["Security"]
+            return ["SecureMemory", "Security"]
             #else
-            return []
+            return ["SecureMemory"]
             #endif
         }(),
         path: "Sources/CredentialStorage"
@@ -50,7 +63,7 @@ var targets: [Target] = [
     ),
     .testTarget(
         name: "CredentialStorageTests",
-        dependencies: ["CredentialStorage"],
+        dependencies: ["CredentialStorage", "SecureMemory"],
         path: "Tests/CredentialStorageTests"
     ),
 
@@ -114,9 +127,15 @@ targets += [
         pkgConfig: "libsecret-1",
         providers: [.apt(["libsecret-1-dev"])]
     ),
+    .systemLibrary(
+        name: "CSodium",
+        path: "Sources/CSodium",
+        pkgConfig: "libsodium",
+        providers: [.apt(["libsodium-dev"])]
+    ),
     .target(
         name: "Security",
-        dependencies: ["CSecret"],
+        dependencies: ["CSecret", "CSodium", "SecureMemory"],
         path: "Sources/Security"
     ),
 ]
@@ -595,6 +614,7 @@ let package = Package(
         var p: [Product] = [
             .library(name: "SwiftOpenUI", targets: ["SwiftOpenUI"]),
             .library(name: "CredentialStorage", targets: ["CredentialStorage"]),
+            .library(name: "SecureMemory", targets: ["SecureMemory"]),
         ]
         if gtkBackendEnabled {
         p.append(.library(name: "WebKit", targets: ["WebKit"]))

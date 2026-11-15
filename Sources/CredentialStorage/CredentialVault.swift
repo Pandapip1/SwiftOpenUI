@@ -1,12 +1,16 @@
 import Foundation
 import Security
+@_exported import SecureMemory
 #if canImport(LocalAuthentication)
 import LocalAuthentication
 #endif
 
+/// Stores secrets by account name. Secrets cross this API only as
+/// `SecureBytes`, so they stay in protected memory on both sides of it.
 public protocol CredentialDataVault: Sendable {
-    func load(account: String) -> Data?
-    func save(_ data: Data?, account: String)
+    func load(account: String) -> SecureBytes?
+    /// `nil` deletes the entry.
+    func save(_ secret: SecureBytes?, account: String)
 }
 
 public protocol UnlockableCredentialVault: CredentialDataVault {
@@ -116,31 +120,82 @@ public struct PlatformCredentialVault: CredentialDataVault {
         }
     }
 
-    public func load(account: String) -> Data? {
+    public func load(account: String) -> SecureBytes? {
         var item: CFTypeRef?
         guard SecItemCopyMatching(query(account: account, interactive: false) as CFDictionary, &item) == errSecSuccess else {
             return nil
         }
-        return item as? Data
+        return Self.secureBytes(fromSecValue: item)
     }
 
-    public func save(_ data: Data?, account: String) {
+    public func save(_ secret: SecureBytes?, account: String) {
         let identity = baseQuery(account: account)
-        let status = SecItemCopyMatching(query(account: account, interactive: false) as CFDictionary, nil)
+        let status = SecItemCopyMatching(
+            query(account: account, interactive: false, returnData: false) as CFDictionary, nil
+        )
         if status == errSecSuccess {
-            if let data {
-                SecItemUpdate(identity as CFDictionary, [kSecValueData: data] as CFDictionary)
+            if let secret {
+                _ = Self.withSecValue(secret) { value in
+                    SecItemUpdate(identity as CFDictionary, [kSecValueData: value] as CFDictionary)
+                }
             } else {
                 SecItemDelete(identity as CFDictionary)
             }
             return
         }
-        guard status == errSecItemNotFound, let data else { return }
-        var addition = identity
-        addition[kSecValueData] = data
-        addition[kSecAttrAccessible] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        SecItemAdd(addition as CFDictionary, nil)
+        guard status == errSecItemNotFound, let secret else { return }
+        Self.withSecValue(secret) { value in
+            var addition = identity
+            addition[kSecValueData] = value
+            addition[kSecAttrAccessible] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            SecItemAdd(addition as CFDictionary, nil)
+        }
     }
+
+    #if os(Linux)
+    // SwiftOpenUI's Security stand-in takes and returns `SecureBytes` itself,
+    // so the secret never leaves protected memory on this side of libsecret.
+    private static func withSecValue<R>(_ secret: SecureBytes, _ body: (Any) -> R) -> R {
+        body(secret)
+    }
+
+    private static func secureBytes(fromSecValue item: CFTypeRef?) -> SecureBytes? {
+        item as? SecureBytes
+    }
+    #else
+    /// Security.framework accepts secret values only as `CFData`. Protection
+    /// ends at this boundary: the secret is copied into a fixed-capacity
+    /// `CFMutableData` (so it is never reallocated) for the duration of the
+    /// call, and that copy is wiped afterwards. What securityd does with the
+    /// value is outside this process.
+    private static func withSecValue<R>(_ secret: SecureBytes, _ body: (Any) -> R) -> R {
+        guard let data = CFDataCreateMutable(kCFAllocatorDefault, secret.count) else {
+            fatalError("CredentialStorage: could not allocate a keychain value buffer")
+        }
+        secret.withUnsafeBytes { bytes in
+            CFDataAppendBytes(data, bytes.baseAddress?.assumingMemoryBound(to: UInt8.self), bytes.count)
+        }
+        defer {
+            let length = CFDataGetLength(data)
+            if length > 0 { _ = memset_s(CFDataGetMutableBytePtr(data), length, 0, length) }
+        }
+        return body(data)
+    }
+
+    /// Copies the keychain's returned `CFData` straight into protected
+    /// memory without bridging through Swift `Data`. The `CFData` itself is
+    /// owned by Security.framework, immutable, and released (unwiped) when
+    /// `item` goes out of scope.
+    private static func secureBytes(fromSecValue item: CFTypeRef?) -> SecureBytes? {
+        guard let item, CFGetTypeID(item) == CFDataGetTypeID() else { return nil }
+        let data = unsafeDowncast(item, to: CFData.self)
+        let length = CFDataGetLength(data)
+        guard length > 0, let bytes = CFDataGetBytePtr(data) else {
+            return SecureBytes(count: 0) { _ in }
+        }
+        return SecureBytes(copying: UnsafeRawBufferPointer(start: bytes, count: length))
+    }
+    #endif
 
     private func baseQuery(account: String) -> [CFString: Any] {
         var result: [CFString: Any] = [
@@ -155,9 +210,9 @@ public struct PlatformCredentialVault: CredentialDataVault {
         return result
     }
 
-    private func query(account: String, interactive: Bool) -> [CFString: Any] {
+    private func query(account: String, interactive: Bool, returnData: Bool = true) -> [CFString: Any] {
         var result = baseQuery(account: account)
-        result[kSecReturnData] = true
+        if returnData { result[kSecReturnData] = true }
         result[kSecMatchLimit] = kSecMatchLimitOne
         #if canImport(LocalAuthentication) && !os(tvOS)
         let context = LAContext()
