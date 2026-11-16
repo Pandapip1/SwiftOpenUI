@@ -1,6 +1,9 @@
 import Foundation
 
 import SwiftOpenUI
+#if !BACKEND_GTK && !os(tvOS)
+import UniformTypeIdentifiers
+#endif
 #if BACKEND_GTK
 @_spi(SwiftOpenUIBackend) import BackendGTK4
 import CGTK
@@ -79,8 +82,8 @@ public extension EnvironmentValues {
 
 
     /// True only for the selected tab while the normal browser view is shown.
-    /// Tab content should conditionally contribute its contextual toolbar items
-    /// using this value because inactive tabs remain mounted.
+    /// Inactive tabs remain mounted, so a page should only add items to its
+    /// own toolbar while this is true. Pages never add to the tab chrome.
     var isBrowserTabToolbarActive: Bool {
         get { self[BrowserTabToolbarActiveKey.self] }
         set { self[BrowserTabToolbarActiveKey.self] = newValue }
@@ -92,82 +95,79 @@ public enum BrowserTabToolbarPlacement: Sendable {
     case leading, principal, trailing
 }
 
-@MainActor
-private final class BrowserTabToolbarCoordinator: ObservableObject {
-    struct Item: Identifiable {
-        let id: String
-        let tabID: UUID
-        let placement: BrowserTabToolbarPlacement
-        let content: AnyView
-    }
-    @Published var items: [String: Item] = [:]
-    func set(_ item: Item) { items[item.id + item.tabID.uuidString] = item }
-    func remove(id: String, tabID: UUID) { items[id + tabID.uuidString] = nil }
-}
-
-private struct BrowserTabToolbarCoordinatorKey: EnvironmentKey {
-    static let defaultValue: BrowserTabToolbarCoordinator? = nil
-}
-private struct BrowserTabIdentityKey: EnvironmentKey { static let defaultValue: UUID? = nil }
-
-private struct BrowserTabToolbarRegistration<Accessory: View>: ViewModifier {
-    @Environment(\.browserTabToolbarCoordinator) private var coordinator
-    @Environment(\.browserTabIdentity) private var tabID
-    let id: String
-    let placement: BrowserTabToolbarPlacement
-    @ViewBuilder let accessory: () -> Accessory
-    func body(content: Content) -> some View {
-        content
-            .onAppear { register() }
-            .onDisappear {
-                if let coordinator, let tabID { coordinator.remove(id: id, tabID: tabID) }
-            }
-    }
-    private func register() {
-        guard let coordinator, let tabID else { return }
-        coordinator.set(.init(id: id, tabID: tabID, placement: placement,
-                              content: AnyView(accessory())))
-    }
-}
-
-private extension EnvironmentValues {
-    var browserTabToolbarCoordinator: BrowserTabToolbarCoordinator? {
-        get { self[BrowserTabToolbarCoordinatorKey.self] }
-        set { self[BrowserTabToolbarCoordinatorKey.self] = newValue }
-    }
-    var browserTabIdentity: UUID? {
-        get { self[BrowserTabIdentityKey.self] }
-        set { self[BrowserTabIdentityKey.self] = newValue }
-    }
-}
-
 public extension View {
-    func browserTabToolbarItem<Accessory: View>(
+    /// An action belonging to a page, in the page's own toolbar: its
+    /// navigation bar, or on macOS the window toolbar while its tab is the
+    /// active one. The tab chrome never carries page actions.
+    ///
+    /// Apply it inside the page's `NavigationStack`. Inactive tabs stay
+    /// mounted, so the item is only contributed while
+    /// `isBrowserTabToolbarActive` is true. On tvOS pages expose actions
+    /// through focusable toolbar content instead, so nothing is added.
+    func browserPageToolbarItem<Item: View>(
         id: String, placement: BrowserTabToolbarPlacement,
-        @ViewBuilder content: @escaping () -> Accessory
+        @ViewBuilder content: @escaping () -> Item
     ) -> some View {
-        modifier(BrowserTabToolbarRegistration(id: id, placement: placement, accessory: content))
+        modifier(BrowserPageToolbarItem(placement: placement, item: content))
     }
+}
+
+private struct BrowserPageToolbarItem<Item: View>: ViewModifier {
+    @Environment(\.isBrowserTabToolbarActive) private var isActive
+    let placement: BrowserTabToolbarPlacement
+    let item: () -> Item
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if os(tvOS)
+        content
+        #else
+        content.toolbar {
+            if isActive {
+                ToolbarItem(placement: toolbarPlacement) { item() }
+            }
+        }
+        #endif
+    }
+
+    #if !os(tvOS)
+    private var toolbarPlacement: ToolbarItemPlacement {
+        switch placement {
+        #if os(iOS)
+        case .leading: .topBarLeading
+        case .trailing: .topBarTrailing
+        #else
+        case .leading: .navigation
+        case .trailing: .primaryAction
+        #endif
+        case .principal: .principal
+        }
+    }
+    #endif
 }
 
 public struct BrowserTabContainer<Content: View>: View {
     public let items: [BrowserTabItem]
     public let selection: Binding<UUID>
     public let onClose: (UUID) -> Void
+    /// Moves a tab to an index among all tabs, from the overview. `nil`
+    /// leaves the overview without reordering.
+    public let onMove: ((UUID, Int) -> Void)?
     private let newTabControl: AnyView?
     private let onNewTab: (() -> Void)?
     private let content: (BrowserTabItem) -> Content
     private let overviewPresented: Binding<Bool>?
     @State private var showingOverview = false
     @Namespace private var overviewTransition
-    @StateObject private var toolbarCoordinator = BrowserTabToolbarCoordinator()
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
+                onMove: ((UUID, Int) -> Void)? = nil,
                 overviewPresented: Binding<Bool>? = nil, onNewTab: (() -> Void)? = nil,
                 @ViewBuilder content: @escaping (BrowserTabItem) -> Content) {
         self.items = items
         self.selection = selection
         self.onClose = onClose
+        self.onMove = onMove
         self.newTabControl = nil
         self.onNewTab = onNewTab
         self.overviewPresented = overviewPresented
@@ -176,6 +176,7 @@ public struct BrowserTabContainer<Content: View>: View {
 
     public init<NewTabControl: View>(
         items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
+        onMove: ((UUID, Int) -> Void)? = nil,
         overviewPresented: Binding<Bool>? = nil, onNewTab: (() -> Void)? = nil,
         @ViewBuilder newTabControl: () -> NewTabControl,
         @ViewBuilder content: @escaping (BrowserTabItem) -> Content
@@ -183,6 +184,7 @@ public struct BrowserTabContainer<Content: View>: View {
         self.items = items
         self.selection = selection
         self.onClose = onClose
+        self.onMove = onMove
         self.newTabControl = AnyView(newTabControl())
         self.onNewTab = onNewTab
         self.overviewPresented = overviewPresented
@@ -217,7 +219,7 @@ public struct BrowserTabContainer<Content: View>: View {
             .fullScreenCover(isPresented: Binding(
                 get: { isShowingOverview }, set: { isShowingOverview = $0 }
             )) {
-                BrowserTabOverview(items: items, selection: selection, onClose: onClose,
+                BrowserTabOverview(items: items, selection: selection, onClose: onClose, onMove: onMove,
                                    newTabControl: newTabControl, content: content) {
                     isShowingOverview = false
                 }
@@ -229,6 +231,10 @@ public struct BrowserTabContainer<Content: View>: View {
         ZStack {
             ForEach(items) { item in
                 content(item)
+                    // Every page gets the whole tab area, whatever its root
+                    // view's own size; a page that sizes to its content
+                    // would otherwise float in the middle of the tab.
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .opacity(selection.wrappedValue == item.id ? 1 : 0)
                     .allowsHitTesting(selection.wrappedValue == item.id)
                     // Embedded native surfaces such as WKWebView maintain their
@@ -238,9 +244,18 @@ public struct BrowserTabContainer<Content: View>: View {
                     .accessibilityHidden(selection.wrappedValue != item.id)
                     .environment(\.isBrowserTabToolbarActive,
                                  selection.wrappedValue == item.id && !isShowingOverview)
-                    .environment(\.browserTabToolbarCoordinator, toolbarCoordinator)
-                    .environment(\.browserTabIdentity, item.id)
-                    .matchedGeometryEffect(id: item.id, in: overviewTransition)
+                    // Only the selected page zooms to and from its overview card.
+                    // Hidden pages stay out of the geometry group: matched to
+                    // their cards, every hidden tab's whole page would be laid
+                    // out again at card size each time the overview opens and
+                    // closes. One source at a time: the page while it is
+                    // shown, the card while the overview is (cards exist only
+                    // then).
+                    .matchedGeometryEffect(
+                        id: selection.wrappedValue == item.id
+                            ? AnyHashable(item.id) : AnyHashable(UnmatchedPage(id: item.id)),
+                        in: overviewTransition, isSource: !isShowingOverview
+                    )
             }
         }
     }
@@ -253,35 +268,8 @@ public struct BrowserTabContainer<Content: View>: View {
                 .accessibilityLabel(isShowingOverview ? "Close Tab Overview" : "Tab Overview")
         }
         #else
-        let contextualItems = toolbarCoordinator.items.values.filter {
-            $0.tabID == selection.wrappedValue && !isShowingOverview
-        }
-        let leadingItems = contextualItems.filter { $0.placement == .leading }
-        let principalItems = contextualItems.filter { $0.placement == .principal }
-        let trailingItems = contextualItems.filter { $0.placement == .trailing }
-        if !leadingItems.isEmpty {
-            #if os(macOS) || os(iOS)
-            if #available(macOS 26.0, iOS 26.0, *) { ToolbarSpacer(.fixed, placement: .navigation) }
-            #endif
-            ToolbarItem(placement: .automatic) {
-                ControlGroup { ForEach(leadingItems) { $0.content } }
-                    .controlGroupStyle(.navigation)
-            }
-        }
-        if !principalItems.isEmpty {
-            ToolbarItem(placement: .principal) {
-                HStack { ForEach(principalItems) { $0.content } }
-            }
-        }
-        if !trailingItems.isEmpty {
-            ToolbarItem(placement: .primaryAction) {
-                ControlGroup { ForEach(trailingItems) { $0.content } }
-                    .controlGroupStyle(.navigation)
-            }
-            #if os(macOS) || os(iOS)
-            if #available(macOS 26.0, iOS 26.0, *) { ToolbarSpacer(.fixed, placement: .primaryAction) }
-            #endif
-        }
+        // Tab controls only. Pages put their own actions in their own
+        // toolbars; the tab chrome never carries them.
         #if os(iOS)
         ToolbarItem(placement: .topBarTrailing) {
             tabManagementControl
@@ -313,18 +301,18 @@ public struct BrowserTabContainer<Content: View>: View {
             let width = (geometry.size.width - 64 - CGFloat(columns - 1) * spacing) / CGFloat(columns)
             let contentAspectRatio = max(0.1, geometry.size.width / max(1, geometry.size.height))
             ScrollView {
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(width)), count: columns), spacing: spacing) {
-                    ForEach(items) { item in
-                        BrowserTabOverviewCard(item: item, width: width, aspectRatio: contentAspectRatio,
-                                               isActive: selection.wrappedValue == item.id,
-                                               onSelect: { select(item.id) },
-                                               onClose: item.isPinned ? nil : { onClose(item.id) }) {
-                            content(item)
-                                .allowsHitTesting(false)
-                                .environment(\.isBrowserTabOverviewPreview, true)
-                                .environment(\.isBrowserTabToolbarActive, false)
-                                .matchedGeometryEffect(id: item.id, in: overviewTransition)
-                        }
+                BrowserTabOverviewGrid(items: items, columns: columns, width: width, spacing: spacing,
+                                       onMove: onMove, onClose: onClose) { item, moveBy in
+                    BrowserTabOverviewCard(item: item, width: width, aspectRatio: contentAspectRatio,
+                                           isActive: selection.wrappedValue == item.id,
+                                           onSelect: { select(item.id) },
+                                           onClose: item.isPinned ? nil : { onClose(item.id) },
+                                           onMoveBy: moveBy) {
+                        content(item)
+                            .allowsHitTesting(false)
+                            .environment(\.isBrowserTabOverviewPreview, true)
+                            .environment(\.isBrowserTabToolbarActive, false)
+                            .matchedGeometryEffect(id: AnyHashable(item.id), in: overviewTransition)
                     }
                 }
                 .padding(32)
@@ -338,6 +326,12 @@ public struct BrowserTabContainer<Content: View>: View {
         selection.wrappedValue = id
         isShowingOverview = false
     }
+}
+
+/// A geometry-group ID no overview card uses, for pages that must not move
+/// with the overview transition.
+private struct UnmatchedPage: Hashable {
+    let id: UUID
 }
 
 /// Uses the compact navigation control-group treatment where SwiftUI exposes
@@ -357,6 +351,7 @@ private struct BrowserTabOverview<Content: View>: View {
     let items: [BrowserTabItem]
     let selection: Binding<UUID>
     let onClose: (UUID) -> Void
+    let onMove: ((UUID, Int) -> Void)?
     let newTabControl: AnyView?
     let content: (BrowserTabItem) -> Content
     let dismiss: () -> Void
@@ -371,17 +366,17 @@ private struct BrowserTabOverview<Content: View>: View {
                     let width = (geometry.size.width - 32 - CGFloat(columns - 1) * spacing) / CGFloat(columns)
                     let contentAspectRatio = max(0.1, geometry.size.width / max(1, geometry.size.height))
                     ScrollView {
-                        LazyVGrid(columns: Array(repeating: GridItem(.fixed(width)), count: columns), spacing: spacing) {
-                            ForEach(items) { item in
-                                BrowserTabOverviewCard(item: item, width: width, aspectRatio: contentAspectRatio,
-                                                       isActive: selection.wrappedValue == item.id,
-                                                       onSelect: { selection.wrappedValue = item.id; dismiss() },
-                                                       onClose: item.isPinned ? nil : { onClose(item.id) }) {
-                                    content(item)
-                                        .allowsHitTesting(false)
-                                        .environment(\.isBrowserTabOverviewPreview, true)
-                                        .environment(\.isBrowserTabToolbarActive, false)
-                                }
+                        BrowserTabOverviewGrid(items: items, columns: columns, width: width, spacing: spacing,
+                                               onMove: onMove, onClose: onClose) { item, moveBy in
+                            BrowserTabOverviewCard(item: item, width: width, aspectRatio: contentAspectRatio,
+                                                   isActive: selection.wrappedValue == item.id,
+                                                   onSelect: { selection.wrappedValue = item.id; dismiss() },
+                                                   onClose: item.isPinned ? nil : { onClose(item.id) },
+                                                   onMoveBy: moveBy) {
+                                content(item)
+                                    .allowsHitTesting(false)
+                                    .environment(\.isBrowserTabOverviewPreview, true)
+                                    .environment(\.isBrowserTabToolbarActive, false)
                             }
                         }
                         .padding(16)
@@ -408,13 +403,17 @@ private struct BrowserTabOverviewCard<LivePreview: View>: View {
     let isActive: Bool
     let onSelect: () -> Void
     let onClose: (() -> Void)?
+    /// Moves this tab by an offset in the tab order, for accessibility.
+    let onMoveBy: ((Int) -> Void)?
     @ViewBuilder let livePreview: () -> LivePreview
     @State private var closeHovered = false
 
     init(item: BrowserTabItem, width: CGFloat, aspectRatio: CGFloat, isActive: Bool, onSelect: @escaping () -> Void,
-         onClose: (() -> Void)?, @ViewBuilder livePreview: @escaping () -> LivePreview) {
+         onClose: (() -> Void)?, onMoveBy: ((Int) -> Void)? = nil,
+         @ViewBuilder livePreview: @escaping () -> LivePreview) {
         self.item = item; self.width = width; self.aspectRatio = aspectRatio; self.isActive = isActive
-        self.onSelect = onSelect; self.onClose = onClose; self.livePreview = livePreview
+        self.onSelect = onSelect; self.onClose = onClose; self.onMoveBy = onMoveBy
+        self.livePreview = livePreview
     }
 
     var body: some View {
@@ -444,6 +443,15 @@ private struct BrowserTabOverviewCard<LivePreview: View>: View {
             .buttonStyle(.plain)
             .contentShape(Rectangle())
             .accessibilityLabel("Open \(item.title)")
+            .accessibilityActions {
+                if let onMoveBy {
+                    Button("Move Left") { onMoveBy(-1) }
+                    Button("Move Right") { onMoveBy(1) }
+                }
+                if let onClose {
+                    Button("Close") { onClose() }
+                }
+            }
 
             if let onClose {
                 overviewCloseButton(action: onClose)
@@ -484,6 +492,181 @@ private struct BrowserTabOverviewCard<LivePreview: View>: View {
         #endif
     }
 
+}
+
+/// The overview's card grid. Where `onMove` is given, a card can be dragged
+/// (on touch, after a long press) to a new place: the other cards reflow live
+/// and the move is committed once, on drop. On touch platforms an unpinned
+/// card can also be swiped off sideways to close it.
+private struct BrowserTabOverviewGrid<Card: View>: View {
+    let items: [BrowserTabItem]
+    let columns: Int
+    let width: CGFloat
+    let spacing: CGFloat
+    let onMove: ((UUID, Int) -> Void)?
+    let onClose: (UUID) -> Void
+    /// The card for a tab, given how to move it by an offset (for
+    /// accessibility), or `nil` when tabs can't be moved.
+    @ViewBuilder let card: (BrowserTabItem, ((Int) -> Void)?) -> Card
+
+    /// The order shown while a card is being dragged.
+    @State private var liveOrder: [UUID]?
+    @State private var draggingID: UUID?
+
+    var body: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.fixed(width), spacing: spacing), count: columns),
+                  spacing: spacing) {
+            ForEach(orderedItems) { item in
+                cell(item)
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: liveOrder)
+        #if !os(tvOS)
+        // A drop between cards still ends the drag.
+        .onDrop(of: [.text], delegate: BrowserTabGridDropDelegate(finish: finishDrag))
+        #endif
+        .onChange(of: items.map(\.id)) {
+            // The committed order has arrived; show it rather than the copy.
+            if draggingID == nil { liveOrder = nil }
+        }
+    }
+
+    private var orderedItems: [BrowserTabItem] {
+        guard let liveOrder else { return items }
+        let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        // Tabs opened while dragging go last; closed ones drop out.
+        return liveOrder.compactMap { byID[$0] } + items.filter { !liveOrder.contains($0.id) }
+    }
+
+    @ViewBuilder
+    private func cell(_ item: BrowserTabItem) -> some View {
+        let moveBy: ((Int) -> Void)? = onMove == nil ? nil : { offset in move(item.id, by: offset) }
+        let swipeable = BrowserTabSwipeToClose(width: width, isClosable: !item.isPinned) {
+            onClose(item.id)
+        } content: {
+            card(item, moveBy)
+        }
+        .opacity(draggingID == item.id ? 0.45 : 1)
+        #if os(tvOS)
+        swipeable
+        #else
+        if onMove != nil {
+            swipeable
+                .onDrag {
+                    draggingID = item.id
+                    liveOrder = items.map(\.id)
+                    return NSItemProvider(object: item.id.uuidString as NSString)
+                }
+                .onDrop(of: [.text], delegate: BrowserTabCardDropDelegate(
+                    target: item.id, draggingID: draggingID, liveOrder: $liveOrder, finish: finishDrag
+                ))
+        } else {
+            swipeable
+        }
+        #endif
+    }
+
+    private func finishDrag() {
+        defer { draggingID = nil }
+        guard let id = draggingID, let index = liveOrder?.firstIndex(of: id),
+              items.firstIndex(where: { $0.id == id }) != index else {
+            liveOrder = nil
+            return
+        }
+        // `liveOrder` stays until the new order arrives in `items`, so the
+        // cards don't jump back for a frame.
+        onMove?(id, index)
+    }
+
+    private func move(_ id: UUID, by offset: Int) {
+        guard let index = items.firstIndex(where: { $0.id == id }),
+              items.indices.contains(index + offset) else { return }
+        onMove?(id, index + offset)
+    }
+}
+
+#if !os(tvOS)
+/// Reflows the grid as a dragged card passes over another one.
+private struct BrowserTabCardDropDelegate: DropDelegate {
+    let target: UUID
+    let draggingID: UUID?
+    @Binding var liveOrder: [UUID]?
+    let finish: () -> Void
+
+    func dropEntered(info: DropInfo) {
+        guard let draggingID, draggingID != target, var order = liveOrder,
+              let from = order.firstIndex(of: draggingID),
+              let to = order.firstIndex(of: target) else { return }
+        order.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        liveOrder = order
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        finish()
+        return true
+    }
+}
+
+private struct BrowserTabGridDropDelegate: DropDelegate {
+    let finish: () -> Void
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        finish()
+        return true
+    }
+}
+#endif
+
+/// Lets a card be swiped off sideways to close it, on touch platforms. Only
+/// a mostly horizontal drag counts, so vertical scrolling is unaffected. A
+/// pinned card follows the finger with resistance and springs back.
+private struct BrowserTabSwipeToClose<Content: View>: View {
+    let width: CGFloat
+    let isClosable: Bool
+    let onClose: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    #if os(iOS) || os(visionOS)
+    @GestureState(resetTransaction: Transaction(animation: .spring(response: 0.3, dampingFraction: 0.8)))
+    private var dragOffset: CGFloat = 0
+    @State private var flungOffset: CGFloat?
+    #endif
+
+    var body: some View {
+        #if os(iOS) || os(visionOS)
+        let offset = flungOffset ?? dragOffset
+        content()
+            .offset(x: offset)
+            .opacity(1 - min(0.7, abs(offset) / (width * 1.4)))
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .updating($dragOffset) { value, state, _ in
+                        let x = value.translation.width
+                        guard abs(x) > abs(value.translation.height) else { return }
+                        state = isClosable ? x : x / 4
+                    }
+                    .onEnded { value in
+                        let x = value.translation.width
+                        let projected = value.predictedEndTranslation.width
+                        guard isClosable, abs(x) > abs(value.translation.height),
+                              abs(x) > width * 0.45 || abs(projected) > width * 1.1 else { return }
+                        let direction: CGFloat = projected < 0 ? -1 : 1
+                        flungOffset = x
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            flungOffset = direction * width * 1.6
+                        } completion: {
+                            onClose()
+                        }
+                    }
+            )
+        #else
+        content()
+        #endif
+    }
 }
 
 public struct BrowserTabBar: View {
@@ -616,9 +799,12 @@ public enum BrowserTabToolbarPlacement: Sendable {
 }
 
 public extension View {
-    func browserTabToolbarItem<Accessory: View>(
+    /// An action belonging to a page. GTK windows have no per-page navigation
+    /// bar, so the selected tab's page actions go in the window header's
+    /// page slots.
+    func browserPageToolbarItem<Item: View>(
         id: String, placement: BrowserTabToolbarPlacement,
-        @ViewBuilder content: @escaping () -> Accessory
+        @ViewBuilder content: @escaping () -> Item
     ) -> some View {
         GTKBrowserTabToolbarItem(content: self, placement: placement, accessory: content())
     }
@@ -653,6 +839,7 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
     public let content: (BrowserTabItem) -> Content
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
+                onMove: ((UUID, Int) -> Void)? = nil,
                 overviewPresented: Binding<Bool>? = nil, onNewTab: (() -> Void)? = nil,
                 @ViewBuilder content: @escaping (BrowserTabItem) -> Content) {
         self.items = items
@@ -665,6 +852,7 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
 
     public init<NewTabControl: View>(
         items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
+        onMove: ((UUID, Int) -> Void)? = nil,
         overviewPresented: Binding<Bool>? = nil, onNewTab: (() -> Void)? = nil,
         @ViewBuilder newTabControl: () -> NewTabControl,
         @ViewBuilder content: @escaping (BrowserTabItem) -> Content
