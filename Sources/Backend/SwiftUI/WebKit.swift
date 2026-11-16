@@ -9,7 +9,11 @@ import WebKit
 @MainActor
 public final class WebPage {
     public struct Configuration {
-        public var websiteDataStore: WKWebsiteDataStore = .default()
+        /// Each configuration gets its own non-persistent store, so a page
+        /// shares no cookies, storage or cache with any other page and keeps
+        /// nothing after it closes. Persistence is an explicit opt-in: set
+        /// `.default()`, or a store deliberately shared between pages.
+        public var websiteDataStore: WKWebsiteDataStore = .nonPersistent()
         public var userContentController = WKUserContentController()
         public init() {}
     }
@@ -35,6 +39,8 @@ public final class WebPage {
     fileprivate let webView: WKWebView
     private let navigationDelegate: NavigationDelegate?
     public var url: URL? { webView.url }
+    /// The store the page keeps its cookies, storage and cache in.
+    public var websiteDataStore: WKWebsiteDataStore { webView.configuration.websiteDataStore }
     public var title: String { webView.title ?? "" }
     public var customUserAgent: String? {
         get { webView.customUserAgent }

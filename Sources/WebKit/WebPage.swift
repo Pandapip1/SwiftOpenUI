@@ -7,7 +7,11 @@ import FoundationNetworking
 public final class WebPage {
     public struct Configuration: Sendable {
         public var loadsSubresources = true
-        public var websiteDataStore: WKWebsiteDataStore = .default()
+        /// Each configuration gets its own non-persistent store (on GTK, its
+        /// own ephemeral WebKit network session), so a page shares no
+        /// cookies, storage or cache with any other page and keeps nothing
+        /// after it closes. Persistence is an explicit opt-in: set `.default()`.
+        public var websiteDataStore: WKWebsiteDataStore = .nonPersistent()
         public var userContentController = WKUserContentController()
         public init() {}
     }
@@ -48,6 +52,8 @@ public final class WebPage {
     }
 
     public private(set) var url: URL?
+    /// The store the page keeps its cookies, storage and cache in.
+    public var websiteDataStore: WKWebsiteDataStore { configuration.websiteDataStore }
     public private(set) var title = ""
     public private(set) var isLoading = false
     public private(set) var estimatedProgress = 0.0

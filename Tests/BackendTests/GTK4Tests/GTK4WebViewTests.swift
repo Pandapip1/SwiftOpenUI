@@ -65,4 +65,19 @@ final class GTK4WebViewTests: XCTestCase {
             gtk_window_destroy(windowPointer(window))
         }
     }
+
+    /// A page shares nothing with other pages and keeps nothing unless the
+    /// application asks for persistence: by default each page gets its own
+    /// ephemeral WebKit network session.
+    func testPagesDefaultToTheirOwnNonPersistentStores() {
+        let first = WebPage()
+        let second = WebPage()
+        XCTAssertFalse(first.websiteDataStore.isPersistent)
+        XCTAssertFalse(second.websiteDataStore.isPersistent)
+        XCTAssertFalse(first.websiteDataStore === second.websiteDataStore)
+
+        var configuration = WebPage.Configuration()
+        configuration.websiteDataStore = .default()
+        XCTAssertTrue(WebPage(configuration: configuration).websiteDataStore.isPersistent)
+    }
 }
