@@ -138,9 +138,16 @@ targets += [
         dependencies: ["CSecret", "CSodium", "SecureMemory"],
         path: "Sources/Security"
     ),
+    // Logger and OSSignposter, writing to the systemd journal and stderr.
+    .target(name: "os", path: "Sources/os"),
+    // MXMetricManager, delivering crashes recorded by systemd-coredump.
+    .target(name: "MetricKit", path: "Sources/MetricKit"),
+    .testTarget(name: "OSCompatTests", dependencies: ["os", "MetricKit"], path: "Tests/OSCompatTests"),
 ]
 #else
 targets += [
+    .target(name: "osCompatStub", path: "Sources/osCompatStub"),
+    .target(name: "MetricKitCompatStub", path: "Sources/MetricKitCompatStub"),
     .target(name: "AuthenticationServicesCompatStub", path: "Sources/AuthenticationServicesCompatStub"),
     .target(name: "SecurityCompatStub", path: "Sources/SecurityCompatStub"),
 ]
@@ -650,11 +657,15 @@ let package = Package(
         #if os(Linux)
         p.append(.library(name: "AuthenticationServices", targets: ["AuthenticationServices"]))
         p.append(.library(name: "Security", targets: ["Security"]))
+        p.append(.library(name: "os", targets: ["os"]))
+        p.append(.library(name: "MetricKit", targets: ["MetricKit"]))
         #else
         // Product placeholders let downstream manifests declare platform-
         // conditional dependencies; Apple source imports the system modules.
         p.append(.library(name: "AuthenticationServices", targets: ["AuthenticationServicesCompatStub"]))
         p.append(.library(name: "Security", targets: ["SecurityCompatStub"]))
+        p.append(.library(name: "os", targets: ["osCompatStub"]))
+        p.append(.library(name: "MetricKit", targets: ["MetricKitCompatStub"]))
         #endif
         return p
     }(),
