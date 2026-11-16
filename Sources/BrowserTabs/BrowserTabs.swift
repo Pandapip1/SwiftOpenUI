@@ -1,6 +1,9 @@
 import Foundation
 
 import SwiftOpenUI
+#if !BACKEND_GTK
+import Observation
+#endif
 #if !BACKEND_GTK && !os(tvOS)
 import UniformTypeIdentifiers
 #endif
@@ -158,6 +161,12 @@ public struct BrowserTabContainer<Content: View>: View {
     private let content: (BrowserTabItem) -> Content
     private let overviewPresented: Binding<Bool>?
     @State private var showingOverview = false
+    /// Whether the overview is on screen. It follows `isShowingOverview`, but
+    /// only once the selected page has been captured, so the capture shows
+    /// the page rather than the overview replacing it.
+    @State private var overviewShown = false
+    @State private var snapshotter = BrowserTabSnapshotter()
+    @State private var snapshots: [UUID: BrowserTabSnapshot] = [:]
     @Namespace private var overviewTransition
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
@@ -203,34 +212,61 @@ public struct BrowserTabContainer<Content: View>: View {
         #if os(macOS)
         ZStack {
             mountedPages
-                .opacity(isShowingOverview ? 0 : 1)
-                .allowsHitTesting(!isShowingOverview)
-                .accessibilityHidden(isShowingOverview)
-            if isShowingOverview {
+                .opacity(overviewShown ? 0 : 1)
+                .allowsHitTesting(!overviewShown)
+                .accessibilityHidden(overviewShown)
+            if overviewShown {
                 macOverview
                     .transition(.opacity)
             }
         }
-        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: isShowingOverview)
+        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: overviewShown)
         .toolbar { overviewToolbar }
+        .onChange(of: isShowingOverview, initial: true) { _, wanted in presentOverview(wanted) }
+        .onChange(of: items.map(\.id)) { _, ids in forgetClosedTabs(ids) }
         #else
         mountedPages
             .toolbar { overviewToolbar }
             .fullScreenCover(isPresented: Binding(
-                get: { isShowingOverview }, set: { isShowingOverview = $0 }
+                get: { overviewShown }, set: { if !$0 { isShowingOverview = false } }
             )) {
                 BrowserTabOverview(items: items, selection: selection, onClose: onClose, onMove: onMove,
-                                   newTabControl: newTabControl, content: content) {
+                                   newTabControl: newTabControl, snapshots: snapshots) {
                     isShowingOverview = false
                 }
             }
+            .onChange(of: isShowingOverview, initial: true) { _, wanted in presentOverview(wanted) }
+            .onChange(of: items.map(\.id)) { _, ids in forgetClosedTabs(ids) }
         #endif
+    }
+
+    /// Shows or hides the overview, capturing the selected page first so its
+    /// card shows it as it was. Cards show pictures; pages are never
+    /// rendered a second time inside them.
+    private func presentOverview(_ wanted: Bool) {
+        guard wanted else {
+            overviewShown = false
+            return
+        }
+        guard !overviewShown else { return }
+        let tab = selection.wrappedValue
+        Task {
+            if let snapshot = await snapshotter.capture(tab: tab) { snapshots[tab] = snapshot }
+            if isShowingOverview { overviewShown = true }
+        }
+    }
+
+    private func forgetClosedTabs(_ ids: [UUID]) {
+        let open = Set(ids)
+        snapshots = snapshots.filter { open.contains($0.key) }
+        snapshotter.retain(only: open)
     }
 
     private var mountedPages: some View {
         ZStack {
             ForEach(items) { item in
                 content(item)
+                    .browserTabWebViewRegistry(snapshotter, tab: item.id)
                     // Every page gets the whole tab area, whatever its root
                     // view's own size; a page that sizes to its content
                     // would otherwise float in the middle of the tab.
@@ -254,10 +290,11 @@ public struct BrowserTabContainer<Content: View>: View {
                     .matchedGeometryEffect(
                         id: selection.wrappedValue == item.id
                             ? AnyHashable(item.id) : AnyHashable(UnmatchedPage(id: item.id)),
-                        in: overviewTransition, isSource: !isShowingOverview
+                        in: overviewTransition, isSource: !overviewShown
                     )
             }
         }
+        .background(BrowserTabSnapshotProbe(snapshotter: snapshotter))
     }
 
     @ToolbarContentBuilder
@@ -308,10 +345,7 @@ public struct BrowserTabContainer<Content: View>: View {
                                            onSelect: { select(item.id) },
                                            onClose: item.isPinned ? nil : { onClose(item.id) },
                                            onMoveBy: moveBy) {
-                        content(item)
-                            .allowsHitTesting(false)
-                            .environment(\.isBrowserTabOverviewPreview, true)
-                            .environment(\.isBrowserTabToolbarActive, false)
+                        BrowserTabSnapshotView(snapshot: snapshots[item.id])
                             .matchedGeometryEffect(id: AnyHashable(item.id), in: overviewTransition)
                     }
                 }
@@ -347,13 +381,13 @@ private struct BrowserNavigationControlGroupStyle: ViewModifier {
     }
 }
 
-private struct BrowserTabOverview<Content: View>: View {
+private struct BrowserTabOverview: View {
     let items: [BrowserTabItem]
     let selection: Binding<UUID>
     let onClose: (UUID) -> Void
     let onMove: ((UUID, Int) -> Void)?
     let newTabControl: AnyView?
-    let content: (BrowserTabItem) -> Content
+    let snapshots: [UUID: BrowserTabSnapshot]
     let dismiss: () -> Void
 
     var body: some View {
@@ -373,10 +407,7 @@ private struct BrowserTabOverview<Content: View>: View {
                                                    onSelect: { selection.wrappedValue = item.id; dismiss() },
                                                    onClose: item.isPinned ? nil : { onClose(item.id) },
                                                    onMoveBy: moveBy) {
-                                content(item)
-                                    .allowsHitTesting(false)
-                                    .environment(\.isBrowserTabOverviewPreview, true)
-                                    .environment(\.isBrowserTabToolbarActive, false)
+                                BrowserTabSnapshotView(snapshot: snapshots[item.id])
                             }
                         }
                         .padding(16)
@@ -496,8 +527,9 @@ private struct BrowserTabOverviewCard<LivePreview: View>: View {
 
 /// The overview's card grid. Where `onMove` is given, a card can be dragged
 /// (on touch, after a long press) to a new place: the other cards reflow live
-/// and the move is committed once, on drop. On touch platforms an unpinned
-/// card can also be swiped off sideways to close it.
+/// and the move is committed once, on drop. An unpinned card can be swiped
+/// off sideways to close it: a finger on touch screens, two fingers on a
+/// trackpad.
 private struct BrowserTabOverviewGrid<Card: View>: View {
     let items: [BrowserTabItem]
     let columns: Int
@@ -509,9 +541,7 @@ private struct BrowserTabOverviewGrid<Card: View>: View {
     /// accessibility), or `nil` when tabs can't be moved.
     @ViewBuilder let card: (BrowserTabItem, ((Int) -> Void)?) -> Card
 
-    /// The order shown while a card is being dragged.
-    @State private var liveOrder: [UUID]?
-    @State private var draggingID: UUID?
+    @State private var drag = BrowserTabDragState()
 
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.fixed(width), spacing: spacing), count: columns),
@@ -520,19 +550,20 @@ private struct BrowserTabOverviewGrid<Card: View>: View {
                 cell(item)
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: liveOrder)
+        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: drag.liveOrder)
         #if !os(tvOS)
         // A drop between cards still ends the drag.
         .onDrop(of: [.text], delegate: BrowserTabGridDropDelegate(finish: finishDrag))
         #endif
         .onChange(of: items.map(\.id)) {
             // The committed order has arrived; show it rather than the copy.
-            if draggingID == nil { liveOrder = nil }
+            if drag.draggingID == nil { drag.liveOrder = nil }
         }
+        .onDisappear { drag.reset() }
     }
 
     private var orderedItems: [BrowserTabItem] {
-        guard let liveOrder else { return items }
+        guard let liveOrder = drag.liveOrder else { return items }
         let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         // Tabs opened while dragging go last; closed ones drop out.
         return liveOrder.compactMap { byID[$0] } + items.filter { !liveOrder.contains($0.id) }
@@ -546,20 +577,15 @@ private struct BrowserTabOverviewGrid<Card: View>: View {
         } content: {
             card(item, moveBy)
         }
-        .opacity(draggingID == item.id ? 0.45 : 1)
+        .opacity(drag.draggingID == item.id ? 0.45 : 1)
         #if os(tvOS)
         swipeable
         #else
         if onMove != nil {
             swipeable
-                .onDrag {
-                    draggingID = item.id
-                    liveOrder = items.map(\.id)
-                    return NSItemProvider(object: item.id.uuidString as NSString)
-                }
-                .onDrop(of: [.text], delegate: BrowserTabCardDropDelegate(
-                    target: item.id, draggingID: draggingID, liveOrder: $liveOrder, finish: finishDrag
-                ))
+                .onDrag { drag.begin(item.id, order: items.map(\.id)) }
+                .onDrop(of: [.text], delegate: BrowserTabCardDropDelegate(target: item.id, drag: drag,
+                                                                          finish: finishDrag))
         } else {
             swipeable
         }
@@ -567,10 +593,11 @@ private struct BrowserTabOverviewGrid<Card: View>: View {
     }
 
     private func finishDrag() {
-        defer { draggingID = nil }
-        guard let id = draggingID, let index = liveOrder?.firstIndex(of: id),
+        guard let id = drag.draggingID else { return }
+        drag.draggingID = nil
+        guard let index = drag.liveOrder?.firstIndex(of: id),
               items.firstIndex(where: { $0.id == id }) != index else {
-            liveOrder = nil
+            drag.liveOrder = nil
             return
         }
         // `liveOrder` stays until the new order arrives in `items`, so the
@@ -585,20 +612,74 @@ private struct BrowserTabOverviewGrid<Card: View>: View {
     }
 }
 
+/// The card being dragged and the order shown meanwhile.
+@MainActor
+@Observable
+private final class BrowserTabDragState {
+    var draggingID: UUID?
+    var liveOrder: [UUID]?
+
+    #if !os(tvOS)
+    /// Starts dragging `id`. The drag's item provider holds a token that
+    /// ends the drag when the system lets go of it, so a drag cancelled
+    /// outside any drop target doesn't leave its card dimmed and the grid
+    /// reordered.
+    func begin(_ id: UUID, order: [UUID]) -> NSItemProvider {
+        draggingID = id
+        liveOrder = order
+        let token = BrowserTabDragToken(id: id) { [weak self] id in self?.cancel(id) }
+        let provider = NSItemProvider()
+        let data = Data(id.uuidString.utf8)
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier,
+                                            visibility: .ownProcess) { completion in
+            withExtendedLifetime(token) { completion(data, nil) }
+            return nil
+        }
+        return provider
+    }
+    #endif
+
+    /// Ends a drag that is still in progress without moving anything.
+    func cancel(_ id: UUID) {
+        guard draggingID == id else { return }
+        reset()
+    }
+
+    func reset() {
+        draggingID = nil
+        liveOrder = nil
+    }
+}
+
+/// Reports, on the main actor, when the drag holding it is over.
+private final class BrowserTabDragToken: Sendable {
+    let id: UUID
+    let onEnd: @MainActor @Sendable (UUID) -> Void
+
+    init(id: UUID, onEnd: @escaping @MainActor @Sendable (UUID) -> Void) {
+        self.id = id
+        self.onEnd = onEnd
+    }
+
+    deinit {
+        let id = id, onEnd = onEnd
+        Task { @MainActor in onEnd(id) }
+    }
+}
+
 #if !os(tvOS)
 /// Reflows the grid as a dragged card passes over another one.
 private struct BrowserTabCardDropDelegate: DropDelegate {
     let target: UUID
-    let draggingID: UUID?
-    @Binding var liveOrder: [UUID]?
+    let drag: BrowserTabDragState
     let finish: () -> Void
 
     func dropEntered(info: DropInfo) {
-        guard let draggingID, draggingID != target, var order = liveOrder,
+        guard let draggingID = drag.draggingID, draggingID != target, var order = drag.liveOrder,
               let from = order.firstIndex(of: draggingID),
               let to = order.firstIndex(of: target) else { return }
         order.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
-        liveOrder = order
+        drag.liveOrder = order
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
@@ -621,53 +702,141 @@ private struct BrowserTabGridDropDelegate: DropDelegate {
 }
 #endif
 
-/// Lets a card be swiped off sideways to close it, on touch platforms. Only
-/// a mostly horizontal drag counts, so vertical scrolling is unaffected. A
-/// pinned card follows the finger with resistance and springs back.
+/// Lets a card be swiped off sideways to close it: with a finger on touch
+/// screens, with two fingers on a trackpad. Only a mostly horizontal swipe
+/// counts, so vertical scrolling is unaffected. A pinned card follows with
+/// resistance and springs back.
 private struct BrowserTabSwipeToClose<Content: View>: View {
     let width: CGFloat
     let isClosable: Bool
     let onClose: () -> Void
     @ViewBuilder let content: () -> Content
 
+    /// A trackpad swipe's position, or where a card is flung away to.
+    @State private var settledOffset: CGFloat = 0
+    @State private var isFlungAway = false
     #if os(iOS) || os(visionOS)
+    /// A finger's position. It springs back by itself when the touch ends or
+    /// is taken over, for instance by a drag to reorder.
     @GestureState(resetTransaction: Transaction(animation: .spring(response: 0.3, dampingFraction: 0.8)))
-    private var dragOffset: CGFloat = 0
-    @State private var flungOffset: CGFloat?
+    private var touchOffset: CGFloat = 0
     #endif
 
     var body: some View {
-        #if os(iOS) || os(visionOS)
-        let offset = flungOffset ?? dragOffset
         content()
             .offset(x: offset)
             .opacity(1 - min(0.7, abs(offset) / (width * 1.4)))
+            #if os(iOS) || os(visionOS)
             .simultaneousGesture(
                 DragGesture(minimumDistance: 20)
-                    .updating($dragOffset) { value, state, _ in
-                        let x = value.translation.width
-                        guard abs(x) > abs(value.translation.height) else { return }
-                        state = isClosable ? x : x / 4
+                    .updating($touchOffset) { value, state, _ in
+                        guard !isFlungAway, abs(value.translation.width) > abs(value.translation.height) else { return }
+                        state = resisted(value.translation.width)
                     }
                     .onEnded { value in
-                        let x = value.translation.width
-                        let projected = value.predictedEndTranslation.width
-                        guard isClosable, abs(x) > abs(value.translation.height),
-                              abs(x) > width * 0.45 || abs(projected) > width * 1.1 else { return }
-                        let direction: CGFloat = projected < 0 ? -1 : 1
-                        flungOffset = x
-                        withAnimation(.easeOut(duration: 0.18)) {
-                            flungOffset = direction * width * 1.6
-                        } completion: {
-                            onClose()
-                        }
+                        guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                        settle(at: value.translation.width, projected: value.predictedEndTranslation.width)
                     }
             )
+            #elseif os(macOS)
+            .overlay(BrowserTabTrackpadSwipe(
+                onChange: { translation in
+                    guard !isFlungAway else { return }
+                    settledOffset = resisted(translation)
+                },
+                onEnd: { translation in settle(at: translation, projected: translation) }
+            ))
+            #endif
+    }
+
+    private var offset: CGFloat {
+        #if os(iOS) || os(visionOS)
+        isFlungAway ? settledOffset : touchOffset + settledOffset
         #else
-        content()
+        settledOffset
         #endif
     }
+
+    private func resisted(_ translation: CGFloat) -> CGFloat {
+        isClosable ? translation : translation / 4
+    }
+
+    private func settle(at translation: CGFloat, projected: CGFloat) {
+        guard !isFlungAway else { return }
+        guard isClosable, abs(translation) > width * 0.45 || abs(projected) > width * 1.1 else {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { settledOffset = 0 }
+            return
+        }
+        // Carry on from where the card is, then fling it off.
+        isFlungAway = true
+        settledOffset = translation
+        let direction: CGFloat = (projected == 0 ? translation : projected) < 0 ? -1 : 1
+        withAnimation(.easeOut(duration: 0.18)) {
+            settledOffset = direction * width * 1.6
+        } completion: {
+            onClose()
+        }
+    }
 }
+
+#if os(macOS)
+/// Reports two-finger horizontal trackpad swipes over a card. Vertical
+/// scrolling, and anything that is not a scroll, passes through.
+private struct BrowserTabTrackpadSwipe: NSViewRepresentable {
+    let onChange: (CGFloat) -> Void
+    let onEnd: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> SwipeView {
+        let view = SwipeView()
+        view.onChange = onChange
+        view.onEnd = onEnd
+        return view
+    }
+
+    func updateNSView(_ view: SwipeView, context: Context) {
+        view.onChange = onChange
+        view.onEnd = onEnd
+    }
+
+    final class SwipeView: NSView {
+        var onChange: (CGFloat) -> Void = { _ in }
+        var onEnd: (CGFloat) -> Void = { _ in }
+        private var translation: CGFloat = 0
+        private var isHorizontal: Bool?
+
+        /// Takes only scroll events, so clicks, hovers and drags reach the
+        /// card underneath.
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            NSApp.currentEvent?.type == .scrollWheel ? super.hitTest(point) : nil
+        }
+
+        override func scrollWheel(with event: NSEvent) {
+            // Only real trackpad gestures, not momentum or mouse wheels.
+            guard event.hasPreciseScrollingDeltas, event.momentumPhase.isEmpty else {
+                return super.scrollWheel(with: event)
+            }
+            if event.phase.contains(.began) {
+                translation = 0
+                isHorizontal = nil
+            }
+            if isHorizontal == nil, event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0 {
+                isHorizontal = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
+            }
+            guard isHorizontal == true else { return super.scrollWheel(with: event) }
+            // Follow the fingers, whatever the scrolling direction setting.
+            let fingers = event.isDirectionInvertedFromDevice ? event.scrollingDeltaX : -event.scrollingDeltaX
+            translation += fingers
+            if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+                onEnd(translation)
+                translation = 0
+                isHorizontal = nil
+            } else {
+                onChange(translation)
+            }
+        }
+    }
+}
+#endif
 
 public struct BrowserTabBar: View {
     public let items: [BrowserTabItem]
