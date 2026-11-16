@@ -28,6 +28,25 @@ public final class WebPage {
 
     public struct FrameInfo: Sendable {}
 
+    /// A navigation the page is about to perform.
+    public struct NavigationAction {
+        public let request: URLRequest
+        @_spi(SwiftOpenUIBackend) public init(request: URLRequest) { self.request = request }
+    }
+
+    public enum NavigationActionPolicy: Sendable {
+        case allow
+        case cancel
+    }
+
+    /// Decides whether a navigation may proceed, including server redirects.
+    /// Unlike WebKit's own `WebPage.NavigationDeciding`, the decision is
+    /// synchronous: every backend has to answer before the load continues.
+    @MainActor
+    public protocol NavigationDeciding: AnyObject {
+        func decidePolicy(for action: NavigationAction) -> NavigationActionPolicy
+    }
+
     public private(set) var url: URL?
     public private(set) var title = ""
     public private(set) var isLoading = false
@@ -37,6 +56,7 @@ public final class WebPage {
     private enum PendingLoad { case request(URLRequest), html(String, URL) }
     private var pendingLoad: PendingLoad?
     private let configuration: Configuration
+    private let navigationDecider: (any NavigationDeciding)?
     @_spi(SwiftOpenUIBackend) public var _backend: (any _WebPageBackend)? {
         didSet {
             guard let backend = _backend else { return }
@@ -52,13 +72,17 @@ public final class WebPage {
         }
     }
 
-    public convenience init(configuration: Configuration = Configuration()) {
-        self.init(configuration: configuration, initialURL: nil)
+    /// `navigationDecider` is retained for the page's lifetime.
+    public convenience init(configuration: Configuration = Configuration(),
+                            navigationDecider: (any NavigationDeciding)? = nil) {
+        self.init(configuration: configuration, initialURL: nil, navigationDecider: navigationDecider)
     }
 
     @_spi(SwiftOpenUIBackend)
-    public init(configuration: Configuration = Configuration(), initialURL: URL?) {
+    public init(configuration: Configuration = Configuration(), initialURL: URL?,
+                navigationDecider: (any NavigationDeciding)? = nil) {
         self.configuration = configuration
+        self.navigationDecider = navigationDecider
         if let initialURL { pendingLoad = .request(URLRequest(url: initialURL)) }
     }
 
@@ -146,6 +170,13 @@ public final class WebPage {
         }
     }
 
+
+    /// Asks the decider about a navigation. Backends cancel the navigation
+    /// when this returns `.cancel`.
+    @_spi(SwiftOpenUIBackend)
+    public func _decidePolicy(for action: NavigationAction) -> NavigationActionPolicy {
+        navigationDecider?.decidePolicy(for: action) ?? .allow
+    }
 
     @_spi(SwiftOpenUIBackend)
     public func _updateProperties(url: URL?, title: String, progress: Double) {

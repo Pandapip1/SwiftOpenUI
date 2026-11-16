@@ -45,6 +45,22 @@ private final class GTKWebPageBackend: _WebPageBackend {
         }
         signalHandlers.append(swift_openui_webkit_on_title_changed(webView, propertyChanged, Unmanaged.passUnretained(self).toOpaque()))
         signalHandlers.append(swift_openui_webkit_on_progress_changed(webView, propertyChanged, Unmanaged.passUnretained(self).toOpaque()))
+        // WebKitGTK emits decide-policy on the GTK main thread, for initial
+        // navigations and for each server redirect. Returning TRUE after
+        // ignoring the decision stops the navigation; FALSE lets WebKit apply
+        // its default policy.
+        signalHandlers.append(swift_openui_webkit_on_decide_policy(webView, { _, decision, type, context in
+            guard let context, let decision,
+                  let uri = swift_openui_webkit_navigation_decision_uri(decision, type),
+                  let url = URL(string: String(cString: uri)) else { return 0 }
+            let backend = Unmanaged<GTKWebPageBackend>.fromOpaque(context).takeUnretainedValue()
+            let policy = MainActor.assumeIsolated {
+                backend.page?._decidePolicy(for: WebPage.NavigationAction(request: URLRequest(url: url))) ?? .allow
+            }
+            guard policy == .cancel else { return 0 }
+            webkit_policy_decision_ignore(decision)
+            return 1
+        }, Unmanaged.passUnretained(self).toOpaque()))
         for script in userScripts {
             let time: WebKitUserScriptInjectionTime = script.injectionTime == .atDocumentStart
                 ? WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START : WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_END

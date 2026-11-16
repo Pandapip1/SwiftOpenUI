@@ -22,6 +22,29 @@ static inline gulong swift_openui_webkit_on_progress_changed(
     return g_signal_connect(view, "notify::estimated-load-progress", G_CALLBACK(callback), context);
 }
 
+typedef gboolean (*SwiftOpenUIWebKitDecidePolicy)(WebKitWebView *, WebKitPolicyDecision *, WebKitPolicyDecisionType, void *);
+
+static inline gulong swift_openui_webkit_on_decide_policy(
+    WebKitWebView *view, SwiftOpenUIWebKitDecidePolicy callback, void *context
+) {
+    return g_signal_connect(view, "decide-policy", G_CALLBACK(callback), context);
+}
+
+/// The URI a navigation or new-window policy decision is about, or NULL for
+/// other decisions (such as response decisions). Valid while `decision` is.
+static inline const char *swift_openui_webkit_navigation_decision_uri(
+    WebKitPolicyDecision *decision, WebKitPolicyDecisionType type
+) {
+    if (type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION &&
+        type != WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION)
+        return NULL;
+    WebKitNavigationAction *action = webkit_navigation_policy_decision_get_navigation_action(
+        WEBKIT_NAVIGATION_POLICY_DECISION(decision));
+    if (!action) return NULL;
+    WebKitURIRequest *request = webkit_navigation_action_get_request(action);
+    return request ? webkit_uri_request_get_uri(request) : NULL;
+}
+
 static inline GtkWidget *swift_openui_webkit_new(gboolean persistent) {
     if (persistent)
         return webkit_web_view_new();

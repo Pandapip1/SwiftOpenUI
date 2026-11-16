@@ -14,7 +14,26 @@ public final class WebPage {
         public init() {}
     }
 
+    /// A navigation the page is about to perform.
+    public struct NavigationAction {
+        public let request: URLRequest
+    }
+
+    public enum NavigationActionPolicy: Sendable {
+        case allow
+        case cancel
+    }
+
+    /// Decides whether a navigation may proceed, including server redirects.
+    /// Unlike WebKit's own `WebPage.NavigationDeciding`, the decision is
+    /// synchronous: every backend has to answer before the load continues.
+    @MainActor
+    public protocol NavigationDeciding: AnyObject {
+        func decidePolicy(for action: NavigationAction) -> NavigationActionPolicy
+    }
+
     fileprivate let webView: WKWebView
+    private let navigationDelegate: NavigationDelegate?
     public var url: URL? { webView.url }
     public var title: String { webView.title ?? "" }
     public var customUserAgent: String? {
@@ -22,11 +41,15 @@ public final class WebPage {
         set { webView.customUserAgent = newValue }
     }
 
-    public init(configuration: Configuration = Configuration()) {
+    /// `navigationDecider` is retained for the page's lifetime.
+    public init(configuration: Configuration = Configuration(),
+                navigationDecider: (any NavigationDeciding)? = nil) {
         let native = WKWebViewConfiguration()
         native.websiteDataStore = configuration.websiteDataStore
         native.userContentController = configuration.userContentController
         webView = WKWebView(frame: .zero, configuration: native)
+        navigationDelegate = navigationDecider.map(NavigationDelegate.init)
+        webView.navigationDelegate = navigationDelegate
     }
 
     public func load(_ url: URL?) {
@@ -52,6 +75,24 @@ public final class WebPage {
         }
         let source = "(async function(\(names.joined(separator: ","))){\(functionBody)})(\(values.joined(separator: ",")))"
         return try await webView.evaluateJavaScript(source)
+    }
+}
+
+/// Bridges `WKNavigationDelegate` to the page's decider. WebKit calls the
+/// delegate on the main thread, and its decision handler is main-actor.
+@MainActor
+private final class NavigationDelegate: NSObject, WKNavigationDelegate {
+    private let decider: any WebPage.NavigationDeciding
+
+    init(_ decider: any WebPage.NavigationDeciding) { self.decider = decider }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
+        let action = WebPage.NavigationAction(request: navigationAction.request)
+        switch decider.decidePolicy(for: action) {
+        case .allow: decisionHandler(.allow)
+        case .cancel: decisionHandler(.cancel)
+        }
     }
 }
 
