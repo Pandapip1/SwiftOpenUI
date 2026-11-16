@@ -4668,9 +4668,11 @@ final class GTKSliderState {
         }
     }
 
-    deinit {
+    // Isolated: the host must be told on the main thread even when the last
+    // reference is dropped elsewhere.
+    isolated deinit {
         if isEditing {
-            MainActor.assumeIsolated { host?.endInteractiveUpdate() }
+            host?.endInteractiveUpdate()
         }
     }
 }

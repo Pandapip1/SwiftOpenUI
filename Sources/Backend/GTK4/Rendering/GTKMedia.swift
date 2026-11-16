@@ -66,12 +66,14 @@ final class GTKVideoDriver: _AVPlayerDriver {
         }, context) }
     }
 
-    deinit {
+    // Isolated: the last reference may be dropped off the main thread, and
+    // everything below (GStreamer, GTK widgets) belongs to the main loop.
+    isolated deinit {
         downloadTask?.cancel()
         if let localVideoURL { try? FileManager.default.removeItem(at: localVideoURL) }
         if let localAudioURL { try? FileManager.default.removeItem(at: localAudioURL) }
         if startSource != 0 { g_source_remove(startSource) }
-        MainActor.assumeIsolated { stopPictureInPicture() }
+        stopPictureInPicture()
         if let gst { swift_openui_gst_player_free(gst) }
         if gtk_widget_get_parent(videoWidget) != nil { gtk_widget_unparent(videoWidget) }
         g_object_unref(gpointer(videoWidget))
