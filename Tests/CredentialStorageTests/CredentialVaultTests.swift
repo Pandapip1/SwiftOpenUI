@@ -54,7 +54,8 @@ private final class CountingVault: UnlockableCredentialVault, @unchecked Sendabl
     func requiresExplicitUnlock() -> Bool { lock.withLock { locked } }
     func requestUnlock() { lock.withLock { count += 1; locked = false } }
     func load(account: String) -> SecureBytes? { nil }
-    func save(_ secret: SecureBytes?, account: String) {}
+    func save(_ secret: SecureBytes, account: String) {}
+    func delete(account: String) {}
 }
 
 private final class BlockingVault: UnlockableCredentialVault, @unchecked Sendable {
@@ -74,5 +75,6 @@ private final class BlockingVault: UnlockableCredentialVault, @unchecked Sendabl
         lock.withLock { locked = false }
     }
     func load(account: String) -> SecureBytes? { nil }
-    func save(_ secret: SecureBytes?, account: String) {}
+    func save(_ secret: SecureBytes, account: String) {}
+    func delete(account: String) {}
 }

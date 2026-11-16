@@ -7,10 +7,16 @@ import LocalAuthentication
 
 /// Stores secrets by account name. Secrets cross this API only as
 /// `SecureBytes`, so they stay in protected memory on both sides of it.
+///
+/// Every operation reports failure. A vault never drops a write silently:
+/// callers can tell an absent item (`load` returns `nil`) from a store that
+/// refused the operation (a thrown error, usually `CredentialVaultError`).
 public protocol CredentialDataVault: Sendable {
-    func load(account: String) -> SecureBytes?
-    /// `nil` deletes the entry.
-    func save(_ secret: SecureBytes?, account: String)
+    /// Returns `nil` only when no item exists for `account`.
+    func load(account: String) throws -> SecureBytes?
+    func save(_ secret: SecureBytes, account: String) throws
+    /// Deleting an item that does not exist succeeds.
+    func delete(account: String) throws
 }
 
 public protocol UnlockableCredentialVault: CredentialDataVault {
@@ -88,69 +94,197 @@ public enum CredentialVaultAccess: Equatable, Sendable {
     case unavailable(Int32)
 }
 
-/// The platform credential adapter. Apple uses only the modern Data Protection
-/// Keychain; Linux uses SwiftOpenUI's Security-compatible Secret Service layer.
+/// Which platform store a `PlatformCredentialVault` uses.
+public enum CredentialStorageMode: String, Codable, Sendable, CaseIterable {
+    /// The preferred store, and the default. On Apple platforms this is the
+    /// Data Protection Keychain (`kSecUseDataProtectionKeychain`, plus the
+    /// access group when one is given): items are confined to the app's team
+    /// and access group, which requires a team-signed app with a provisioning
+    /// profile. On Linux it is the Secret Service, through SwiftOpenUI's
+    /// Security stand-in.
+    case dataProtection
+
+    #if os(macOS)
+    /// The macOS file-based login keychain: no `kSecUseDataProtectionKeychain`
+    /// and no access group. It works for ad-hoc signed builds, but is much
+    /// weaker: items are not confined to the app or team, access is governed
+    /// by per-item ACLs tied to the creating app's code signature, and any app
+    /// the user approves at a keychain prompt can read them. A vault never
+    /// selects this mode on its own; only the application may choose it, and
+    /// only after the user explicitly opts in.
+    case legacyLoginKeychain
+    #endif
+}
+
+/// Whether a vault can store secrets, as established by
+/// `PlatformCredentialVault.probeAvailability()` before any secret is written.
+public enum CredentialVaultAvailability: Equatable, Sendable {
+    case available
+    /// The store exists but refused a non-interactive write, typically because
+    /// the device is locked. Writes may succeed after the user unlocks.
+    case locked
+    /// The Data Protection Keychain refused the process, typically
+    /// `errSecMissingEntitlement` (-34018) because the app is not team-signed
+    /// with a provisioning profile. Only reported in `.dataProtection` mode.
+    case dataProtectionKeychainUnavailable(CredentialVaultError)
+    case failed(CredentialVaultError)
+}
+
+/// The Security.framework item calls `PlatformCredentialVault` makes. The
+/// default backend is the real keychain (or Secret Service on Linux); tests
+/// inject a fake to exercise each failure status deterministically.
+public protocol KeychainItemBackend: Sendable {
+    func copyMatching(_ query: [CFString: Any]) -> (status: OSStatus, item: CFTypeRef?)
+    func add(_ attributes: [CFString: Any]) -> OSStatus
+    func update(_ query: [CFString: Any], attributes: [CFString: Any]) -> OSStatus
+    func delete(_ query: [CFString: Any]) -> OSStatus
+}
+
+public struct SystemKeychainBackend: KeychainItemBackend {
+    public init() {}
+
+    public func copyMatching(_ query: [CFString: Any]) -> (status: OSStatus, item: CFTypeRef?) {
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        return (status, item)
+    }
+
+    public func add(_ attributes: [CFString: Any]) -> OSStatus {
+        SecItemAdd(attributes as CFDictionary, nil)
+    }
+
+    public func update(_ query: [CFString: Any], attributes: [CFString: Any]) -> OSStatus {
+        SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+    }
+
+    public func delete(_ query: [CFString: Any]) -> OSStatus {
+        SecItemDelete(query as CFDictionary)
+    }
+}
+
+/// The platform credential adapter. Apple uses the Data Protection Keychain
+/// unless the application explicitly selects `.legacyLoginKeychain` (macOS
+/// only); Linux uses SwiftOpenUI's Security-compatible Secret Service layer.
 public struct PlatformCredentialVault: CredentialDataVault {
     public let service: String
+    /// Applied only in `.dataProtection` mode.
     public let accessGroup: String?
+    public let mode: CredentialStorageMode
+    private let backend: any KeychainItemBackend
 
-    public init(service: String, accessGroup: String? = nil) {
+    public init(service: String, accessGroup: String? = nil, mode: CredentialStorageMode = .dataProtection,
+                backend: any KeychainItemBackend = SystemKeychainBackend()) {
         self.service = service
         self.accessGroup = accessGroup
+        self.mode = mode
+        self.backend = backend
+    }
+
+    /// Establishes whether this vault can store secrets, by adding and then
+    /// deleting a uniquely named, non-secret marker item. Reads cannot answer
+    /// this: an unentitled process gets `errSecItemNotFound` from
+    /// `SecItemCopyMatching` against the Data Protection Keychain, exactly as
+    /// if the store were merely empty, and only a write reveals
+    /// `errSecMissingEntitlement`. Check this before writing real secrets.
+    public func probeAvailability() -> CredentialVaultAvailability {
+        let account = "\(service).\(Self.probeAccountMarker).\(UUID().uuidString.lowercased())"
+        let identity = baseQuery(account: account)
+        let status = Self.withSecValue(SecureBytes(copyingUTF8: "probe")) { value in
+            backend.add(additionAttributes(identity: identity, value: value))
+        }
+        switch status {
+        case errSecSuccess:
+            let removal = backend.delete(identity)
+            guard removal == errSecSuccess || removal == errSecItemNotFound else {
+                return .failed(CredentialVaultError(status: removal))
+            }
+            return .available
+        case CredentialVaultError.interactionNotAllowedStatus:
+            return .locked
+        case CredentialVaultError.missingEntitlementStatus where mode == .dataProtection:
+            return .dataProtectionKeychainUnavailable(CredentialVaultError(status: status))
+        default:
+            return .failed(CredentialVaultError(status: status))
+        }
     }
 
     public func access(to account: String) -> CredentialVaultAccess {
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query(account: account, interactive: false) as CFDictionary, &item)
+        let status = backend.copyMatching(query(account: account, interactive: false)).status
         switch status {
         case errSecSuccess: return .available
         case errSecItemNotFound: return .missing
-        #if canImport(LocalAuthentication)
-        case errSecInteractionNotAllowed, errSecAuthFailed, errSecNotAvailable: return .locked
-        #endif
+        case CredentialVaultError.interactionNotAllowedStatus, CredentialVaultError.authFailedStatus,
+             CredentialVaultError.notAvailableStatus:
+            return .locked
         default: return .unavailable(status)
         }
     }
 
     public func requestAccess(to account: String) throws {
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query(account: account, interactive: true) as CFDictionary, &item)
+        let status = backend.copyMatching(query(account: account, interactive: true)).status
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw CredentialVaultError(status: status)
         }
     }
 
-    public func load(account: String) -> SecureBytes? {
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query(account: account, interactive: false) as CFDictionary, &item) == errSecSuccess else {
+    public func load(account: String) throws -> SecureBytes? {
+        let (status, item) = backend.copyMatching(query(account: account, interactive: false))
+        switch status {
+        case errSecSuccess:
+            guard let secret = Self.secureBytes(fromSecValue: item) else {
+                throw CredentialVaultError(status: CredentialVaultError.decodeStatus)
+            }
+            return secret
+        case errSecItemNotFound:
             return nil
+        default:
+            throw CredentialVaultError(status: status)
         }
-        return Self.secureBytes(fromSecValue: item)
     }
 
-    public func save(_ secret: SecureBytes?, account: String) {
+    public func save(_ secret: SecureBytes, account: String) throws {
         let identity = baseQuery(account: account)
-        let status = SecItemCopyMatching(
-            query(account: account, interactive: false, returnData: false) as CFDictionary, nil
-        )
-        if status == errSecSuccess {
-            if let secret {
-                _ = Self.withSecValue(secret) { value in
-                    SecItemUpdate(identity as CFDictionary, [kSecValueData: value] as CFDictionary)
-                }
-            } else {
-                SecItemDelete(identity as CFDictionary)
-            }
-            return
+        let status = Self.withSecValue(secret) { value -> OSStatus in
+            let added = backend.add(additionAttributes(identity: identity, value: value))
+            guard added == errSecDuplicateItem else { return added }
+            return backend.update(identity, attributes: [kSecValueData: value])
         }
-        guard status == errSecItemNotFound, let secret else { return }
-        Self.withSecValue(secret) { value in
-            var addition = identity
-            addition[kSecValueData] = value
-            addition[kSecAttrAccessible] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-            SecItemAdd(addition as CFDictionary, nil)
+        guard status == errSecSuccess else { throw CredentialVaultError(status: status) }
+    }
+
+    public func delete(account: String) throws {
+        let status = backend.delete(baseQuery(account: account))
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw CredentialVaultError(status: status)
         }
     }
+
+    #if !os(Linux)
+    /// The accounts of every item this vault holds, read from attributes only,
+    /// so no secret is decrypted and no keychain ACL prompt is shown. Used to
+    /// find items to migrate or remove when the storage mode changes.
+    public func accounts() throws -> [String] {
+        var query: [CFString: Any] = baseQuery(account: nil)
+        query[kSecReturnAttributes] = true
+        query[kSecMatchLimit] = kSecMatchLimitAll
+        let (status, item) = backend.copyMatching(query)
+        switch status {
+        case errSecSuccess:
+            guard let rows = item as? [[String: Any]] else {
+                throw CredentialVaultError(status: CredentialVaultError.decodeStatus)
+            }
+            return rows.compactMap { $0[kSecAttrAccount as String] as? String }
+                .filter { !$0.hasPrefix("\(service).\(Self.probeAccountMarker).") }
+                .sorted()
+        case errSecItemNotFound:
+            return []
+        default:
+            throw CredentialVaultError(status: status)
+        }
+    }
+    #endif
+
+    private static let probeAccountMarker = "credential-storage-availability-probe"
 
     #if os(Linux)
     // SwiftOpenUI's Security stand-in takes and returns `SecureBytes` itself,
@@ -197,34 +331,81 @@ public struct PlatformCredentialVault: CredentialDataVault {
     }
     #endif
 
-    private func baseQuery(account: String) -> [CFString: Any] {
+    private func baseQuery(account: String?) -> [CFString: Any] {
         var result: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
-            kSecAttrAccount: account,
         ]
-        if let accessGroup { result[kSecAttrAccessGroup] = accessGroup }
-        #if canImport(LocalAuthentication)
-        result[kSecUseDataProtectionKeychain] = true
+        if let account { result[kSecAttrAccount] = account }
+        switch mode {
+        case .dataProtection:
+            if let accessGroup { result[kSecAttrAccessGroup] = accessGroup }
+            #if canImport(LocalAuthentication)
+            result[kSecUseDataProtectionKeychain] = true
+            #endif
+        #if os(macOS)
+        case .legacyLoginKeychain:
+            // The file-based keychain has no access groups; access is decided
+            // by each item's ACL, which names the creating app's signature.
+            break
         #endif
+        }
         return result
     }
 
-    private func query(account: String, interactive: Bool, returnData: Bool = true) -> [CFString: Any] {
+    private func additionAttributes(identity: [CFString: Any], value: Any) -> [CFString: Any] {
+        var addition = identity
+        addition[kSecValueData] = value
+        // Accessibility classes belong to the Data Protection Keychain; the
+        // macOS file-based keychain does not use them.
+        if mode == .dataProtection {
+            addition[kSecAttrAccessible] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        }
+        return addition
+    }
+
+    private func query(account: String, interactive: Bool) -> [CFString: Any] {
         var result = baseQuery(account: account)
-        if returnData { result[kSecReturnData] = true }
+        result[kSecReturnData] = true
         result[kSecMatchLimit] = kSecMatchLimitOne
         #if canImport(LocalAuthentication) && !os(tvOS)
-        let context = LAContext()
-        context.interactionNotAllowed = !interactive
-        result[kSecUseAuthenticationContext] = context
+        if mode == .dataProtection {
+            let context = LAContext()
+            context.interactionNotAllowed = !interactive
+            result[kSecUseAuthenticationContext] = context
+        }
         #endif
         return result
     }
 }
 
-public struct CredentialVaultError: LocalizedError, Sendable {
+public struct CredentialVaultError: LocalizedError, Equatable, Sendable {
     public let status: Int32
+
+    public init(status: Int32) {
+        self.status = status
+    }
+
+    // Spelled out so the classification below also compiles against
+    // SwiftOpenUI's Linux Security stand-in, which defines only the statuses
+    // its Secret Service backend can return.
+
+    /// `errSecMissingEntitlement`: the process lacks the entitlement the
+    /// Data Protection Keychain requires (a team-signed application identifier
+    /// and keychain access group).
+    public static let missingEntitlementStatus: Int32 = -34018
+    /// `errSecInteractionNotAllowed`
+    public static let interactionNotAllowedStatus: Int32 = -25308
+    /// `errSecAuthFailed`
+    public static let authFailedStatus: Int32 = -25293
+    /// `errSecNotAvailable`
+    public static let notAvailableStatus: Int32 = -25291
+    /// `errSecDecode`: the store returned something that is not a secret value.
+    public static let decodeStatus: Int32 = -26275
+
+    /// Whether the Data Protection Keychain itself is unusable by this
+    /// process, as opposed to a failure of one item or operation.
+    public var isMissingEntitlement: Bool { status == Self.missingEntitlementStatus }
 
     public var errorDescription: String? {
         #if canImport(LocalAuthentication)

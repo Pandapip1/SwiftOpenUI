@@ -18,13 +18,13 @@ final class SecureBytesTests: XCTestCase {
     }
 
     func testRoundTripsThroughAVault() throws {
-        let vault = MemoryVault()
+        let vault: any CredentialDataVault = MemoryVault()
         let credential = Credential(user: "alice", token: "s3cr3t-token")
-        vault.save(try SecureBytes(jsonEncoding: credential), account: "a")
+        try vault.save(SecureBytes(jsonEncoding: credential), account: "a")
         let loaded = try XCTUnwrap(vault.load(account: "a"))
         XCTAssertEqual(try loaded.decodeJSON(Credential.self), credential)
-        vault.save(nil, account: "a")
-        XCTAssertNil(vault.load(account: "a"))
+        try vault.delete(account: "a")
+        XCTAssertNil(try vault.load(account: "a"))
     }
 
     func testWipingInitializerZeroesTheSource() {
@@ -84,8 +84,8 @@ final class SecureBytesTests: XCTestCase {
         XCTAssertNil(secret as? any DataProtocol)
         // The vault API traffics only in SecureBytes; these fail to compile
         // if a Data-based signature returns.
-        let load: (any CredentialDataVault, String) -> SecureBytes? = { $0.load(account: $1) }
-        let save: (any CredentialDataVault, SecureBytes?, String) -> Void = { $0.save($1, account: $2) }
+        let load: (any CredentialDataVault, String) throws -> SecureBytes? = { try $0.load(account: $1) }
+        let save: (any CredentialDataVault, SecureBytes, String) throws -> Void = { try $0.save($1, account: $2) }
         _ = (load, save)
     }
 }
@@ -98,5 +98,6 @@ private struct Credential: Codable, Equatable {
 private final class MemoryVault: CredentialDataVault {
     private let secrets = Mutex<[String: SecureBytes]>([:])
     func load(account: String) -> SecureBytes? { secrets.withLock { $0[account] } }
-    func save(_ secret: SecureBytes?, account: String) { secrets.withLock { $0[account] = secret } }
+    func save(_ secret: SecureBytes, account: String) { secrets.withLock { $0[account] = secret } }
+    func delete(account: String) { secrets.withLock { $0[account] = nil } }
 }
