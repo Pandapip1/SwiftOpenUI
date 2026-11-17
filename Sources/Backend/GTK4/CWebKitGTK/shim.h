@@ -45,6 +45,21 @@ static inline const char *swift_openui_webkit_navigation_decision_uri(
     return request ? webkit_uri_request_get_uri(request) : NULL;
 }
 
+/// Whether a navigation policy decision may target the main frame. New-window
+/// requests count as main-frame navigations. WebKitGTK only exposes the target
+/// frame's name, so a navigation inside an unnamed subframe also reports TRUE:
+/// callers that confine navigation err towards confining.
+static inline gboolean swift_openui_webkit_navigation_decision_is_main_frame(
+    WebKitPolicyDecision *decision, WebKitPolicyDecisionType type
+) {
+    if (type == WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION) return TRUE;
+    if (type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION) return TRUE;
+    WebKitNavigationAction *action = webkit_navigation_policy_decision_get_navigation_action(
+        WEBKIT_NAVIGATION_POLICY_DECISION(decision));
+    if (!action) return TRUE;
+    return webkit_navigation_action_get_frame_name(action) == NULL;
+}
+
 static inline GtkWidget *swift_openui_webkit_new(gboolean persistent) {
     if (persistent)
         return webkit_web_view_new();

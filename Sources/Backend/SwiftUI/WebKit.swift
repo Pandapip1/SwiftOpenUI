@@ -21,6 +21,10 @@ public final class WebPage {
     /// A navigation the page is about to perform.
     public struct NavigationAction {
         public let request: URLRequest
+        /// Whether the navigation replaces the page itself rather than a
+        /// frame inside it (an embedded captcha, an ad). New-window requests
+        /// count as main-frame navigations.
+        public let isMainFrame: Bool
     }
 
     public enum NavigationActionPolicy: Sendable {
@@ -103,7 +107,10 @@ private final class NavigationDelegate: NSObject, WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
-        let action = WebPage.NavigationAction(request: navigationAction.request)
+        let action = WebPage.NavigationAction(
+            request: navigationAction.request,
+            isMainFrame: navigationAction.targetFrame?.isMainFrame ?? true
+        )
         switch decider.decidePolicy(for: action) {
         case .allow: decisionHandler(.allow)
         case .cancel: decisionHandler(.cancel)

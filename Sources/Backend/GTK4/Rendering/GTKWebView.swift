@@ -54,8 +54,11 @@ private final class GTKWebPageBackend: _WebPageBackend {
                   let uri = swift_openui_webkit_navigation_decision_uri(decision, type),
                   let url = URL(string: String(cString: uri)) else { return 0 }
             let backend = Unmanaged<GTKWebPageBackend>.fromOpaque(context).takeUnretainedValue()
+            let isMainFrame = swift_openui_webkit_navigation_decision_is_main_frame(decision, type) != 0
             let policy = MainActor.assumeIsolated {
-                backend.page?._decidePolicy(for: WebPage.NavigationAction(request: URLRequest(url: url))) ?? .allow
+                backend.page?._decidePolicy(for: WebPage.NavigationAction(
+                    request: URLRequest(url: url), isMainFrame: isMainFrame
+                )) ?? .allow
             }
             guard policy == .cancel else { return 0 }
             webkit_policy_decision_ignore(decision)
