@@ -433,16 +433,19 @@ public struct BrowserTabContainer<Content: View>: View {
         }
         #else
         // Tab controls only. Pages put their own actions in their own
-        // toolbars; the tab chrome never carries them.
-        #if os(iOS)
-        ToolbarItem(placement: .topBarTrailing) {
-            tabManagementControl
+        // toolbars; the tab chrome never carries them. The overview has its
+        // own bar with these controls, so they aren't shown twice.
+        if !isShowingOverview {
+            #if os(iOS)
+            ToolbarItem(placement: .topBarTrailing) {
+                tabManagementControl
+            }
+            #else
+            ToolbarItem(placement: .primaryAction) {
+                tabManagementControl
+            }
+            #endif
         }
-        #else
-        ToolbarItem(placement: .primaryAction) {
-            tabManagementControl
-        }
-        #endif
         #endif
     }
 
@@ -1225,6 +1228,9 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
     public let items: [BrowserTabItem]
     public let selection: Binding<UUID>
     public let onClose: (UUID) -> Void
+    /// Moves a tab to an index among all tabs, from the native tab bar or
+    /// overview (AdwTabView reordering).
+    public let onMove: ((UUID, Int) -> Void)?
     private let newTabControl: AnyView?
     private let onNewTab: (() -> Void)?
     public let content: (BrowserTabItem) -> Content
@@ -1236,6 +1242,7 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
         self.items = items
         self.selection = selection
         self.onClose = onClose
+        self.onMove = onMove
         self.newTabControl = nil
         self.onNewTab = onNewTab
         self.content = content
@@ -1251,6 +1258,7 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
         self.items = items
         self.selection = selection
         self.onClose = onClose
+        self.onMove = onMove
         self.newTabControl = AnyView(newTabControl())
         self.onNewTab = onNewTab
         self.content = content
@@ -1278,11 +1286,14 @@ private final class BrowserTabCallbacks {
     let pages: [(UUID, OpaquePointer)]
     let selection: Binding<UUID>
     let onClose: (UUID) -> Void
+    let onMove: ((UUID, Int) -> Void)?
 
-    init(pages: [(UUID, OpaquePointer)], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void) {
+    init(pages: [(UUID, OpaquePointer)], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
+         onMove: ((UUID, Int) -> Void)?) {
         self.pages = pages
         self.selection = selection
         self.onClose = onClose
+        self.onMove = onMove
     }
 }
 
@@ -1298,6 +1309,7 @@ private final class BrowserNewTabCallbacks {
 
 private func makeNativeTabView(items: [BrowserTabItem], selection: Binding<UUID>,
                                onClose: @escaping (UUID) -> Void,
+                               onMove: ((UUID, Int) -> Void)? = nil,
                                contents: [UUID: UnsafeMutablePointer<GtkWidget>] = [:]) -> UnsafeMutablePointer<GtkWidget> {
     let view = swift_adw_tab_view_new()!
     var pages: [(UUID, OpaquePointer)] = []
@@ -1311,7 +1323,7 @@ private func makeNativeTabView(items: [BrowserTabItem], selection: Binding<UUID>
         if item.id == selection.wrappedValue { swift_adw_tab_view_set_selected_page(view, page) }
     }
     let callbacks = Unmanaged.passRetained(BrowserTabCallbacks(
-        pages: pages, selection: selection, onClose: onClose
+        pages: pages, selection: selection, onClose: onClose, onMove: onMove
     )).toOpaque()
     g_object_set_data_full(UnsafeMutableRawPointer(view).assumingMemoryBound(to: GObject.self),
                            "swift-browser-tab-callbacks", callbacks) { pointer in
@@ -1336,6 +1348,16 @@ private func makeNativeTabView(items: [BrowserTabItem], selection: Binding<UUID>
             state.onClose(match.0); return 1
         } as @convention(c) (gpointer?, OpaquePointer?, gpointer?) -> gboolean, to: GCallback.self), callbacks, nil,
         GConnectFlags(rawValue: 0))
+    // Dragging a tab in the native tab bar or overview reorders it; the
+    // app's own order follows, as with the other backends' overview.
+    g_signal_connect_data(gpointer(view), "page-reordered",
+        unsafeBitCast({ (_: gpointer?, page: OpaquePointer?, position: gint, data: gpointer?) in
+            guard let page, let data else { return }
+            let state = Unmanaged<BrowserTabCallbacks>.fromOpaque(data).takeUnretainedValue()
+            guard let match = state.pages.first(where: { $0.1 == page }) else { return }
+            state.onMove?(match.0, Int(position))
+        } as @convention(c) (gpointer?, OpaquePointer?, gint, gpointer?) -> Void, to: GCallback.self), callbacks, nil,
+        GConnectFlags(rawValue: 0))
     swift_adw_tab_view_invalidate_thumbnails(view)
     return view
 }
@@ -1359,11 +1381,16 @@ extension BrowserTabContainer: GTKRenderable {
         adw_init()
         var contents: [UUID: UnsafeMutablePointer<GtkWidget>] = [:]
         for item in items {
-            contents[item.id] = UnsafeMutableRawPointer(gtkRenderView(content(item)))
+            // The same per-page state the other backends give their pages.
+            let isSelected = item.id == selection.wrappedValue
+            let page = content(item)
+                .environment(\.isBrowserTabToolbarActive, isSelected)
+                .environment(\.isBrowserTabVisible, isSelected)
+            contents[item.id] = UnsafeMutableRawPointer(gtkRenderView(page))
                 .assumingMemoryBound(to: GtkWidget.self)
         }
         let view = makeNativeTabView(items: items, selection: selection, onClose: onClose,
-                                     contents: contents)
+                                     onMove: onMove, contents: contents)
         let overview = swift_adw_tab_overview_new(view, view)!
         let bar = swift_adw_tab_bar_new(view)!
         let button = swift_adw_tab_button_new(view)!
