@@ -1233,8 +1233,18 @@ private struct BrowserTabSwipeToClose<Content: View>: View {
         content()
             .offset(x: offset)
             .modifier(BrowserTabCardOpacity(id: id, opacity: 1 - min(0.7, abs(offset) / (width * 1.4))))
-            #if os(iOS) || os(visionOS)
+            #if os(iOS)
             .gesture(BrowserTabTouchSwipe(onChange: follow, onEnd: settle))
+            #elseif os(visionOS)
+            // No UIKit recognizers in SwiftUI here: a drag with the same rules.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .onChanged { value in
+                        guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                        follow(value.translation.width)
+                    }
+                    .onEnded { value in settle(at: offset == 0 ? 0 : value.translation.width, velocity: value.velocity.width) }
+            )
             #elseif os(macOS)
             .overlay(BrowserTabTrackpadSwipe(onChange: follow, onEnd: { settle(at: $0, velocity: 0) }))
             #endif
@@ -1249,7 +1259,7 @@ private struct BrowserTabSwipeToClose<Content: View>: View {
     /// moving at `velocity` (points per second) as it lifted.
     private func settle(at translation: CGFloat, velocity: CGFloat) {
         guard !isFlungAway else { return }
-        let isFlick = abs(velocity) > 500 && (velocity < 0) == (translation < 0)
+        let isFlick = abs(translation) > 10 && abs(velocity) > 500 && (velocity < 0) == (translation < 0)
         let projected = translation + velocity * 0.25
         guard isClosable, abs(translation) > width * 0.45 || isFlick || abs(projected) > width * 1.1 else {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { offset = 0 }
@@ -1266,7 +1276,7 @@ private struct BrowserTabSwipeToClose<Content: View>: View {
     }
 }
 
-#if os(iOS) || os(visionOS)
+#if os(iOS)
 /// A horizontal pan over a card. It only begins for a mostly horizontal
 /// movement, and the scroll view's own pan waits for it to fail, so a
 /// sideways swipe is never taken over by scrolling (which cancelled quick
@@ -1274,8 +1284,8 @@ private struct BrowserTabSwipeToClose<Content: View>: View {
 /// A drag to reorder starts with a long press, which this doesn't take.
 private struct BrowserTabTouchSwipe: UIGestureRecognizerRepresentable {
     let onChange: (CGFloat) -> Void
-    /// The translation and the horizontal velocity at the end; a cancelled
-    /// pan ends at rest, where the card springs back.
+    /// The translation and the horizontal velocity at the end (zero for a
+    /// cancelled pan).
     let onEnd: (CGFloat, CGFloat) -> Void
 
     func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
@@ -1291,7 +1301,10 @@ private struct BrowserTabTouchSwipe: UIGestureRecognizerRepresentable {
         switch pan.state {
         case .began, .changed: onChange(translation)
         case .ended: onEnd(translation, pan.velocity(in: pan.view).x)
-        case .cancelled, .failed: onEnd(0, 0)
+        // Taken over (a scroll, a drag to reorder): settle where it is, so a
+        // card already pulled far enough still closes and any other springs
+        // back.
+        case .cancelled: onEnd(translation, 0)
         default: break
         }
     }
@@ -1300,8 +1313,10 @@ private struct BrowserTabTouchSwipe: UIGestureRecognizerRepresentable {
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
             guard let pan = recognizer as? UIPanGestureRecognizer else { return false }
-            let velocity = pan.velocity(in: pan.view)
-            return abs(velocity.x) > abs(velocity.y)
+            // By the distance moved so far, which a slow drag has as surely as a
+            // fast one (its velocity can still be zero here).
+            let moved = pan.translation(in: pan.view)
+            return abs(moved.x) > abs(moved.y)
         }
 
         func gestureRecognizer(_ recognizer: UIGestureRecognizer,
