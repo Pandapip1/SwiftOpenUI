@@ -486,7 +486,8 @@ private func gtkKeyEquivalentFromKeyval(_ keyval: guint) -> KeyEquivalent? {
 
 // MARK: - Window activation tracking
 
-/// Connects to "notify::is-active" to track window activation for @FocusedValue.
+/// Connects to "notify::is-active" to track window activation for
+/// @FocusedValue and `ApplicationActivity`.
 func gtkAttachWindowActivationHandler(to window: UnsafeMutablePointer<GtkWidget>) {
     let windowUD = gpointer(window)
     g_signal_connect_data(
@@ -503,9 +504,11 @@ func gtkAttachWindowActivationHandler(to window: UnsafeMutablePointer<GtkWidget>
 private let gtkWindowActivationHandler: @convention(c) (gpointer?, gpointer?, gpointer?) -> Void = { widget, _, userData in
     guard let widget else { return }
     let widgetPtr = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GtkWidget.self)
-    if gtk_swift_window_is_active(widgetPtr) != 0 {
+    let isActive = gtk_swift_window_is_active(widgetPtr) != 0
+    if isActive {
         FocusedValuesStore.shared.setActiveWindow(Int(bitPattern: userData))
     }
+    ApplicationActivity.windowActivityChanged(Int(bitPattern: userData), isActive: isActive)
 }
 
 // MARK: - GTK4 menu bar host
