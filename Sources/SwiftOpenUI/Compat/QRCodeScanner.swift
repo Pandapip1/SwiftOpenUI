@@ -18,6 +18,6 @@ public struct QRCodeScannerView: View {
 
     public var body: some View {
         Text("This device can’t scan QR codes.")
-            .onAppear(perform: onUnavailable)
+            .onAppear(onUnavailable)
     }
 }

@@ -101,20 +101,16 @@ private enum QRCaptureEvent: Sendable {
 
 /// The camera, on a queue of its own. Opening a camera, configuring the
 /// session and starting or stopping it can each block for a second or more,
-/// so the actor runs on its own serial queue, which is also the queue the
-/// camera delivers frames on: the frame callback runs isolated to the actor
-/// (`assumeIsolated`), and only Sendable results leave it.
+/// so the actor runs on its own serial queue (its executor), never the main
+/// thread. The session, its output and the frames stay with the actor and its
+/// frame receiver; only Sendable results leave them.
 private actor QRCaptureSession {
     private let queue = DispatchSerialQueue(label: "swiftopenui.qr-capture", qos: .userInitiated)
     nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
 
     private let session = AVCaptureSession()
     private let output = AVCaptureVideoDataOutput()
-    private let context = CIContext()
     private var receiver: QRFrameReceiver?
-    private var continuation: AsyncStream<QRCaptureEvent>.Continuation?
-    private var frameCount = 0
-    private var rotation: AVCaptureDevice.RotationCoordinator?
 
     /// Starts the camera, returning its events, or `nil` if this device's
     /// camera can't be opened.
@@ -131,15 +127,12 @@ private actor QRCaptureSession {
         output.alwaysDiscardsLateVideoFrames = true
         output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         session.addOutput(output)
-        let receiver = QRFrameReceiver(session: self)
+        let (events, continuation) = AsyncStream.makeStream(of: QRCaptureEvent.self,
+                                                            bufferingPolicy: .bufferingNewest(1))
+        let receiver = QRFrameReceiver(output: output, device: device, events: continuation)
         self.receiver = receiver
         output.setSampleBufferDelegate(receiver, queue: queue)
         session.commitConfiguration()
-        rotation = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
-
-        let (events, continuation) = AsyncStream.makeStream(of: QRCaptureEvent.self,
-                                                            bufferingPolicy: .bufferingNewest(1))
-        self.continuation = continuation
         session.startRunning()
         return events
     }
@@ -147,27 +140,50 @@ private actor QRCaptureSession {
     func stop() {
         if session.isRunning { session.stopRunning() }
         output.setSampleBufferDelegate(nil, queue: nil)
+        receiver?.finish()
         receiver = nil
-        continuation?.finish()
-        continuation = nil
+    }
+}
+
+/// Receives the camera's frames, one at a time on the session's queue: shows
+/// each, and every few frames reads it for a QR code. It belongs to the
+/// session (not Sendable); what it reports are Sendable values.
+private nonisolated final class QRFrameReceiver: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
+    private let output: AVCaptureVideoDataOutput
+    private let events: AsyncStream<QRCaptureEvent>.Continuation
+    private let context = CIContext()
+    private let rotation: AVCaptureDevice.RotationCoordinator
+    private var frameCount = 0
+    private var isFinished = false
+
+    init(output: AVCaptureVideoDataOutput, device: AVCaptureDevice,
+         events: AsyncStream<QRCaptureEvent>.Continuation) {
+        self.output = output
+        self.events = events
+        rotation = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
     }
 
-    /// A frame from the camera: shown, and every few frames read for a code.
-    fileprivate func process(_ buffer: CMSampleBuffer) {
-        guard let continuation, let pixels = CMSampleBufferGetImageBuffer(buffer) else { return }
+    func finish() {
+        isFinished = true
+        events.finish()
+    }
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput buffer: CMSampleBuffer,
+                       from connection: AVCaptureConnection) {
+        guard !isFinished, let pixels = CMSampleBufferGetImageBuffer(buffer) else { return }
         frameCount += 1
         // Keep the picture upright as the device turns.
-        if frameCount % 15 == 1, let rotation, let connection = output.connection(with: .video) {
+        if frameCount % 15 == 1 {
             let angle = rotation.videoRotationAngleForHorizonLevelCapture
             if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
         }
         if frameCount % 3 == 0, let code = Self.readQRCode(in: pixels) {
-            continuation.yield(.code(code))
+            events.yield(.code(code))
             return
         }
         let image = CIImage(cvPixelBuffer: pixels)
         if let frame = context.createCGImage(image, from: image.extent) {
-            continuation.yield(.frame(frame))
+            events.yield(.frame(frame))
         }
     }
 
@@ -176,23 +192,6 @@ private actor QRCaptureSession {
         request.symbologies = [.qr]
         try? VNImageRequestHandler(cvPixelBuffer: pixels).perform([request])
         return request.results?.lazy.compactMap(\.payloadStringValue).first
-    }
-}
-
-/// Receives the camera's frames on the session's queue and hands them to the
-/// session, which that queue runs.
-private final class QRFrameReceiver: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, Sendable {
-    private let session: QRCaptureSession
-
-    init(session: QRCaptureSession) {
-        self.session = session
-    }
-
-    func captureOutput(_ output: AVCaptureOutput, didOutput buffer: CMSampleBuffer,
-                       from connection: AVCaptureConnection) {
-        // Delivered on the session's own queue (its executor), so this is
-        // already isolated to it; assumeIsolated checks that at run time.
-        session.assumeIsolated { $0.process(buffer) }
     }
 }
 #endif
