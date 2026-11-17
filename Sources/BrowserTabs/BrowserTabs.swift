@@ -306,6 +306,11 @@ public struct BrowserTabContainer<Content: View>: View {
     private let content: (BrowserTabItem) -> Content
     private let overviewPresented: Binding<Bool>?
     @State private var showingOverview = false
+    /// False until the first frame is up: launch builds only the selected
+    /// tab's page, and the others are mounted right after, once (they then
+    /// stay mounted like every page). A launch with many restored tabs would
+    /// otherwise build all their pages before anything appears.
+    @State private var mountsEveryPage = false
     @Environment(\.browserTabControls) private var tabControls
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
@@ -386,6 +391,7 @@ public struct BrowserTabContainer<Content: View>: View {
                     let frame = card ?? area
                     let scale = area.width > 0 ? frame.width / area.width : 1
                     let isInteractive = isSelected && !isShowingOverview
+                    if mountsEveryPage || isSelected {
                     content(item)
                         .frame(width: area.width, height: area.height)
                         .clipShape(BrowserTabPageClip(
@@ -407,6 +413,7 @@ public struct BrowserTabContainer<Content: View>: View {
                         .zIndex(isSelected ? 1 : 0)
                         .environment(\.isBrowserTabToolbarActive, isInteractive)
                         .environment(\.isBrowserTabVisible, card != nil || isInteractive)
+                    }
                 }
                 // Each card's close button, over its page's top-trailing corner.
                 ForEach(items.filter { !$0.isPinned }) { item in
@@ -418,6 +425,15 @@ public struct BrowserTabContainer<Content: View>: View {
                 }
             }
             .frame(width: area.width, height: area.height, alignment: .topLeading)
+            .task {
+                // After the first frame (the selected page alone), mount the
+                // rest without animation.
+                guard !mountsEveryPage else { return }
+                try? await Task.sleep(for: .milliseconds(50))
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { mountsEveryPage = true }
+            }
             .mask(alignment: .topLeading) {
                 BrowserTabPageClip(cornerRadius: nil, bounds: layout.viewport == nil ? nil : visible)
             }
