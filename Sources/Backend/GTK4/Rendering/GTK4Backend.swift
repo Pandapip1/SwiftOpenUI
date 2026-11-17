@@ -497,9 +497,40 @@ func gtkAttachWindowActivationHandler(to window: UnsafeMutablePointer<GtkWidget>
         windowUD, nil,
         GConnectFlags(rawValue: 0)
     )
+    gtkAttachWindowLifecycleHandlers(to: window)
 }
 
-/// Handler for GtkWindow "notify::is-active" signal.
+/// Reports the window's life to `SceneLifecycle`: hidden and shown as
+/// phase changes, and its end on "unrealize", which every destroy (a user
+/// close included, once no handler vetoed it) does before it destroys the
+/// window's views. Activation is reported by the is-active handler.
+/// GTK emits these on the main thread.
+private func gtkAttachWindowLifecycleHandlers(to window: UnsafeMutablePointer<GtkWidget>) {
+    let windowUD = gpointer(window)
+    let voidHandlers: [(String, @convention(c) (gpointer?, gpointer?) -> Void)] = [
+        ("hide", { _, userData in
+            let id = Int(bitPattern: userData)
+            MainActor.assumeIsolated { SceneLifecycle.windowPhaseChanged(id, to: .background) }
+        }),
+        ("show", { _, userData in
+            let id = Int(bitPattern: userData)
+            MainActor.assumeIsolated { SceneLifecycle.windowPhaseChanged(id, to: .inactive) }
+        }),
+        ("unrealize", { _, userData in
+            let id = Int(bitPattern: userData)
+            MainActor.assumeIsolated { SceneLifecycle.windowWillEnd(id) }
+        }),
+    ]
+    for (signal, handler) in voidHandlers {
+        g_signal_connect_data(
+            gpointer(window), signal,
+            unsafeBitCast(handler, to: GCallback.self),
+            windowUD, nil, GConnectFlags(rawValue: 0)
+        )
+    }
+}
+
+/// Handler for GtkWindow "notify::is-active" signal.)
 /// Signature: (object, pspec, user_data) per GObject notify pattern.
 private let gtkWindowActivationHandler: @convention(c) (gpointer?, gpointer?, gpointer?) -> Void = { widget, _, userData in
     guard let widget else { return }
@@ -509,6 +540,8 @@ private let gtkWindowActivationHandler: @convention(c) (gpointer?, gpointer?, gp
         FocusedValuesStore.shared.setActiveWindow(Int(bitPattern: userData))
     }
     ApplicationActivity.windowActivityChanged(Int(bitPattern: userData), isActive: isActive)
+    let windowID = Int(bitPattern: userData)
+    MainActor.assumeIsolated { SceneLifecycle.windowPhaseChanged(windowID, to: isActive ? .active : .inactive) }
 }
 
 // MARK: - GTK4 menu bar host
@@ -872,6 +905,15 @@ public struct GTK4Backend: RenderBackend {
                 Unmanaged<AppActivateBox>.fromOpaque(userData!).release()
             },
             GConnectFlags(rawValue: 0)
+        )
+
+        // Quitting: views hear `.willTerminate` while their windows still exist.
+        g_signal_connect_data(
+            gpointer(appPtr), "shutdown",
+            unsafeBitCast({ (_: gpointer?, _: gpointer?) in
+                MainActor.assumeIsolated { SceneLifecycle.applicationWillTerminate() }
+            } as @convention(c) (gpointer?, gpointer?) -> Void, to: GCallback.self),
+            nil, nil, GConnectFlags(rawValue: 0)
         )
 
         // Match G_APPLICATION_HANDLES_OPEN: desktop custom-scheme launches are
