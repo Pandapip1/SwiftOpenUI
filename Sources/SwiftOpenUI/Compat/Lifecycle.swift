@@ -27,14 +27,14 @@ public enum LifecycleEvent: Sendable, Hashable {
 extension View {
     /// Calls `action` with the lifecycle events of the scene (window) that
     /// shows this view, and with application termination.
-    public func onLifecycle(perform action: @escaping (LifecycleEvent) -> Void) -> LifecycleObservingView<Self> {
+    public func onLifecycle(perform action: @escaping @MainActor (LifecycleEvent) -> Void) -> some View {
         LifecycleObservingView(content: self, action: action)
     }
 
     /// Calls `action` once, when the scene (window) showing this view goes
     /// away for good or the application quits, whichever comes first: the
     /// place to stop what the window owns (playback, audio, timers).
-    public func onSceneEnd(perform action: @escaping () -> Void) -> LifecycleObservingView<Self> {
+    public func onSceneEnd(perform action: @escaping @MainActor () -> Void) -> some View {
         // At most one of the two reaches a view: a scene that ended is no
         // longer observed, and no scene ends after termination began.
         onLifecycle { event in
@@ -46,7 +46,7 @@ extension View {
 /// Registers its action with `SceneLifecycle` for the window it appears in.
 public struct LifecycleObservingView<Content: View>: View {
     let content: Content
-    let action: (LifecycleEvent) -> Void
+    let action: @MainActor (LifecycleEvent) -> Void
     @State private var registration = SceneLifecycle.Registration()
     @Environment(\.windowID) private var windowID
 
@@ -66,7 +66,7 @@ public struct LifecycleObservingView<Content: View>: View {
 /// through `View.onLifecycle` and `View.onSceneEnd`.
 public enum SceneLifecycle {
     final class Registration {
-        var action: (LifecycleEvent) -> Void = { _ in }
+        var action: @MainActor (LifecycleEvent) -> Void = { _ in }
         var windowID = 0
         var attached = false
         /// Bumped on every attach, so a detach scheduled before a re-attach
