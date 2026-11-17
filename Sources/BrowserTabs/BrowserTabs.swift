@@ -1034,13 +1034,17 @@ private struct BrowserTabOverviewGrid<Card: View>: View {
 
     private func cell(_ item: BrowserTabItem) -> some View {
         let moveBy: ((Int) -> Void)? = onMove == nil ? nil : { offset in move(item.id, by: offset) }
-        return BrowserTabSwipeToClose(id: item.id, width: width, isClosable: !item.isPinned) {
+        var swipe = BrowserTabSwipeToClose(id: item.id, width: width, isClosable: !item.isPinned) {
             onClose(item.id)
         } content: {
             card(item, moveBy)
         }
-        .modifier(BrowserTabCardOpacity(id: item.id, opacity: drag.draggingID == item.id ? 0.45 : 1))
-        .modifier(BrowserTabReorderable(id: item.id, items: items, drag: drag, onMove: onMove))
+        // A reorder drag is over by the time a card is swiped, even if the
+        // system never reported its end.
+        swipe.onBegin = { drag.endIfStale() }
+        return swipe
+            .modifier(BrowserTabCardOpacity(id: item.id, opacity: drag.draggingID == item.id ? 0.45 : 1))
+            .modifier(BrowserTabReorderable(id: item.id, items: items, drag: drag, onMove: onMove))
     }
 
     private func move(_ id: UUID, by offset: Int) {
@@ -1135,6 +1139,7 @@ private final class BrowserTabDragState {
     /// outside any drop target doesn't leave its card dimmed and the grid
     /// reordered.
     func begin(_ id: UUID, order: [UUID]) -> NSItemProvider {
+        assert(draggingID == nil, "a reorder drag began while the last one was never reported as ended")
         draggingID = id
         liveOrder = order
         let token = BrowserTabDragToken(id: id) { [weak self] id in self?.cancel(id) }
@@ -1148,6 +1153,13 @@ private final class BrowserTabDragState {
         return provider
     }
     #endif
+
+    /// Forgets a drag the system never reported the end of, once something
+    /// else (a swipe) shows it is over: no card stays dimmed, no live order
+    /// stays in place of the real one.
+    func endIfStale() {
+        if draggingID != nil { reset() }
+    }
 
     /// Ends a drag that is still in progress without moving anything.
     func cancel(_ id: UUID) {
@@ -1223,6 +1235,8 @@ private struct BrowserTabSwipeToClose<Content: View>: View {
     let width: CGFloat
     let isClosable: Bool
     let onClose: () -> Void
+    /// Called as a swipe starts to move the card.
+    var onBegin: () -> Void = {}
     @ViewBuilder let content: () -> Content
 
     /// The swipe's position, or where a card is flung away to.
@@ -1252,6 +1266,7 @@ private struct BrowserTabSwipeToClose<Content: View>: View {
 
     private func follow(_ translation: CGFloat) {
         guard !isFlungAway else { return }
+        if offset == 0 { onBegin() }
         offset = isClosable ? translation : translation / 4
     }
 
@@ -1314,9 +1329,20 @@ private struct BrowserTabTouchSwipe: UIGestureRecognizerRepresentable {
         func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
             guard let pan = recognizer as? UIPanGestureRecognizer else { return false }
             // By the distance moved so far, which a slow drag has as surely as a
-            // fast one (its velocity can still be zero here).
-            let moved = pan.translation(in: pan.view)
-            return abs(moved.x) > abs(moved.y)
+            // fast one (its velocity can still be zero here), and by velocity
+            // when no distance is reported yet.
+            let moved = pan.translation(in: pan.view), velocity = pan.velocity(in: pan.view)
+            let sideways = abs(moved.x) + abs(velocity.x) * 0.05
+            let upright = abs(moved.y) + abs(velocity.y) * 0.05
+            return sideways > upright
+        }
+
+        /// Alongside anything but scrolling: the system's drag-and-drop
+        /// recognizers on each card (lifting, adding items), which can still be
+        /// waiting after a drag to reorder, must not hold a swipe back.
+        func gestureRecognizer(_ recognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            !(other is UIPanGestureRecognizer && other.view is UIScrollView)
         }
 
         func gestureRecognizer(_ recognizer: UIGestureRecognizer,
