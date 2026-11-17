@@ -39,6 +39,20 @@ var targets: [Target] = [
         }(),
         path: "Sources/CredentialStorage"
     ),
+    // Operating-system services with no UI: where application data lives, file
+    // protection, privacy identities and permissions, system performance
+    // reports. One API; each operating system's behaviour lives here.
+    .target(
+        name: "PlatformSupport",
+        dependencies: {
+            #if os(Linux)
+            return ["MetricKit"]
+            #else
+            return []
+            #endif
+        }(),
+        path: "Sources/PlatformSupport"
+    ),
     // Portable declarative UI model consumed by non-SwiftUI renderers.
     .target(
         name: "SwiftOpenUICore",
@@ -622,6 +636,7 @@ let package = Package(
             .library(name: "SwiftOpenUI", targets: ["SwiftOpenUI"]),
             .library(name: "CredentialStorage", targets: ["CredentialStorage"]),
             .library(name: "SecureMemory", targets: ["SecureMemory"]),
+            .library(name: "PlatformSupport", targets: ["PlatformSupport"]),
         ]
         if gtkBackendEnabled {
         p.append(.library(name: "WebKit", targets: ["WebKit"]))

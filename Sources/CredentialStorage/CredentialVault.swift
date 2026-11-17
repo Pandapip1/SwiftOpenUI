@@ -114,6 +114,22 @@ public enum CredentialStorageMode: String, Codable, Sendable, CaseIterable {
     /// only after the user explicitly opts in.
     case legacyLoginKeychain
     #endif
+
+    /// The weaker store this platform offers when `.dataProtection` refuses
+    /// the process, or nil where there is none. An application may use it
+    /// only after the user explicitly opts in, so it asks the user only
+    /// where this is non-nil, with one code path on every platform.
+    ///
+    /// macOS: `.legacyLoginKeychain` (ad-hoc signed builds cannot use the
+    /// Data Protection Keychain). The iOS family and Linux's Secret Service
+    /// have no weaker alternative: nil.
+    public static var optInFallback: CredentialStorageMode? {
+        #if os(macOS)
+        .legacyLoginKeychain
+        #else
+        nil
+        #endif
+    }
 }
 
 /// Whether a vault can store secrets, as established by
