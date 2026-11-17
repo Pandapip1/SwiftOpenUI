@@ -90,11 +90,10 @@ enum Malcontent {
         let allowsUserInstallation = value("AllowUserInstallation") as? Bool ?? true
 
         let filtersApps = isAllowlist || !appEntries.isEmpty
-        let filtersContent = !oarsSections.isEmpty
-        guard filtersApps || filtersContent || !allowsUserInstallation else { return .notSupervised }
-        // Any OARS content filter: only all-ages content is within it.
+        let filter = oarsSections.compactMapValues { $0 as? String }
+        guard filtersApps || !filter.isEmpty || !allowsUserInstallation else { return .notSupervised }
         return .supervised(allowsInstallingApps: allowsUserInstallation,
-                           contentAgeLimit: filtersContent ? 0 : nil)
+                           contentAgeLimit: OARS.contentAgeLimit(filter: filter))
     }
 
     private static let busctlPaths = ["/usr/bin/busctl", "/run/current-system/sw/bin/busctl", "/bin/busctl"]
@@ -116,3 +115,69 @@ enum Malcontent {
     }
 }
 #endif
+
+/// Open Age Ratings Service (OARS) categories and their ages, for turning a
+/// per-category content filter into one age limit.
+///
+/// The ages are libappstream's published OARS → Common Sense Media mapping
+/// (`oars_to_csm_mappings` in AppStream's src/as-content-rating.c, used by
+/// `as_content_rating_attribute_to_csm_age`, which gnome-software and
+/// malcontent rely on): for each category, the age at which content of
+/// intensity none, mild, moderate and intense is appropriate.
+enum OARS {
+    static let intensities = ["none", "mild", "moderate", "intense"]
+
+    static let ages: [String: [Int]] = [
+        // OARS 1.0
+        "violence-cartoon": [0, 3, 4, 6],
+        "violence-fantasy": [0, 3, 7, 8],
+        "violence-realistic": [0, 4, 9, 14],
+        "violence-bloodshed": [0, 9, 11, 18],
+        "violence-sexual": [0, 18, 18, 18],
+        "drugs-alcohol": [0, 11, 13, 16],
+        "drugs-narcotics": [0, 12, 14, 17],
+        "drugs-tobacco": [0, 10, 13, 13],
+        "sex-nudity": [0, 12, 14, 14],
+        "sex-themes": [0, 13, 14, 15],
+        "language-profanity": [0, 8, 11, 14],
+        "language-humor": [0, 3, 8, 14],
+        "language-discrimination": [0, 9, 10, 11],
+        "money-advertising": [0, 7, 8, 10],
+        "money-gambling": [0, 7, 10, 18],
+        "money-purchasing": [0, 12, 14, 15],
+        "social-chat": [0, 4, 10, 13],
+        "social-audio": [0, 15, 15, 15],
+        "social-contacts": [0, 12, 12, 12],
+        "social-info": [0, 0, 13, 13],
+        "social-location": [0, 13, 13, 13],
+        // OARS 1.1
+        "sex-homosexuality": [0, 13, 14, 15],
+        "sex-prostitution": [0, 12, 14, 18],
+        "sex-adultery": [0, 8, 10, 18],
+        "sex-appearance": [0, 10, 10, 15],
+        "violence-worship": [0, 13, 15, 18],
+        "violence-desecration": [0, 13, 15, 18],
+        "violence-slavery": [0, 13, 15, 18],
+    ]
+
+    /// The highest content age a filter allows, or nil for no limit.
+    ///
+    /// The filter maps a category to the most intense level allowed in it.
+    /// A source is rated only by age, so a source rated A may contain, in
+    /// every category, anything appropriate at age A. It fits a category
+    /// whose filter allows level L only if A is below the age of the next
+    /// level up: the category's limit is that age minus one (no limit when
+    /// L is "intense"). The strictest category wins, never below 0. An
+    /// unknown category or level counts as allowing nothing above "none".
+    static func contentAgeLimit(filter: [String: String]) -> Int? {
+        var limit: Int?
+        for (category, allowed) in filter {
+            let level = intensities.firstIndex(of: allowed) ?? 0
+            guard level < intensities.count - 1 else { continue }
+            let next = ages[category]?[level + 1] ?? 0
+            let categoryLimit = max(0, next - 1)
+            limit = min(limit ?? categoryLimit, categoryLimit)
+        }
+        return limit
+    }
+}
