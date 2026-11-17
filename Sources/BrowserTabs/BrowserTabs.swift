@@ -495,6 +495,9 @@ private struct BrowserTabOverviewHeader: View {
             Button("Done", action: confirm)
                 .fontWeight(.semibold)
         }
+        // The row is as tall as its controls; the separator matches it
+        // instead of stretching to the space available.
+        .fixedSize(horizontal: false, vertical: true)
         .padding()
     }
 }
@@ -514,7 +517,7 @@ private struct BrowserTabOverviewCard: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Button(action: onSelect) {
+            selectable {
                 VStack(spacing: 0) {
                     HStack(spacing: 8) {
                         Color.clear.frame(width: 28, height: 28)
@@ -536,7 +539,6 @@ private struct BrowserTabOverviewCard: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
             .accessibilityLabel("Open \(item.title)")
             .accessibilityActions {
                 if let onMoveBy {
@@ -565,6 +567,24 @@ private struct BrowserTabOverviewCard: View {
         .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
         #if os(tvOS)
         .focusSection()
+        #endif
+    }
+
+    /// Opens the tab when the card is chosen. On tvOS that is a focusable
+    /// button. Elsewhere it is a tap, which a swipe or drag cancels (a
+    /// button would also fire at the end of a quick swipe to close, opening
+    /// the tab instead); it is still a button to accessibility.
+    @ViewBuilder
+    private func selectable<Label: View>(@ViewBuilder _ label: () -> Label) -> some View {
+        #if os(tvOS)
+        Button(action: onSelect, label: label)
+            .buttonStyle(.plain)
+        #else
+        label()
+            .onTapGesture(perform: onSelect)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(.default, onSelect)
         #endif
     }
 
