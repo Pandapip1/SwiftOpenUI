@@ -70,10 +70,6 @@ public struct BrowserHistoryControls: View {
 }
 #endif
 
-private struct BrowserTabOverviewPreviewKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
 private struct BrowserTabToolbarActiveKey: EnvironmentKey {
     static let defaultValue = true
 }
@@ -82,29 +78,21 @@ private struct BrowserTabVisibleKey: EnvironmentKey {
     static let defaultValue = true
 }
 
-public extension EnvironmentValues {
-    /// True while a page is drawn as a preview rather than as itself. The tab
-    /// overview never sets it: its cards show each tab's own live page, which
-    /// must go on behaving normally (keep playing, keep its state).
-    var isBrowserTabOverviewPreview: Bool {
-        get { self[BrowserTabOverviewPreviewKey.self] }
-        set { self[BrowserTabOverviewPreviewKey.self] = newValue }
-    }
-
-
+/// The tab container's per-page state. Internal on purpose: pages react to it
+/// only through this module's modifiers (`browserPageToolbarItem`,
+/// `browserPageSearchField`, `browserTaskOnceVisible`,
+/// `browserTaskWhileVisible`), which never change a page's own structure. A
+/// page that branched on these values itself would be rebuilt, losing its
+/// state, every time its tab was switched to or from.
+extension EnvironmentValues {
     /// True only for the selected tab while the normal browser view is shown.
-    /// Inactive tabs remain mounted, so a page should only add items to its
-    /// own toolbar while this is true. Pages never add to the tab chrome.
     var isBrowserTabToolbarActive: Bool {
         get { self[BrowserTabToolbarActiveKey.self] }
         set { self[BrowserTabToolbarActiveKey.self] = newValue }
     }
 
     /// True while the page is on screen: its tab is selected, or the overview
-    /// shows its card. Every tab's page stays mounted, so work a page only
-    /// needs while it can be seen (initial loads, polling, refresh loops)
-    /// should wait for this, and idle while it is false, instead of running
-    /// in every background tab.
+    /// shows its card.
     var isBrowserTabVisible: Bool {
         get { self[BrowserTabVisibleKey.self] }
         set { self[BrowserTabVisibleKey.self] = newValue }
@@ -138,25 +126,22 @@ private struct BrowserPageToolbarItem<Item: View>: ViewModifier {
     let placement: BrowserTabToolbarPlacement
     let item: () -> Item
 
-    @ViewBuilder
     func body(content: Content) -> some View {
-        #if os(tvOS)
-        content
-        #else
         content.toolbar {
             if isActive {
                 ToolbarItem(placement: toolbarPlacement) { item() }
             }
         }
-        #endif
     }
 
-    #if !os(tvOS)
     private var toolbarPlacement: ToolbarItemPlacement {
         switch placement {
         #if os(iOS)
         case .leading: .topBarLeading
         case .trailing: .topBarTrailing
+        #elseif os(tvOS)
+        case .leading: .automatic
+        case .trailing: .primaryAction
         #else
         case .leading: .navigation
         case .trailing: .primaryAction
@@ -164,7 +149,143 @@ private struct BrowserPageToolbarItem<Item: View>: ViewModifier {
         case .principal: .principal
         }
     }
-    #endif
+}
+
+public extension View {
+    /// The page's search field, in the page's own chrome, for as long as the
+    /// page exists. It never changes the page's structure (so switching tabs
+    /// doesn't rebuild the page): pages with their own navigation bar keep a
+    /// native search field there; on macOS, where all tabs share the window
+    /// toolbar, the field is a native search field in the toolbar while the
+    /// page's tab is the active one. Return calls `onSubmit`.
+    func browserPageSearchField(text: Binding<String>, prompt: String,
+                                onSubmit: @escaping () -> Void) -> some View {
+        modifier(BrowserPageSearchField(text: text, prompt: prompt, onSubmit: onSubmit))
+    }
+
+    /// Runs `action` for `id` once the page is first on screen, instead of in
+    /// every background tab (tabs stay mounted). Hiding the page doesn't
+    /// cancel finished work; it runs again only when `id` changes, or if it
+    /// was cancelled before finishing.
+    func browserTaskOnceVisible<ID: Equatable & Sendable>(
+        id: ID, _ action: @escaping @MainActor () async -> Void
+    ) -> some View {
+        modifier(BrowserOnceVisibleTask(id: id, action: action))
+    }
+
+    /// Runs `action` whenever the page comes on screen and cancels it when the
+    /// page goes off screen, for work only worth doing while the page can be
+    /// seen, such as watching for changes.
+    func browserTaskWhileVisible(_ action: @escaping @MainActor () async -> Void) -> some View {
+        modifier(BrowserWhileVisibleTask(action: action))
+    }
+}
+
+private struct BrowserPageSearchField: ViewModifier {
+    @Environment(\.isBrowserTabToolbarActive) private var isActive
+    @Binding var text: String
+    let prompt: String
+    let onSubmit: () -> Void
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content.toolbar {
+            if isActive {
+                ToolbarItem(placement: .principal) {
+                    BrowserToolbarSearchField(text: $text, prompt: prompt, onSubmit: onSubmit)
+                        .frame(minWidth: 220, idealWidth: 380, maxWidth: 520)
+                }
+            }
+        }
+        #else
+        content
+            .searchable(text: $text, prompt: prompt)
+            .onSubmit(of: .search, onSubmit)
+        #endif
+    }
+}
+
+#if os(macOS)
+/// A native search field for the window toolbar: Return submits, and the
+/// field draws its own focus ring and insets.
+private struct BrowserToolbarSearchField: NSViewRepresentable {
+    @Binding var text: String
+    let prompt: String
+    let onSubmit: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text, onSubmit: onSubmit) }
+
+    func makeNSView(context: Context) -> NSSearchField {
+        let field = NSSearchField()
+        field.placeholderString = prompt
+        field.sendsWholeSearchString = true
+        field.delegate = context.coordinator
+        field.target = context.coordinator
+        field.action = #selector(Coordinator.submit(_:))
+        return field
+    }
+
+    func updateNSView(_ field: NSSearchField, context: Context) {
+        context.coordinator.text = $text
+        context.coordinator.onSubmit = onSubmit
+        if field.stringValue != text { field.stringValue = text }
+        field.placeholderString = prompt
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        var text: Binding<String>
+        var onSubmit: () -> Void
+
+        init(text: Binding<String>, onSubmit: @escaping () -> Void) {
+            self.text = text
+            self.onSubmit = onSubmit
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSSearchField else { return }
+            text.wrappedValue = field.stringValue
+        }
+
+        @objc func submit(_ sender: NSSearchField) {
+            text.wrappedValue = sender.stringValue
+            guard !sender.stringValue.isEmpty else { return }
+            onSubmit()
+        }
+    }
+}
+#endif
+
+private struct BrowserOnceVisibleTask<ID: Equatable & Sendable>: ViewModifier {
+    @Environment(\.isBrowserTabVisible) private var isVisible
+    let id: ID
+    let action: @MainActor () async -> Void
+    @State private var completedID: ID?
+
+    func body(content: Content) -> some View {
+        content.task(id: BrowserVisibleTaskKey(id: id, isVisible: isVisible)) {
+            guard isVisible, completedID != id else { return }
+            await action()
+            if !Task.isCancelled { completedID = id }
+        }
+    }
+}
+
+private struct BrowserVisibleTaskKey<ID: Equatable & Sendable>: Equatable, Sendable {
+    let id: ID
+    let isVisible: Bool
+}
+
+private struct BrowserWhileVisibleTask: ViewModifier {
+    @Environment(\.isBrowserTabVisible) private var isVisible
+    let action: @MainActor () async -> Void
+
+    func body(content: Content) -> some View {
+        content.task(id: isVisible) {
+            guard isVisible else { return }
+            await action()
+        }
+    }
 }
 
 /// A set of tabs, each holding one page. Every page is mounted once and stays
