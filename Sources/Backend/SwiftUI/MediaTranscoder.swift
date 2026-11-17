@@ -21,7 +21,7 @@ public enum MediaTranscoder {
 
     /// The system offers HEVC export (hardware encoders on Apple silicon and
     /// recent iOS devices).
-    public static var isAvailable: Bool {
+    nonisolated public static var isAvailable: Bool {
         AVAssetExportSession.allExportPresets().contains(AVAssetExportPresetHEVCHighestQuality)
     }
 

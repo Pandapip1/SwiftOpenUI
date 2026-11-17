@@ -20,8 +20,10 @@ public struct ProgressRing: View {
     }
 }
 
-private struct ProgressArc: Shape {
+private struct ProgressArc: Shape, PrimitiveView {
+    typealias Body = Never
     let fraction: Double
+    var body: Never { fatalError() }
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
