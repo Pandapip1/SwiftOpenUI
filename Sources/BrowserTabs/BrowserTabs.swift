@@ -443,19 +443,12 @@ private struct BrowserTabOverview: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text("Tabs").font(.headline)
-                Spacer()
-                if let newTabControl { newTabControl }
-                Button("Done", action: dismiss)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            BrowserTabOverviewHeader(title: "Tabs", secondary: newTabControl, confirm: dismiss)
 
             GeometryReader { geometry in
                 let spacing: CGFloat = 20
-                let columns = max(2, Int((geometry.size.width - 32 + spacing) / (220 + spacing)))
-                let width = (geometry.size.width - 32 - CGFloat(columns - 1) * spacing) / CGFloat(columns)
+                let columns = max(2, Int((geometry.size.width + spacing) / (220 + spacing)))
+                let width = (geometry.size.width - CGFloat(columns - 1) * spacing) / CGFloat(columns)
                 let previewHeight = width * pageSize.height / max(1, pageSize.width)
                 ScrollView {
                     BrowserTabOverviewGrid(items: items, columns: columns, width: width, spacing: spacing,
@@ -466,15 +459,43 @@ private struct BrowserTabOverview: View {
                                                onClose: item.isPinned ? nil : { onClose(item.id) },
                                                onMoveBy: moveBy)
                     }
-                    .padding(16)
+                    .padding(.vertical)
                 }
                 // Adds the viewport to what the cards inside report.
                 .transformAnchorPreference(key: BrowserTabOverviewLayout.self, value: .bounds) { layout, viewport in
                     layout.viewport = viewport
                 }
             }
+            .padding(.horizontal)
         }
         .background(Color.secondary.opacity(0.08))
+    }
+}
+
+/// The overview's header. Its controls have fixed roles, so their order and
+/// grouping are always the same: the title on the leading edge; on the
+/// trailing edge the secondary action (new tab), a separator, and the
+/// confirming action (Done) last, on the outer edge, as toolbars place it.
+/// Spacing is the platform's standard padding.
+private struct BrowserTabOverviewHeader: View {
+    let title: String
+    /// An optional secondary action, such as opening a new tab.
+    let secondary: AnyView?
+    /// Closes the overview.
+    let confirm: () -> Void
+
+    var body: some View {
+        HStack {
+            Text(title).font(.headline)
+            Spacer()
+            if let secondary {
+                secondary
+                Divider()
+            }
+            Button("Done", action: confirm)
+                .fontWeight(.semibold)
+        }
+        .padding()
     }
 }
 
