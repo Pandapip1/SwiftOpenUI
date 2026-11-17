@@ -19,7 +19,8 @@ public enum AgeAssurance {
         /// Either bound can be open. The bounds are no finer than the gates
         /// that were asked for.
         case range(lowerBound: Int?, upperBound: Int?)
-        /// The person, or the parent managing their account, chose not to share.
+        /// The person, or whoever manages their account, chose not to share.
+        /// Not an age and not "unavailable": what it means is the app's call.
         case declined
         /// This platform, account or region has no age source right now.
         case unavailable
