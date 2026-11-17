@@ -573,13 +573,18 @@ public struct BrowserTabContainer<Content: View>: View {
                     let isSelected = selection.wrappedValue == item.id
                     let card = layout.cards[item.id].map { proxy[$0] }
                     let frame = card ?? area
-                    let scale = area.width > 0 ? frame.width / area.width : 1
+                    // A card's page is laid out at the tab's real size and scaled to fill
+                    // the card, cropped from the top leading corner.
+                    let scale = card.map { card in
+                        max(card.width / max(area.width, 1), card.height / max(area.height, 1))
+                    } ?? 1
                     let isInteractive = isSelected && !isShowingOverview
                     if mountsEveryPage || isSelected {
                     content(item)
                         .frame(width: area.width, height: area.height)
                         .clipShape(BrowserTabPageClip(
-                            cornerRadius: card.map { _ in BrowserTabOverviewCard.cornerRadius / max(scale, 0.01) }))
+                            cornerRadius: card.map { _ in BrowserTabOverviewCard.cornerRadius / max(scale, 0.01) },
+                            size: card.map { CGSize(width: $0.width / max(scale, 0.01), height: $0.height / max(scale, 0.01)) }))
                         .scaleEffect(scale, anchor: .topLeading)
                         .offset(x: frame.minX, y: frame.minY)
                         // A card's page fades with its card as it is swiped off or dragged.
@@ -807,11 +812,22 @@ private struct BrowserTabControlsPlacement: ViewModifier {
         #if os(iOS)
         VStack(spacing: 0) {
             content
-            if let controls { controls }
+            if let controls {
+                // A floating bar of glass, as Safari's.
+                controls
+                    .modifier(BrowserTabGlass(shape: Capsule()))
+                    .padding(.horizontal)
+                    .padding(.vertical, 4)
+            }
         }
         #elseif os(tvOS)
         VStack(spacing: 0) {
-            if let controls { controls }
+            if let controls {
+                controls
+                    .modifier(BrowserTabGlass(shape: Capsule()))
+                    .padding(.horizontal)
+                    .padding(.vertical, 4)
+            }
             content
         }
         #else
@@ -861,10 +877,20 @@ private struct BrowserTabPageClip: Shape {
     var cornerRadius: CGFloat?
     /// The area to keep, in the shape's own coordinates; `nil` for all of it.
     var bounds: CGRect?
+    /// In a card, the part of the page the card shows, from its top leading
+    /// corner; `nil` for all of it.
+    var size: CGSize?
+
+    init(cornerRadius: CGFloat?, bounds: CGRect? = nil, size: CGSize? = nil) {
+        self.cornerRadius = cornerRadius
+        self.bounds = bounds
+        self.size = size
+    }
 
     func path(in rect: CGRect) -> Path {
         if let cornerRadius {
-            return RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).path(in: rect)
+            let shown = size.map { CGRect(origin: rect.origin, size: $0) } ?? rect
+            return RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).path(in: shown)
         }
         return Path(bounds ?? rect.insetBy(dx: -100_000, dy: -100_000))
     }
@@ -925,8 +951,9 @@ private struct BrowserTabOverview: View {
                 let spacing: CGFloat = 16
                 let columns = max(2, Int((geometry.size.width + spacing) / (220 + spacing)))
                 let width = (geometry.size.width - CGFloat(columns - 1) * spacing) / CGFloat(columns)
-                // Cards have the tab area's shape, so the page fits exactly.
-                let previewHeight = width * pageSize.height / max(1, pageSize.width)
+                // Cards are 2:3 in portrait and 3:2 in landscape, whatever the
+                // window's exact shape; each page fills its card.
+                let previewHeight = pageSize.height >= pageSize.width ? width * 3 / 2 : width * 2 / 3
                 ScrollView {
                     BrowserTabOverviewGrid(items: items, columns: columns, width: width, spacing: spacing,
                                            onMove: onMove, onClose: onClose) { item, moveBy in
@@ -951,6 +978,65 @@ private struct BrowserTabOverview: View {
     }
 }
 
+/// The tab system's controls in the system's Liquid Glass where it has it
+/// (iOS, macOS and tvOS 26), and a material before that and on visionOS,
+/// whose own glass the window already provides. One look for every bar and
+/// control the tab system draws, never a custom background.
+private struct BrowserTabGlass<S: Shape>: ViewModifier {
+    let shape: S
+    var isInteractive = false
+
+    func body(content: Content) -> some View {
+        #if os(visionOS)
+        content.background(.thinMaterial, in: shape)
+        #else
+        if #available(iOS 26.0, macOS 26.0, tvOS 26.0, *) {
+            content.glassEffect(isInteractive ? .regular.interactive() : .regular, in: shape)
+        } else {
+            content.background(.thinMaterial, in: shape)
+        }
+        #endif
+    }
+}
+
+/// A tab-system button in glass: `isProminent` for the confirming action
+/// (the overview's Done), tinted as the system tints it.
+private struct BrowserTabGlassButtonStyle: ViewModifier {
+    var isProminent = false
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if os(visionOS)
+        if isProminent { content.buttonStyle(.borderedProminent) } else { content.buttonStyle(.bordered) }
+        #else
+        if #available(iOS 26.0, macOS 26.0, tvOS 26.0, *) {
+            if isProminent { content.buttonStyle(.glassProminent) } else { content.buttonStyle(.glass) }
+        } else if isProminent {
+            content.buttonStyle(.borderedProminent)
+        } else {
+            content.buttonStyle(.bordered)
+        }
+        #endif
+    }
+}
+
+/// Lets neighbouring glass controls blend as the system's do.
+private struct BrowserTabGlassGroup<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        #if os(visionOS)
+        content()
+        #else
+        if #available(iOS 26.0, macOS 26.0, tvOS 26.0, *) {
+            GlassEffectContainer { content() }
+        } else {
+            content()
+        }
+        #endif
+    }
+}
+
 /// The overview's bar. Its controls have fixed roles, so their order is
 /// always the same: the secondary action (new tab) on the leading edge, the
 /// tab count in the middle, and the confirming action (Done) on the trailing
@@ -963,30 +1049,37 @@ private struct BrowserTabOverviewBar: View {
     let confirm: () -> Void
 
     var body: some View {
-        HStack {
+        BrowserTabGlassGroup {
             HStack {
-                if let secondary { secondary }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+                HStack {
+                    if let secondary {
+                        secondary
+                            .menuIndicator(.hidden)
+                            .buttonBorderShape(.circle)
+                            .modifier(BrowserTabGlassButtonStyle())
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(tabCount == 1 ? "1 Tab" : "\(tabCount) Tabs")
-                .font(.headline)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .background(.thinMaterial, in: Capsule())
-                .accessibilityAddTraits(.isHeader)
+                Text(tabCount == 1 ? "1 Tab" : "\(tabCount) Tabs")
+                    .font(.headline)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .modifier(BrowserTabGlass(shape: Capsule()))
+                    .accessibilityAddTraits(.isHeader)
 
-            Button(action: confirm) {
-                Image(systemName: "checkmark")
-                    .font(.headline.weight(.semibold))
-                    .padding(6)
+                Button(action: confirm) {
+                    Image(systemName: "checkmark")
+                        .font(.headline.weight(.semibold))
+                        .padding(6)
+                }
+                .buttonBorderShape(.circle)
+                .modifier(BrowserTabGlassButtonStyle(isProminent: true))
+                .accessibilityLabel("Done")
+                .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.circle)
-            .accessibilityLabel("Done")
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding()
         }
-        .padding()
     }
 }
 
@@ -1080,7 +1173,7 @@ private struct BrowserTabCardCloseButton: View {
             Image(systemName: "xmark")
                 .font(.caption2.weight(.bold))
                 .frame(width: 24, height: 24)
-                .background(.ultraThinMaterial, in: Circle())
+                .modifier(BrowserTabGlass(shape: Circle(), isInteractive: true))
                 // A small mark, as Safari draws it, with a finger-sized target.
                 .padding(10)
                 .contentShape(Rectangle())
@@ -1554,8 +1647,7 @@ public struct BrowserTabBar: View {
                     .onChange(of: geometry.size.width, initial: true) { width = geometry.size.width }
             }
             .padding(.horizontal, 2).padding(.vertical, 2)
-            .background(Capsule().fill(Color.primary.opacity(0.05))
-                .overlay(Capsule().stroke(Color.primary.opacity(0.1), lineWidth: 0.5)))
+            .modifier(BrowserTabGlass(shape: Capsule()))
             if let newTabControl {
                 newTabControl.modifier(BrowserTabStripControlStyle())
             }
