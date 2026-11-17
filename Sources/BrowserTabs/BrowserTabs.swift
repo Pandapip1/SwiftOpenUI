@@ -607,7 +607,7 @@ public struct BrowserTabContainer<Content: View>: View {
                 ForEach(items.filter { !$0.isPinned }) { item in
                     if let card = layout.cards[item.id].map({ proxy[$0] }) {
                         BrowserTabCardCloseButton(title: item.title) { onClose(item.id) }
-                            .position(x: card.maxX - 22, y: card.minY + 22)
+                            .position(x: card.maxX - 18, y: card.minY + 18)
                             .opacity(layout.opacities[item.id, default: 1])
                             .zIndex(2)
                     }
@@ -1028,7 +1028,7 @@ private struct BrowserTabOverviewCard: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
-                .font(.subheadline.weight(.medium))
+                .font(.footnote.weight(.medium))
                 .frame(width: width)
             }
             .contentShape(Rectangle())
@@ -1078,10 +1078,12 @@ private struct BrowserTabCardCloseButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "xmark")
-                .font(.caption.weight(.bold))
-                .frame(width: 28, height: 28)
+                .font(.caption2.weight(.bold))
+                .frame(width: 24, height: 24)
                 .background(.ultraThinMaterial, in: Circle())
-                .contentShape(Circle())
+                // A small mark, as Safari draws it, with a finger-sized target.
+                .padding(10)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Close \(title)")

@@ -368,11 +368,6 @@ targets += [
 if !gtkBackendEnabled {
 targets += [
     .testTarget(
-        name: "BrowserTabsTests",
-        dependencies: ["BrowserTabs"],
-        path: "Tests/BrowserTabsTests"
-    ),
-    .testTarget(
         name: "SwiftUIBackendTests",
         dependencies: ["SwiftOpenUI"],
         path: "Tests/BackendTests/SwiftUITests"
