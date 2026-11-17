@@ -5,8 +5,9 @@ import ImageIO
 import SwiftUI
 import Synchronization
 
-/// `AsyncImage` for lists of thumbnails: the image is fetched through the
-/// shared URL cache, then decoded and downsampled away from the main thread,
+/// `AsyncImage` for lists of thumbnails: the image is fetched with a session
+/// of its own (ephemeral: no cookies, credentials or disk cache shared with
+/// anything else), then decoded and downsampled away from the main thread,
 /// and recently decoded images are kept so scrolling back shows them at once.
 /// SwiftUI's own `AsyncImage` hands over images that are only decoded when
 /// first drawn, on the main thread, which makes scrolling stutter.
@@ -47,9 +48,21 @@ nonisolated struct DecodedImage: Sendable {
     /// Thumbnails never need more than this many pixels on their long side.
     private static let maximumPixelSize = 720
 
+    /// Image requests share no state with the app or its web views: no
+    /// cookies are sent or kept, no credentials are stored, and the only cache
+    /// is this session's own, in memory.
+    private static let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCredentialStorage = nil
+        configuration.urlCache = URLCache(memoryCapacity: 16 * 1_024 * 1_024, diskCapacity: 0)
+        return URLSession(configuration: configuration)
+    }()
+
     @concurrent
     static func load(_ url: URL) async throws -> DecodedImage {
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await session.data(from: url)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw URLError(.badServerResponse)
         }
