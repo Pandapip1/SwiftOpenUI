@@ -75,6 +75,10 @@ private struct BrowserTabToolbarActiveKey: EnvironmentKey {
     static let defaultValue = true
 }
 
+private struct BrowserTabVisibleKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
 public extension EnvironmentValues {
     /// True while a page is drawn as a preview rather than as itself. The tab
     /// overview never sets it: its cards show each tab's own live page, which
@@ -91,6 +95,16 @@ public extension EnvironmentValues {
     var isBrowserTabToolbarActive: Bool {
         get { self[BrowserTabToolbarActiveKey.self] }
         set { self[BrowserTabToolbarActiveKey.self] = newValue }
+    }
+
+    /// True while the page is on screen: its tab is selected, or the overview
+    /// shows its card. Every tab's page stays mounted, so work a page only
+    /// needs while it can be seen (initial loads, polling, refresh loops)
+    /// should wait for this, and idle while it is false, instead of running
+    /// in every background tab.
+    var isBrowserTabVisible: Bool {
+        get { self[BrowserTabVisibleKey.self] }
+        set { self[BrowserTabVisibleKey.self] = newValue }
     }
 }
 
@@ -168,6 +182,7 @@ public struct BrowserTabContainer<Content: View>: View {
     private let content: (BrowserTabItem) -> Content
     private let overviewPresented: Binding<Bool>?
     @State private var showingOverview = false
+    @Environment(\.browserTabControls) private var tabControls
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
                 onMove: ((UUID, Int) -> Void)? = nil,
@@ -226,6 +241,7 @@ public struct BrowserTabContainer<Content: View>: View {
                 pages(size: geometry.size, layout: isShowingOverview ? layout : .init())
             }
         }
+        .modifier(BrowserTabControlsPlacement(controls: isShowingOverview ? nil : tabControls))
         .animation(.spring(response: 0.42, dampingFraction: 0.86), value: isShowingOverview)
         .toolbar { overviewToolbar }
     }
@@ -248,10 +264,7 @@ public struct BrowserTabContainer<Content: View>: View {
                     let isInteractive = isSelected && !isShowingOverview
                     content(item)
                         .frame(width: area.width, height: area.height)
-                        .clipShape(UnevenRoundedRectangle(
-                            bottomLeadingRadius: card == nil ? 0 : 14 / max(scale, 0.01),
-                            bottomTrailingRadius: card == nil ? 0 : 14 / max(scale, 0.01),
-                            style: .continuous))
+                        .clipShape(BrowserTabPageClip(cornerRadius: card.map { _ in 14 / max(scale, 0.01) }))
                         .scaleEffect(scale, anchor: .topLeading)
                         .offset(x: frame.minX, y: frame.minY)
                         .opacity(card != nil || isInteractive ? 1 : 0)
@@ -268,13 +281,12 @@ public struct BrowserTabContainer<Content: View>: View {
                         // order cannot leave an inactive surface above it.
                         .zIndex(isSelected ? 1 : 0)
                         .environment(\.isBrowserTabToolbarActive, isInteractive)
+                        .environment(\.isBrowserTabVisible, card != nil || isInteractive)
                 }
             }
             .frame(width: area.width, height: area.height, alignment: .topLeading)
             .mask(alignment: .topLeading) {
-                Rectangle()
-                    .frame(width: visible.width, height: visible.height)
-                    .offset(x: visible.minX, y: visible.minY)
+                BrowserTabPageClip(cornerRadius: nil, bounds: layout.viewport == nil ? nil : visible)
             }
         }
     }
@@ -315,6 +327,73 @@ public struct BrowserTabContainer<Content: View>: View {
     private func select(_ id: UUID) {
         selection.wrappedValue = id
         isShowingOverview = false
+    }
+}
+
+private struct BrowserTabControlsKey: EnvironmentKey {
+    static var defaultValue: AnyView? { nil }
+}
+
+extension EnvironmentValues {
+    var browserTabControls: AnyView? {
+        get { self[BrowserTabControlsKey.self] }
+        set { self[BrowserTabControlsKey.self] = newValue }
+    }
+}
+
+public extension View {
+    /// The tab system's own controls for the selected tab (history, the
+    /// section or new-tab menu, the overview button), for the tab containers
+    /// below. The container places them in its own bar, outside every page:
+    /// along the bottom on iOS and the top on tvOS. On macOS the window's tab
+    /// strip carries these controls, so the container adds no bar there. The
+    /// bar is hidden while the overview is shown.
+    func browserTabControls<Controls: View>(@ViewBuilder _ controls: () -> Controls) -> some View {
+        environment(\.browserTabControls, AnyView(controls()))
+    }
+}
+
+/// Puts the tab controls in the container's bar, where this platform has one.
+/// The bar takes its space from the tab area: pages are laid out in what is
+/// left, so the bar never covers a page (a list's last row ends where the
+/// bar begins), and the area grows back when the bar goes away. The bar's
+/// own background may extend into the safe area beyond it.
+private struct BrowserTabControlsPlacement: ViewModifier {
+    let controls: AnyView?
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        VStack(spacing: 0) {
+            content
+            if let controls { controls }
+        }
+        #elseif os(tvOS)
+        VStack(spacing: 0) {
+            if let controls { controls }
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+
+/// Where a page may draw. Outside the overview this clips nothing, so pages
+/// keep drawing into the safe areas (bars under the status bar and home
+/// indicator); in a card it rounds the page's lower corners, and the pages
+/// layer is cut off at the overview's scrolling area.
+private struct BrowserTabPageClip: Shape {
+    /// The lower corners' radius, when the page is in a card.
+    var cornerRadius: CGFloat?
+    /// The area to keep, in the shape's own coordinates; `nil` for all of it.
+    var bounds: CGRect?
+
+    func path(in rect: CGRect) -> Path {
+        if let cornerRadius {
+            return UnevenRoundedRectangle(bottomLeadingRadius: cornerRadius, bottomTrailingRadius: cornerRadius,
+                                          style: .continuous).path(in: rect)
+        }
+        return Path(bounds ?? rect.insetBy(dx: -100_000, dy: -100_000))
     }
 }
 
@@ -930,6 +1009,12 @@ public enum BrowserTabToolbarPlacement: Sendable {
 }
 
 public extension View {
+    /// The tab system's controls for the selected tab. GTK windows show the
+    /// native tab bar and header controls instead, so these add nothing.
+    func browserTabControls<Controls: View>(@ViewBuilder _ controls: () -> Controls) -> some View {
+        self
+    }
+
     /// An action belonging to a page. GTK windows have no per-page navigation
     /// bar, so the selected tab's page actions go in the window header's
     /// page slots.
