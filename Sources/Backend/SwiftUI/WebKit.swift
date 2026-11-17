@@ -69,18 +69,27 @@ public final class WebPage {
 
     public func stopLoading() { webView.stopLoading() }
 
+    /// Runs `functionBody` as the body of an async function in the page and
+    /// returns what it returns, awaiting a returned promise. `arguments` are
+    /// passed to it by name. Same contract as SwiftUI's `WebPage.callJavaScript`.
     public func callJavaScript(
         _ functionBody: String,
         arguments: [String: Any] = [:]
     ) async throws -> sending Any? {
-        let names = arguments.keys.sorted()
-        let values = try names.map { key -> String in
-            let data = try JSONSerialization.data(withJSONObject: [arguments[key] ?? NSNull()])
-            let json = String(decoding: data, as: UTF8.self)
-            return String(json.dropFirst().dropLast())
-        }
-        let source = "(async function(\(names.joined(separator: ","))){\(functionBody)})(\(values.joined(separator: ",")))"
-        return try await webView.evaluateJavaScript(source)
+        // evaluateJavaScript doesn't await promises: an async function's
+        // result (a Promise) fails to convert, so every value was lost.
+        // callAsyncJavaScript awaits it and passes arguments natively.
+        let result = try await webView.callAsyncJavaScript(
+            functionBody, arguments: arguments, in: nil, contentWorld: .page
+        )
+        // Results are JSON-shaped (strings, numbers, arrays, dictionaries,
+        // null). Copying through JSON gives the caller a fresh value that
+        // shares nothing with the web view.
+        let data = try JSONSerialization.data(
+            withJSONObject: [result ?? NSNull()], options: [.fragmentsAllowed]
+        )
+        let copy = (try JSONSerialization.jsonObject(with: data) as? [Any])?.first
+        return copy is NSNull ? nil : copy
     }
 }
 
