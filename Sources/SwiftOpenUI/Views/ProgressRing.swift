@@ -28,9 +28,10 @@ private struct ProgressArc: Shape, PrimitiveView {
     func path(in rect: CGRect) -> Path {
         var path = Path()
         guard fraction > 0 else { return path }
-        let radius = min(rect.width, rect.height) / 2
+        let radius = min(rect.size.width, rect.size.height) / 2
         let start = -Double.pi / 2
-        path.addArc(center: CGPoint(x: rect.midX, y: rect.midY), radius: radius,
+        let center = CGPoint(x: rect.origin.x + rect.size.width / 2, y: rect.origin.y + rect.size.height / 2)
+        path.addArc(center: center, radius: radius,
                     startAngle: start, endAngle: start + 2 * Double.pi * fraction, clockwise: false)
         return path
     }
