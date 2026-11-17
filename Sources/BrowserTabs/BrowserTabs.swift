@@ -413,6 +413,7 @@ public struct BrowserTabContainer<Content: View>: View {
     /// otherwise build all their pages before anything appears.
     @State private var mountsEveryPage = false
     @Environment(\.browserTabControls) private var tabControls
+    @Environment(\.browserWindowItem) private var windowItem
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
                 onMove: ((UUID, Int) -> Void)? = nil,
@@ -568,6 +569,10 @@ public struct BrowserTabContainer<Content: View>: View {
                 tabManagementControl
             }
         }
+        // The window's own items stay in its toolbar in every mode.
+        if let windowItem {
+            ToolbarItem(placement: .primaryAction) { windowItem }
+        }
     }
     #endif
 
@@ -575,7 +580,9 @@ public struct BrowserTabContainer<Content: View>: View {
     /// the new-tab control and the overview button.
     private var barControls: AnyView? {
         guard !isShowingOverview else { return nil }
-        return tabControls ?? AnyView(tabManagementControl)
+        let controls = tabControls ?? AnyView(tabManagementControl)
+        guard let windowItem else { return controls }
+        return AnyView(HStack(spacing: 12) { controls; windowItem })
     }
 
     private var tabManagementControl: some View {
@@ -692,10 +699,18 @@ private struct BrowserTabControlsKey: EnvironmentKey {
     static var defaultValue: AnyView? { nil }
 }
 
+private struct BrowserWindowItemKey: EnvironmentKey {
+    static var defaultValue: AnyView? { nil }
+}
+
 extension EnvironmentValues {
     var browserTabControls: AnyView? {
         get { self[BrowserTabControlsKey.self] }
         set { self[BrowserTabControlsKey.self] = newValue }
+    }
+    var browserWindowItem: AnyView? {
+        get { self[BrowserWindowItemKey.self] }
+        set { self[BrowserWindowItemKey.self] = newValue }
     }
 }
 
@@ -708,6 +723,15 @@ public extension View {
     /// bar is hidden while the overview is shown.
     func browserTabControls<Controls: View>(@ViewBuilder _ controls: () -> Controls) -> some View {
         environment(\.browserTabControls, AnyView(controls()))
+    }
+
+    /// An app-level item of the window (such as downloads): neither a page
+    /// action nor part of the tab overview. Apply it to the tab container,
+    /// which places it with its own chrome: the window toolbar on macOS and
+    /// visionOS, the container's bar on iOS, iPadOS and tvOS (hidden with that
+    /// bar while the overview is shown), the header bar on GTK.
+    func browserWindowItem<Item: View>(@ViewBuilder _ item: () -> Item) -> some View {
+        environment(\.browserWindowItem, AnyView(item()))
     }
 }
 
@@ -1557,6 +1581,14 @@ public extension View {
     /// native tab bar and header controls instead, so these add nothing.
     func browserTabControls<Controls: View>(@ViewBuilder _ controls: () -> Controls) -> some View {
         self
+    }
+
+    /// An app-level item of the window. Applied to the tab container (the
+    /// window root), it is a window toolbar item, which GTK puts in the header
+    /// bar next to the tab controls.
+    func browserWindowItem<Item: View>(@ViewBuilder _ item: () -> Item) -> some View {
+        let content = item()
+        return toolbar { ToolbarItem(placement: .primaryAction) { content } }
     }
 
     /// An action belonging to a page. GTK windows have no per-page navigation
