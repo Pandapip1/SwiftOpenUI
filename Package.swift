@@ -40,8 +40,15 @@ var targets: [Target] = [
         path: "Sources/CredentialStorage"
     ),
     // Portable declarative UI model consumed by non-SwiftUI renderers.
+    // UI-free geometry, text and accessibility for MediaScrubber, shared by
+    // every renderer so the seek bar behaves identically everywhere.
+    .target(
+        name: "MediaScrubberLayout",
+        path: "Sources/MediaScrubberLayout"
+    ),
     .target(
         name: "SwiftOpenUICore",
+        dependencies: ["MediaScrubberLayout"],
         path: "Sources/SwiftOpenUI",
         swiftSettings: gtkSwiftSettings
     ),
@@ -102,7 +109,7 @@ if !gtkBackendEnabled {
     // API name as Apple's framework and would shadow it in that build graph.
     targets.append(.target(
         name: "BackendSwiftUI",
-        dependencies: ["SwiftOpenUICore"],
+        dependencies: ["SwiftOpenUICore", "MediaScrubberLayout"],
         path: "Sources/Backend/SwiftUI",
         swiftSettings: gtkSwiftSettings,
         linkerSettings: [
