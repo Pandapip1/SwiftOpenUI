@@ -28,10 +28,15 @@ public struct BrowserTabItem: Identifiable, Equatable, Sendable {
     }
 }
 
+/// A tab container's keyboard commands, the same on every backend: ⌘W closes
+/// the selected tab, ⌘T opens a new one, ⌘⇧T reopens the last tab closed,
+/// ⌘1–⌘8 select a tab by position and ⌘9 the last, and ⌃Tab / ⌃⇧Tab show
+/// the next and previous tabs. (⌘ is Ctrl on GTK.)
 public extension View {
-    /// Installs the conventional new-tab command where the platform supports
-    /// hardware keyboard shortcuts. The visible control remains unchanged on
-    /// focus-only platforms such as tvOS.
+    /// ⌘T for the app's new-tab control (the tab chrome's + button), so the
+    /// shortcut does exactly what the button does. Not on focus-only
+    /// platforms such as tvOS. A container given `onNewTab` offers ⌘T as a
+    /// command instead.
     @ViewBuilder
     func browserNewTabKeyboardShortcut() -> some View {
         #if os(tvOS)
@@ -41,6 +46,81 @@ public extension View {
         #endif
     }
 }
+
+enum BrowserTabShortcut: Equatable {
+    case closeTab, newTab, reopenClosedTab, nextTab, previousTab
+    case selectTab(Int)
+
+    static var all: [BrowserTabShortcut] {
+        [.closeTab, .newTab, .reopenClosedTab, .nextTab, .previousTab] + (1...9).map { .selectTab($0) }
+    }
+
+    var key: KeyEquivalent {
+        switch self {
+        case .closeTab: "w"
+        case .newTab, .reopenClosedTab: "t"
+        case .nextTab, .previousTab: .tab
+        case .selectTab(let number): KeyEquivalent(Character(String(number)))
+        }
+    }
+
+    var modifiers: EventModifiers {
+        switch self {
+        case .closeTab, .newTab, .selectTab: .command
+        case .reopenClosedTab: [.command, .shift]
+        case .nextTab: .control
+        case .previousTab: [.control, .shift]
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .closeTab: "Close Tab"
+        case .newTab: "New Tab"
+        case .reopenClosedTab: "Reopen Closed Tab"
+        case .nextTab: "Show Next Tab"
+        case .previousTab: "Show Previous Tab"
+        case .selectTab(9): "Show Last Tab"
+        case .selectTab(let number): "Show Tab \(number)"
+        }
+    }
+}
+
+/// What the tab commands act on: one tab container's tabs and actions.
+struct BrowserTabCommandTarget {
+    let items: [BrowserTabItem]
+    let selection: Binding<UUID>
+    let onClose: (UUID) -> Void
+    let onNewTab: (() -> Void)?
+    let onReopenClosedTab: (() -> Void)?
+
+    func isEnabled(_ shortcut: BrowserTabShortcut) -> Bool {
+        switch shortcut {
+        case .closeTab: items.contains { $0.id == selection.wrappedValue && !$0.isPinned }
+        case .newTab: onNewTab != nil
+        case .reopenClosedTab: onReopenClosedTab != nil
+        case .nextTab, .previousTab: items.count > 1
+        case .selectTab(let number): number == 9 ? !items.isEmpty : items.indices.contains(number - 1)
+        }
+    }
+
+    func perform(_ shortcut: BrowserTabShortcut) {
+        guard isEnabled(shortcut) else { return }
+        switch shortcut {
+        case .closeTab: onClose(selection.wrappedValue)
+        case .newTab: onNewTab?()
+        case .reopenClosedTab: onReopenClosedTab?()
+        case .nextTab, .previousTab:
+            guard let index = items.firstIndex(where: { $0.id == selection.wrappedValue }) else { return }
+            let offset = shortcut == .nextTab ? 1 : -1
+            selection.wrappedValue = items[(index + offset + items.count) % items.count].id
+        case .selectTab(let number):
+            let item = number == 9 ? items[items.count - 1] : items[number - 1]
+            selection.wrappedValue = item.id
+        }
+    }
+}
+
 
 #if !BACKEND_GTK
 public struct BrowserHistoryControls: View {
@@ -256,19 +336,38 @@ private struct BrowserToolbarSearchField: NSViewRepresentable {
 }
 #endif
 
+/// Starts the work for `id` the first time the page is visible and then lets
+/// it finish even if the page is hidden meanwhile (switching tabs away from a
+/// loading page must not cancel the load, which the page would then show as
+/// a failure when it comes back). It is cancelled only when `id` changes or
+/// the page goes away for good.
 private struct BrowserOnceVisibleTask<ID: Equatable & Sendable>: ViewModifier {
     @Environment(\.isBrowserTabVisible) private var isVisible
     let id: ID
     let action: @MainActor () async -> Void
-    @State private var completedID: ID?
+    @State private var started: BrowserStartedTask<ID>?
 
     func body(content: Content) -> some View {
-        content.task(id: BrowserVisibleTaskKey(id: id, isVisible: isVisible)) {
-            guard isVisible, completedID != id else { return }
-            await action()
-            if !Task.isCancelled { completedID = id }
-        }
+        content
+            .onAppear(perform: startIfNeeded)
+            .onChange(of: BrowserVisibleTaskKey(id: id, isVisible: isVisible), startIfNeeded)
+            .onDisappear {
+                started?.task.cancel()
+                started = nil
+            }
     }
+
+    private func startIfNeeded() {
+        guard isVisible, started?.id != id else { return }
+        started?.task.cancel()
+        let action = action
+        started = BrowserStartedTask(id: id, task: Task { await action() })
+    }
+}
+
+private struct BrowserStartedTask<ID: Equatable & Sendable> {
+    let id: ID
+    let task: Task<Void, Never>
 }
 
 private struct BrowserVisibleTaskKey<ID: Equatable & Sendable>: Equatable, Sendable {
@@ -303,6 +402,8 @@ public struct BrowserTabContainer<Content: View>: View {
     public let onMove: ((UUID, Int) -> Void)?
     private let newTabControl: AnyView?
     private let onNewTab: (() -> Void)?
+    /// Reopens the tab closed last; `nil` when there is none.
+    private let onReopenClosedTab: (() -> Void)?
     private let content: (BrowserTabItem) -> Content
     private let overviewPresented: Binding<Bool>?
     @State private var showingOverview = false
@@ -316,6 +417,7 @@ public struct BrowserTabContainer<Content: View>: View {
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
                 onMove: ((UUID, Int) -> Void)? = nil,
                 overviewPresented: Binding<Bool>? = nil, onNewTab: (() -> Void)? = nil,
+                onReopenClosedTab: (() -> Void)? = nil,
                 @ViewBuilder content: @escaping (BrowserTabItem) -> Content) {
         self.items = items
         self.selection = selection
@@ -323,6 +425,7 @@ public struct BrowserTabContainer<Content: View>: View {
         self.onMove = onMove
         self.newTabControl = nil
         self.onNewTab = onNewTab
+        self.onReopenClosedTab = onReopenClosedTab
         self.overviewPresented = overviewPresented
         self.content = content
     }
@@ -331,6 +434,7 @@ public struct BrowserTabContainer<Content: View>: View {
         items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
         onMove: ((UUID, Int) -> Void)? = nil,
         overviewPresented: Binding<Bool>? = nil, onNewTab: (() -> Void)? = nil,
+        onReopenClosedTab: (() -> Void)? = nil,
         @ViewBuilder newTabControl: () -> NewTabControl,
         @ViewBuilder content: @escaping (BrowserTabItem) -> Content
     ) {
@@ -340,6 +444,7 @@ public struct BrowserTabContainer<Content: View>: View {
         self.onMove = onMove
         self.newTabControl = AnyView(newTabControl())
         self.onNewTab = onNewTab
+        self.onReopenClosedTab = onReopenClosedTab
         self.overviewPresented = overviewPresented
         self.content = content
     }
@@ -370,9 +475,14 @@ public struct BrowserTabContainer<Content: View>: View {
                 pages(size: geometry.size, layout: isShowingOverview ? layout : .init())
             }
         }
-        .modifier(BrowserTabControlsPlacement(controls: isShowingOverview ? nil : tabControls))
+        .modifier(BrowserTabControlsPlacement(controls: barControls))
         .animation(.spring(response: 0.42, dampingFraction: 0.86), value: isShowingOverview)
+        #if !os(iOS) && !os(tvOS)
         .toolbar { overviewToolbar }
+        #endif
+        .modifier(BrowserTabCommandsTarget(target: BrowserTabCommandTarget(
+            items: items, selection: selection, onClose: onClose,
+            onNewTab: onNewTab, onReopenClosedTab: onReopenClosedTab)))
     }
 
     /// Every tab's page, laid out once at the size of the tab area. A page
@@ -398,7 +508,8 @@ public struct BrowserTabContainer<Content: View>: View {
                             cornerRadius: card.map { _ in BrowserTabOverviewCard.cornerRadius / max(scale, 0.01) }))
                         .scaleEffect(scale, anchor: .topLeading)
                         .offset(x: frame.minX, y: frame.minY)
-                        .opacity(card != nil || isInteractive ? 1 : 0)
+                        // A card's page fades with its card as it is swiped off or dragged.
+                        .opacity(card != nil ? layout.opacities[item.id, default: 1] : isInteractive ? 1 : 0)
                         .transaction { transaction in
                             if !isSelected {
                                 transaction.animation = nil
@@ -407,6 +518,9 @@ public struct BrowserTabContainer<Content: View>: View {
                         }
                         .allowsHitTesting(isInteractive)
                         .accessibilityHidden(!isInteractive)
+                        // Nor can keyboard or remote focus enter a page that isn't in
+                        // use (invisible, or drawn in a card, whose own control has focus).
+                        .modifier(BrowserTabPageFocus(isInteractive: isInteractive, isInCard: card != nil))
                         // Embedded native surfaces such as WKWebView keep their own
                         // backing view; promote the selected page so insertion
                         // order cannot leave an inactive surface above it.
@@ -420,6 +534,7 @@ public struct BrowserTabContainer<Content: View>: View {
                     if let card = layout.cards[item.id].map({ proxy[$0] }) {
                         BrowserTabCardCloseButton(title: item.title) { onClose(item.id) }
                             .position(x: card.maxX - 22, y: card.minY + 22)
+                            .opacity(layout.opacities[item.id, default: 1])
                             .zIndex(2)
                     }
                 }
@@ -440,29 +555,27 @@ public struct BrowserTabContainer<Content: View>: View {
         }
     }
 
+    #if !os(iOS) && !os(tvOS)
     @ToolbarContentBuilder
     private var overviewToolbar: some ToolbarContent {
-        #if os(tvOS)
-        ToolbarItem(placement: .primaryAction) {
-            Button { isShowingOverview.toggle() } label: { Image(systemName: "square.on.square") }
-                .accessibilityLabel(isShowingOverview ? "Close Tab Overview" : "Tab Overview")
-        }
-        #else
         // Tab controls only. Pages put their own actions in their own
         // toolbars; the tab chrome never carries them. The overview has its
-        // own bar with these controls, so they aren't shown twice.
+        // own bar with these controls, so they aren't shown twice. Where the
+        // container has a bar of its own (iOS, tvOS), the controls are there
+        // instead (`barControls`), never in a toolbar as well.
         if !isShowingOverview {
-            #if os(iOS)
-            ToolbarItem(placement: .topBarTrailing) {
-                tabManagementControl
-            }
-            #else
             ToolbarItem(placement: .primaryAction) {
                 tabManagementControl
             }
-            #endif
         }
-        #endif
+    }
+    #endif
+
+    /// The controls for the container's own bar: the app's, or by default
+    /// the new-tab control and the overview button.
+    private var barControls: AnyView? {
+        guard !isShowingOverview else { return nil }
+        return tabControls ?? AnyView(tabManagementControl)
     }
 
     private var tabManagementControl: some View {
@@ -481,6 +594,92 @@ public struct BrowserTabContainer<Content: View>: View {
         isShowingOverview = false
     }
 }
+
+private struct BrowserTabCommandTargetKey: FocusedValueKey {
+    typealias Value = BrowserTabCommandTarget
+}
+
+extension FocusedValues {
+    /// The tab container of the focused window, for the tab commands.
+    var browserTabCommandTarget: BrowserTabCommandTarget? {
+        get { self[BrowserTabCommandTargetKey.self] }
+        set { self[BrowserTabCommandTargetKey.self] = newValue }
+    }
+}
+
+/// Offers a container's tabs to the tab commands while its window is focused.
+private struct BrowserTabCommandsTarget: ViewModifier {
+    let target: BrowserTabCommandTarget
+
+    func body(content: Content) -> some View {
+        #if os(tvOS)
+        content
+        #else
+        content.focusedSceneValue(\.browserTabCommandTarget, target)
+        #endif
+    }
+}
+
+public extension Scene {
+    /// Adds the tab containers' keyboard commands (``BrowserTabShortcut``) to
+    /// the app's menus, acting on the focused window's tabs. ⌘W closes the
+    /// selected tab; with only one tab left it closes the window, as in
+    /// Safari, where windows can be closed (on iOS the tab is closed, as a
+    /// scene there is not closed from the keyboard).
+    func browserTabCommands() -> some Scene {
+        #if os(tvOS)
+        self
+        #else
+        commands { BrowserTabCommands() }
+        #endif
+    }
+}
+
+#if !os(tvOS)
+private struct BrowserTabCommands: Commands {
+    @FocusedValue(\.browserTabCommandTarget) private var target
+
+    var body: some Commands {
+        CommandGroup(replacing: .saveItem) {
+            #if os(macOS)
+            if let target, target.items.count > 1 {
+                command(.closeTab, target)
+                Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
+                    .keyboardShortcut("w", modifiers: [.command, .shift])
+            } else {
+                // The last tab closes with its window.
+                Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
+                    .keyboardShortcut("w")
+            }
+            #else
+            command(.closeTab, target)
+            #endif
+        }
+        CommandGroup(after: .newItem) {
+            // Without `onNewTab`, ⌘T belongs to the app's own new-tab control.
+            if target?.onNewTab != nil {
+                command(.newTab, target)
+            }
+            command(.reopenClosedTab, target)
+        }
+        CommandGroup(before: .windowList) {
+            command(.previousTab, target)
+            command(.nextTab, target)
+            Divider()
+            ForEach(1...9, id: \.self) { number in
+                command(.selectTab(number), target)
+            }
+            Divider()
+        }
+    }
+
+    private func command(_ shortcut: BrowserTabShortcut, _ target: BrowserTabCommandTarget?) -> some View {
+        Button(shortcut.title) { target?.perform(shortcut) }
+            .keyboardShortcut(shortcut.key, modifiers: shortcut.modifiers)
+            .disabled(!(target?.isEnabled(shortcut) ?? false))
+    }
+}
+#endif
 
 private struct BrowserTabControlsKey: EnvironmentKey {
     static var defaultValue: AnyView? { nil }
@@ -534,6 +733,38 @@ private struct BrowserTabControlsPlacement: ViewModifier {
 /// keep drawing into the safe areas (bars under the status bar and home
 /// indicator); in a card it rounds the page's lower corners, and the pages
 /// layer is cut off at the overview's scrolling area.
+/// Fades a card and tells the pages layer, so its page (drawn there, not in
+/// the card) fades with it.
+private struct BrowserTabCardOpacity: ViewModifier {
+    let id: UUID
+    let opacity: Double
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(opacity)
+            .transformPreference(BrowserTabOverviewLayout.self) { layout in
+                layout.opacities[id, default: 1] *= opacity
+            }
+    }
+}
+
+/// Keeps keyboard and remote focus out of a page that isn't in use: one that
+/// is invisible, or (on tvOS, where focus moves between the overview's
+/// cards) one drawn in a card. Elsewhere a card's page keeps its live
+/// appearance, and hit testing already keeps pointers out of it.
+private struct BrowserTabPageFocus: ViewModifier {
+    let isInteractive: Bool
+    let isInCard: Bool
+
+    func body(content: Content) -> some View {
+        #if os(tvOS)
+        content.disabled(!isInteractive)
+        #else
+        content.disabled(!isInteractive && !isInCard)
+        #endif
+    }
+}
+
 private struct BrowserTabPageClip: Shape {
     /// The corner radius, when the page is in a card.
     var cornerRadius: CGFloat?
@@ -554,6 +785,9 @@ private struct BrowserTabPageClip: Shape {
 private struct BrowserTabOverviewLayout: PreferenceKey {
     struct Value {
         var cards: [UUID: Anchor<CGRect>] = [:]
+        /// How opaque each card is while swiped or dragged (1 when absent),
+        /// for its page, which is drawn in another layer.
+        var opacities: [UUID: Double] = [:]
         var viewport: Anchor<CGRect>?
     }
 
@@ -562,6 +796,7 @@ private struct BrowserTabOverviewLayout: PreferenceKey {
     static func reduce(value: inout Value, nextValue: () -> Value) {
         let next = nextValue()
         value.cards.merge(next.cards) { $1 }
+        value.opacities.merge(next.opacities) { $0 * $1 }
         value.viewport = next.viewport ?? value.viewport
     }
 }
@@ -781,63 +1016,22 @@ private struct BrowserTabOverviewGrid<Card: View>: View {
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.fixed(width), spacing: spacing), count: columns),
                   spacing: spacing) {
-            ForEach(orderedItems) { item in
+            ForEach(drag.ordered(items)) { item in
                 cell(item)
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: drag.liveOrder)
-        #if !os(tvOS)
-        // A drop between cards still ends the drag.
-        .onDrop(of: [.text], delegate: BrowserTabGridDropDelegate(finish: finishDrag))
-        #endif
-        .onChange(of: items.map(\.id)) {
-            // The committed order has arrived; show it rather than the copy.
-            if drag.draggingID == nil { drag.liveOrder = nil }
-        }
-        .onDisappear { drag.reset() }
+        .modifier(BrowserTabReorderingArea(items: items, drag: drag, onMove: onMove))
     }
 
-    private var orderedItems: [BrowserTabItem] {
-        guard let liveOrder = drag.liveOrder else { return items }
-        let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-        // Tabs opened while dragging go last; closed ones drop out.
-        return liveOrder.compactMap { byID[$0] } + items.filter { !liveOrder.contains($0.id) }
-    }
-
-    @ViewBuilder
     private func cell(_ item: BrowserTabItem) -> some View {
         let moveBy: ((Int) -> Void)? = onMove == nil ? nil : { offset in move(item.id, by: offset) }
-        let swipeable = BrowserTabSwipeToClose(width: width, isClosable: !item.isPinned) {
+        return BrowserTabSwipeToClose(id: item.id, width: width, isClosable: !item.isPinned) {
             onClose(item.id)
         } content: {
             card(item, moveBy)
         }
-        .opacity(drag.draggingID == item.id ? 0.45 : 1)
-        #if os(tvOS)
-        swipeable
-        #else
-        if onMove != nil {
-            swipeable
-                .onDrag { drag.begin(item.id, order: items.map(\.id)) }
-                .onDrop(of: [.text], delegate: BrowserTabCardDropDelegate(target: item.id, drag: drag,
-                                                                          finish: finishDrag))
-        } else {
-            swipeable
-        }
-        #endif
-    }
-
-    private func finishDrag() {
-        guard let id = drag.draggingID else { return }
-        drag.draggingID = nil
-        guard let index = drag.liveOrder?.firstIndex(of: id),
-              items.firstIndex(where: { $0.id == id }) != index else {
-            drag.liveOrder = nil
-            return
-        }
-        // `liveOrder` stays until the new order arrives in `items`, so the
-        // cards don't jump back for a frame.
-        onMove?(id, index)
+        .modifier(BrowserTabCardOpacity(id: item.id, opacity: drag.draggingID == item.id ? 0.45 : 1))
+        .modifier(BrowserTabReorderable(id: item.id, items: items, drag: drag, onMove: onMove))
     }
 
     private func move(_ id: UUID, by offset: Int) {
@@ -847,12 +1041,84 @@ private struct BrowserTabOverviewGrid<Card: View>: View {
     }
 }
 
-/// The card being dragged and the order shown meanwhile.
+/// Lets a tab (a card, or a tab in the tab bar) be dragged to a new place
+/// among `items` when `onMove` is given: the others make way live, and the
+/// move is committed once, on drop.
+private struct BrowserTabReorderable: ViewModifier {
+    let id: UUID
+    let items: [BrowserTabItem]
+    let drag: BrowserTabDragState
+    let onMove: ((UUID, Int) -> Void)?
+
+    func body(content: Content) -> some View {
+        #if os(tvOS)
+        content
+        #else
+        if let onMove {
+            content
+                .onDrag { drag.begin(id, order: items.map(\.id)) }
+                .onDrop(of: [.text], delegate: BrowserTabCardDropDelegate(target: id, drag: drag) {
+                    drag.finish(items: items, onMove: onMove)
+                })
+        } else {
+            content
+        }
+        #endif
+    }
+}
+
+/// The area tabs are reordered in: animates the others making way, ends a
+/// drag dropped between tabs, and forgets the live order once the committed
+/// order arrives.
+private struct BrowserTabReorderingArea: ViewModifier {
+    let items: [BrowserTabItem]
+    let drag: BrowserTabDragState
+    let onMove: ((UUID, Int) -> Void)?
+
+    func body(content: Content) -> some View {
+        content
+            .animation(.spring(response: 0.3, dampingFraction: 0.86), value: drag.liveOrder)
+            #if !os(tvOS)
+            .onDrop(of: [.text], delegate: BrowserTabGridDropDelegate {
+                if let onMove { drag.finish(items: items, onMove: onMove) }
+            })
+            #endif
+            .onChange(of: items.map(\.id)) {
+                // The committed order has arrived; show it rather than the copy.
+                if drag.draggingID == nil { drag.liveOrder = nil }
+            }
+            .onDisappear { drag.reset() }
+    }
+}
+
+/// The tab being dragged and the order shown meanwhile.
 @MainActor
 @Observable
 private final class BrowserTabDragState {
     var draggingID: UUID?
     var liveOrder: [UUID]?
+
+    /// `items` in the order shown: the live order while dragging. Tabs
+    /// opened while dragging go last; closed ones drop out.
+    func ordered(_ items: [BrowserTabItem]) -> [BrowserTabItem] {
+        guard let liveOrder else { return items }
+        let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        return liveOrder.compactMap { byID[$0] } + items.filter { !liveOrder.contains($0.id) }
+    }
+
+    /// Ends the drag on a drop, committing the move if the tab moved.
+    func finish(items: [BrowserTabItem], onMove: (UUID, Int) -> Void) {
+        guard let id = draggingID else { return }
+        draggingID = nil
+        guard let index = liveOrder?.firstIndex(of: id),
+              items.firstIndex(where: { $0.id == id }) != index else {
+            liveOrder = nil
+            return
+        }
+        // `liveOrder` stays until the new order arrives in `items`, so the
+        // tabs don't jump back for a frame.
+        onMove(id, index)
+    }
 
     #if !os(tvOS)
     /// Starts dragging `id`. The drag's item provider holds a token that
@@ -942,6 +1208,7 @@ private struct BrowserTabGridDropDelegate: DropDelegate {
 /// counts, so vertical scrolling is unaffected. A pinned card follows with
 /// resistance and springs back.
 private struct BrowserTabSwipeToClose<Content: View>: View {
+    let id: UUID
     let width: CGFloat
     let isClosable: Bool
     let onClose: () -> Void
@@ -960,7 +1227,7 @@ private struct BrowserTabSwipeToClose<Content: View>: View {
     var body: some View {
         content()
             .offset(x: offset)
-            .opacity(1 - min(0.7, abs(offset) / (width * 1.4)))
+            .modifier(BrowserTabCardOpacity(id: id, opacity: 1 - min(0.7, abs(offset) / (width * 1.4))))
             #if os(iOS) || os(visionOS)
             .simultaneousGesture(
                 DragGesture(minimumDistance: 20)
@@ -1077,25 +1344,36 @@ public struct BrowserTabBar: View {
     public let items: [BrowserTabItem]
     public let selection: Binding<UUID>
     public let onClose: (UUID) -> Void
+    /// Moves a tab to an index among all tabs, dragged along the bar. `nil`
+    /// leaves the tabs in place.
+    public let onMove: ((UUID, Int) -> Void)?
     @State private var hoveredID: UUID?
     @State private var hoveredCloseID: UUID?
 
-    public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void) {
+    @State private var drag = BrowserTabDragState()
+
+    public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
+                onMove: ((UUID, Int) -> Void)? = nil) {
         self.items = items
         self.selection = selection
         self.onClose = onClose
+        self.onMove = onMove
     }
 
     public var body: some View {
         GeometryReader { geometry in
             let width = max(100, (geometry.size.width - 12) / CGFloat(max(1, items.count)))
             ScrollView(.horizontal, showsIndicators: false) {
+                let shown = drag.ordered(items)
                 HStack(spacing: 0) {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        tab(item, previous: index > 0 ? items[index - 1] : nil)
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, item in
+                        tab(item, previous: index > 0 ? shown[index - 1] : nil)
                             .frame(width: width)
+                            .opacity(drag.draggingID == item.id ? 0.45 : 1)
+                            .modifier(BrowserTabReorderable(id: item.id, items: items, drag: drag, onMove: onMove))
                     }
                 }
+                .modifier(BrowserTabReorderingArea(items: items, drag: drag, onMove: onMove))
                 .padding(.horizontal, 2).padding(.vertical, 2)
                 .background(Capsule().fill(Color.primary.opacity(0.05))
                     .overlay(Capsule().stroke(Color.primary.opacity(0.1), lineWidth: 0.5)))
@@ -1229,6 +1507,13 @@ private struct GTKBrowserTabToolbarItem<Content: View, Accessory: View>: View, P
     var body: Never { fatalError("GTKBrowserTabToolbarItem is a platform-rendered primitive view") }
 }
 
+public extension Scene {
+    /// The tab containers' keyboard commands (``BrowserTabShortcut``). GNOME
+    /// apps have no menu bar, so each container registers them as its
+    /// window's accelerators instead, and the scene needs nothing more.
+    func browserTabCommands() -> Self { self }
+}
+
 private extension BrowserTabToolbarPlacement {
     var gtkDataKey: String {
         switch self {
@@ -1249,11 +1534,14 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
     public let onMove: ((UUID, Int) -> Void)?
     private let newTabControl: AnyView?
     private let onNewTab: (() -> Void)?
+    /// Reopens the tab closed last; `nil` when there is none.
+    private let onReopenClosedTab: (() -> Void)?
     public let content: (BrowserTabItem) -> Content
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
                 onMove: ((UUID, Int) -> Void)? = nil,
                 overviewPresented: Binding<Bool>? = nil, onNewTab: (() -> Void)? = nil,
+                onReopenClosedTab: (() -> Void)? = nil,
                 @ViewBuilder content: @escaping (BrowserTabItem) -> Content) {
         self.items = items
         self.selection = selection
@@ -1261,6 +1549,7 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
         self.onMove = onMove
         self.newTabControl = nil
         self.onNewTab = onNewTab
+        self.onReopenClosedTab = onReopenClosedTab
         self.content = content
     }
 
@@ -1268,6 +1557,7 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
         items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
         onMove: ((UUID, Int) -> Void)? = nil,
         overviewPresented: Binding<Bool>? = nil, onNewTab: (() -> Void)? = nil,
+        onReopenClosedTab: (() -> Void)? = nil,
         @ViewBuilder newTabControl: () -> NewTabControl,
         @ViewBuilder content: @escaping (BrowserTabItem) -> Content
     ) {
@@ -1277,6 +1567,7 @@ public struct BrowserTabContainer<Content: View>: View, PrimitiveView {
         self.onMove = onMove
         self.newTabControl = AnyView(newTabControl())
         self.onNewTab = onNewTab
+        self.onReopenClosedTab = onReopenClosedTab
         self.content = content
     }
 
@@ -1288,11 +1579,16 @@ public struct BrowserTabBar: View {
     public let items: [BrowserTabItem]
     public let selection: Binding<UUID>
     public let onClose: (UUID) -> Void
+    /// Moves a tab. GTK windows show the container's own AdwTabBar, which
+    /// reorders through the container (`page-reordered`).
+    public let onMove: ((UUID, Int) -> Void)?
 
-    public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void) {
+    public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
+                onMove: ((UUID, Int) -> Void)? = nil) {
         self.items = items
         self.selection = selection
         self.onClose = onClose
+        self.onMove = onMove
     }
 
     public var body: Never { fatalError("BrowserTabBar is a platform-rendered primitive view") }
@@ -1417,7 +1713,9 @@ extension BrowserTabContainer: GTKRenderable {
             g_object_set_data_full(object, "gtk-swift-browser-new-tab-control",
                                    g_object_ref_sink(gpointer(newTabWidget))) { g_object_unref($0) }
         }
-        if let onNewTab {
+        // The overview's own new-tab button, unless the app gave its own control
+        // (one set of overview controls).
+        if let onNewTab, newTabControl == nil {
             swift_adw_tab_overview_set_enable_new_tab(overview, 1)
             let action = Unmanaged.passRetained(BrowserNewTabCallbacks(view: view, action: onNewTab)).toOpaque()
             g_object_set_data_full(object, "gtk-swift-new-tab-action", action) { pointer in
@@ -1461,8 +1759,55 @@ extension BrowserTabContainer: GTKRenderable {
                 }
             }
         }
+        gtkRegisterBrowserTabShortcuts(on: overview, view: view, target: BrowserTabCommandTarget(
+            items: items, selection: selection, onClose: onClose,
+            onNewTab: onNewTab, onReopenClosedTab: onReopenClosedTab))
         return OpaquePointer(overview)
     }
+}
+
+/// The tab commands (``BrowserTabShortcut``) as window accelerators while the
+/// container's widget exists. GNOME apps have no menu bar, so these are
+/// accelerators alone. AdwTabView already moves between tabs with Ctrl+Tab
+/// and Ctrl+Shift+Tab, so those aren't registered twice. Closing the last tab
+/// closes the window.
+private func gtkRegisterBrowserTabShortcuts(on widget: UnsafeMutablePointer<GtkWidget>,
+                                            view: UnsafeMutablePointer<GtkWidget>,
+                                            target: BrowserTabCommandTarget) {
+    let windowID = getCurrentEnvironment().windowID
+    let registrations = BrowserTabShortcut.all.compactMap { shortcut -> ShortcutRegistrationID? in
+        if shortcut == .nextTab || shortcut == .previousTab { return nil }
+        // Without `onNewTab`, Ctrl+T belongs to the app's own new-tab control.
+        if shortcut == .newTab, target.onNewTab == nil { return nil }
+        let action: () -> Void
+        if shortcut == .closeTab {
+            action = {
+                if target.items.count > 1 {
+                    target.perform(.closeTab)
+                } else if let root = gtk_widget_get_root(view) {
+                    gtk_window_close(UnsafeMutableRawPointer(root).assumingMemoryBound(to: GtkWindow.self))
+                }
+            }
+        } else {
+            action = { target.perform(shortcut) }
+        }
+        return KeyboardShortcutRegistry.shared.register(
+            KeyboardShortcut(shortcut.key, modifiers: shortcut.modifiers), windowID: windowID, action: action)
+    }
+    let unregister = Unmanaged.passRetained(ClosureBox {
+        registrations.forEach(KeyboardShortcutRegistry.shared.unregister(id:))
+    }).toOpaque()
+    g_signal_connect_data(
+        gpointer(widget), "destroy",
+        unsafeBitCast({ (_: gpointer?, data: gpointer?) in
+            guard let data else { return }
+            Unmanaged<ClosureBox>.fromOpaque(data).takeUnretainedValue().closure()
+        } as @convention(c) (gpointer?, gpointer?) -> Void, to: GCallback.self),
+        unregister,
+        { (data: gpointer?, _: UnsafeMutablePointer<GClosure>?) in
+            if let data { Unmanaged<ClosureBox>.fromOpaque(data).release() }
+        },
+        GConnectFlags(rawValue: 0))
 }
 
 public struct BrowserHistoryControls: View, PrimitiveView {
