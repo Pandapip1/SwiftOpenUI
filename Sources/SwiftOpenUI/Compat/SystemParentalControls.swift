@@ -61,10 +61,10 @@ public enum SystemParentalControls {
     }
 }
 
-#if os(Linux)
 /// Reads malcontent's settings through `busctl` (systemd), so no D-Bus
 /// library is linked.
 enum Malcontent {
+    #if os(Linux)
     static func status() -> SystemParentalControls.Status {
         let path = "/org/freedesktop/Accounts/User\(getuid())"
         guard let data = run([
@@ -73,6 +73,7 @@ enum Malcontent {
         ]) else { return .unavailable }
         return parse(data)
     }
+    #endif
 
     /// `busctl --json=short` output for `GetAll` → a{sv}:
     /// `{"type":"a{sv}","data":[{"AppFilter":{"type":"(bas)","data":[false,[]]}, …}]}`.
@@ -96,6 +97,7 @@ enum Malcontent {
                            contentAgeLimit: OARS.contentAgeLimit(filter: filter))
     }
 
+    #if os(Linux)
     private static let busctlPaths = ["/usr/bin/busctl", "/run/current-system/sw/bin/busctl", "/bin/busctl"]
 
     private static func run(_ arguments: [String]) -> Data? {
@@ -113,8 +115,8 @@ enum Malcontent {
         process.waitUntilExit()
         return process.terminationStatus == 0 ? data : nil
     }
+    #endif
 }
-#endif
 
 /// Open Age Ratings Service (OARS) categories and their ages, for turning a
 /// per-category content filter into one age limit.

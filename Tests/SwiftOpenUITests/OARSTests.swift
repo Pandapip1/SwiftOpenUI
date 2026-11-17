@@ -39,3 +39,39 @@ final class OARSTests: XCTestCase {
         }
     }
 }
+
+/// malcontent's app filter, as `busctl --json=short` returns it.
+final class MalcontentStatusTests: XCTestCase {
+    private func reply(appFilter: String = "[false,[]]", oars: String = #"["oars-1.1",{}]"#,
+                       userInstall: Bool = true) -> Data {
+        Data("""
+        {"type":"a{sv}","data":[{
+          "AppFilter":{"type":"(bas)","data":\(appFilter)},
+          "OarsFilter":{"type":"(sa{ss})","data":\(oars)},
+          "AllowUserInstallation":{"type":"b","data":\(userInstall)},
+          "AllowSystemInstallation":{"type":"b","data":false}
+        }]}
+        """.utf8)
+    }
+
+    func testDefaultsMeanNotSupervised() {
+        XCTAssertEqual(Malcontent.parse(reply()), .notSupervised)
+    }
+
+    func testContentFilterGivesAnAgeLimit() {
+        XCTAssertEqual(Malcontent.parse(reply(oars: #"["oars-1.1",{"violence-realistic":"mild"}]"#)),
+                       .supervised(allowsInstallingApps: true, contentAgeLimit: 8))
+    }
+
+    func testInstallationBlockedIsSupervised() {
+        XCTAssertEqual(Malcontent.parse(reply(userInstall: false)),
+                       .supervised(allowsInstallingApps: false, contentAgeLimit: nil))
+        XCTAssertEqual(Malcontent.parse(reply(appFilter: #"[true,["org.example.App"]]"#)),
+                       .supervised(allowsInstallingApps: true, contentAgeLimit: nil))
+    }
+
+    func testUnreadableReplyIsUnavailable() {
+        XCTAssertEqual(Malcontent.parse(Data("not json".utf8)), .unavailable)
+        XCTAssertEqual(Malcontent.parse(Data(#"{"type":"a{sv}","data":[{}]}"#.utf8)), .unavailable)
+    }
+}
