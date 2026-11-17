@@ -17,11 +17,14 @@ public struct BrowserTabItem: Identifiable, Equatable, Sendable {
     public let id: UUID
     public let title: String
     public let isPinned: Bool
+    /// A symbol shown beside the tab's title, such as its section's icon.
+    public let systemImage: String?
 
-    public init(id: UUID, title: String, isPinned: Bool = false) {
+    public init(id: UUID, title: String, isPinned: Bool = false, systemImage: String? = nil) {
         self.id = id
         self.title = title
         self.isPinned = isPinned
+        self.systemImage = systemImage
     }
 }
 
@@ -264,7 +267,8 @@ public struct BrowserTabContainer<Content: View>: View {
                     let isInteractive = isSelected && !isShowingOverview
                     content(item)
                         .frame(width: area.width, height: area.height)
-                        .clipShape(BrowserTabPageClip(cornerRadius: card.map { _ in 14 / max(scale, 0.01) }))
+                        .clipShape(BrowserTabPageClip(
+                            cornerRadius: card.map { _ in BrowserTabOverviewCard.cornerRadius / max(scale, 0.01) }))
                         .scaleEffect(scale, anchor: .topLeading)
                         .offset(x: frame.minX, y: frame.minY)
                         .opacity(card != nil || isInteractive ? 1 : 0)
@@ -282,6 +286,14 @@ public struct BrowserTabContainer<Content: View>: View {
                         .zIndex(isSelected ? 1 : 0)
                         .environment(\.isBrowserTabToolbarActive, isInteractive)
                         .environment(\.isBrowserTabVisible, card != nil || isInteractive)
+                }
+                // Each card's close button, over its page's top-trailing corner.
+                ForEach(items.filter { !$0.isPinned }) { item in
+                    if let card = layout.cards[item.id].map({ proxy[$0] }) {
+                        BrowserTabCardCloseButton(title: item.title) { onClose(item.id) }
+                            .position(x: card.maxX - 22, y: card.minY + 22)
+                            .zIndex(2)
+                    }
                 }
             }
             .frame(width: area.width, height: area.height, alignment: .topLeading)
@@ -383,15 +395,14 @@ private struct BrowserTabControlsPlacement: ViewModifier {
 /// indicator); in a card it rounds the page's lower corners, and the pages
 /// layer is cut off at the overview's scrolling area.
 private struct BrowserTabPageClip: Shape {
-    /// The lower corners' radius, when the page is in a card.
+    /// The corner radius, when the page is in a card.
     var cornerRadius: CGFloat?
     /// The area to keep, in the shape's own coordinates; `nil` for all of it.
     var bounds: CGRect?
 
     func path(in rect: CGRect) -> Path {
         if let cornerRadius {
-            return UnevenRoundedRectangle(bottomLeadingRadius: cornerRadius, bottomTrailingRadius: cornerRadius,
-                                          style: .continuous).path(in: rect)
+            return RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).path(in: rect)
         }
         return Path(bounds ?? rect.insetBy(dx: -100_000, dy: -100_000))
     }
@@ -428,8 +439,9 @@ private struct BrowserNavigationControlGroupStyle: ViewModifier {
     }
 }
 
-/// The overview's chrome: a header and a scrolling grid of cards. The cards
-/// hold no page of their own; each reports where its tab's page goes.
+/// The overview's chrome: a scrolling grid of cards over a material, with the
+/// overview's bar along the bottom. The cards hold no page of their own; each
+/// reports where its tab's page goes.
 private struct BrowserTabOverview: View {
     let items: [BrowserTabItem]
     let selection: Binding<UUID>
@@ -443,12 +455,11 @@ private struct BrowserTabOverview: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            BrowserTabOverviewHeader(title: "Tabs", secondary: newTabControl, confirm: dismiss)
-
             GeometryReader { geometry in
-                let spacing: CGFloat = 20
+                let spacing: CGFloat = 16
                 let columns = max(2, Int((geometry.size.width + spacing) / (220 + spacing)))
                 let width = (geometry.size.width - CGFloat(columns - 1) * spacing) / CGFloat(columns)
+                // Cards have the tab area's shape, so the page fits exactly.
                 let previewHeight = width * pageSize.height / max(1, pageSize.width)
                 ScrollView {
                     BrowserTabOverviewGrid(items: items, columns: columns, width: width, spacing: spacing,
@@ -467,18 +478,19 @@ private struct BrowserTabOverview: View {
                 }
             }
             .padding(.horizontal)
+
+            BrowserTabOverviewBar(tabCount: items.count, secondary: newTabControl, confirm: dismiss)
         }
-        .background(Color.secondary.opacity(0.08))
+        .background(.regularMaterial)
     }
 }
 
-/// The overview's header. Its controls have fixed roles, so their order and
-/// grouping are always the same: the title on the leading edge; on the
-/// trailing edge the secondary action (new tab), a separator, and the
-/// confirming action (Done) last, on the outer edge, as toolbars place it.
-/// Spacing is the platform's standard padding.
-private struct BrowserTabOverviewHeader: View {
-    let title: String
+/// The overview's bar. Its controls have fixed roles, so their order is
+/// always the same: the secondary action (new tab) on the leading edge, the
+/// tab count in the middle, and the confirming action (Done) on the trailing
+/// edge as a prominent check mark. Spacing is the platform's standard padding.
+private struct BrowserTabOverviewBar: View {
+    let tabCount: Int
     /// An optional secondary action, such as opening a new tab.
     let secondary: AnyView?
     /// Closes the overview.
@@ -486,23 +498,37 @@ private struct BrowserTabOverviewHeader: View {
 
     var body: some View {
         HStack {
-            Text(title).font(.headline)
-            Spacer()
-            if let secondary {
-                secondary
-                Divider()
+            HStack {
+                if let secondary { secondary }
             }
-            Button("Done", action: confirm)
-                .fontWeight(.semibold)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(tabCount == 1 ? "1 Tab" : "\(tabCount) Tabs")
+                .font(.headline)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(.thinMaterial, in: Capsule())
+                .accessibilityAddTraits(.isHeader)
+
+            Button(action: confirm) {
+                Image(systemName: "checkmark")
+                    .font(.headline.weight(.semibold))
+                    .padding(6)
+            }
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.circle)
+            .accessibilityLabel("Done")
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        // The row is as tall as its controls; the separator matches it
-        // instead of stretching to the space available.
-        .fixedSize(horizontal: false, vertical: true)
         .padding()
     }
 }
 
+/// A card: the area the tab's own page is laid over (the pages layer also
+/// draws its close button there), and the tab's title below it.
 private struct BrowserTabOverviewCard: View {
+    static var cornerRadius: CGFloat { 18 }
+
     let item: BrowserTabItem
     let width: CGFloat
     let previewHeight: CGFloat
@@ -511,60 +537,46 @@ private struct BrowserTabOverviewCard: View {
     let onClose: (() -> Void)?
     /// Moves this tab by an offset in the tab order, for accessibility.
     let onMoveBy: ((Int) -> Void)?
-    @State private var closeHovered = false
-
-    private static var headerHeight: CGFloat { 36 }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            selectable {
-                VStack(spacing: 0) {
-                    HStack(spacing: 8) {
-                        Color.clear.frame(width: 28, height: 28)
-                        Text(item.title)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                        Color.clear.frame(width: 28, height: 28)
+        selectable {
+            VStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+                    .fill(.background)
+                    .frame(width: width, height: previewHeight)
+                    .anchorPreference(key: BrowserTabOverviewLayout.self, value: .bounds) {
+                        .init(cards: [item.id: $0])
                     }
-                    .padding(.horizontal, 10)
-                    .frame(height: Self.headerHeight)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+                            .stroke(isActive ? Color.accentColor : Color.primary.opacity(0.10),
+                                    lineWidth: isActive ? 2 : 0.5)
+                    }
+                    .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
 
-                    // The tab's own page is laid over this area.
-                    Color.clear
-                        .frame(width: width, height: previewHeight)
-                        .anchorPreference(key: BrowserTabOverviewLayout.self, value: .bounds) {
-                            .init(cards: [item.id: $0])
-                        }
+                HStack(spacing: 4) {
+                    if let systemImage = item.systemImage {
+                        Image(systemName: systemImage).imageScale(.small)
+                    }
+                    Text(item.title)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
-                .contentShape(Rectangle())
+                .font(.subheadline.weight(.medium))
+                .frame(width: width)
             }
-            .accessibilityLabel("Open \(item.title)")
-            .accessibilityActions {
-                if let onMoveBy {
-                    Button("Move Left") { onMoveBy(-1) }
-                    Button("Move Right") { onMoveBy(1) }
-                }
-                if let onClose {
-                    Button("Close") { onClose() }
-                }
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Open \(item.title)")
+        .accessibilityActions {
+            if let onMoveBy {
+                Button("Move Left") { onMoveBy(-1) }
+                Button("Move Right") { onMoveBy(1) }
             }
-
             if let onClose {
-                overviewCloseButton(action: onClose)
-                    .accessibilityLabel("Close \(item.title)")
-                    .padding(.top, 9)
-                    .padding(.leading, 10)
+                Button("Close") { onClose() }
             }
         }
-        .frame(width: width, height: Self.headerHeight + previewHeight)
-        .background(.background)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isActive ? Color.accentColor : Color.primary.opacity(0.10), lineWidth: isActive ? 2 : 0.5)
-        }
-        .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
         #if os(tvOS)
         .focusSection()
         #endif
@@ -587,23 +599,24 @@ private struct BrowserTabOverviewCard: View {
             .accessibilityAction(.default, onSelect)
         #endif
     }
+}
 
-    @ViewBuilder
-    private func overviewCloseButton(action: @escaping () -> Void) -> some View {
-        let button = Button(action: action) {
+/// A card's close button, drawn by the pages layer over the card's
+/// top-trailing corner so it sits above the page: round and translucent.
+private struct BrowserTabCardCloseButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
             Image(systemName: "xmark")
-                .font(.system(size: 9, weight: .semibold))
-                .frame(width: 18, height: 18)
-                .background(Circle().fill(closeHovered ? Color.primary.opacity(0.10) : .clear))
+                .font(.caption.weight(.bold))
+                .frame(width: 28, height: 28)
+                .background(.ultraThinMaterial, in: Circle())
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-
-        #if os(tvOS)
-        button
-        #else
-        button.onHover { closeHovered = $0 }
-        #endif
+        .accessibilityLabel("Close \(title)")
     }
 }
 
