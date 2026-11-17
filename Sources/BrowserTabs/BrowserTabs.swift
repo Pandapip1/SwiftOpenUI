@@ -76,8 +76,9 @@ private struct BrowserTabToolbarActiveKey: EnvironmentKey {
 }
 
 public extension EnvironmentValues {
-    /// True while a tab's live content is rendered inside an overview card.
-    /// Browser chrome should use this to avoid becoming part of the preview.
+    /// True while a page is drawn as a preview rather than as itself. The tab
+    /// overview never sets it: its cards show each tab's own live page, which
+    /// must go on behaving normally (keep playing, keep its state).
     var isBrowserTabOverviewPreview: Bool {
         get { self[BrowserTabOverviewPreviewKey.self] }
         set { self[BrowserTabOverviewPreviewKey.self] = newValue }
@@ -149,6 +150,12 @@ private struct BrowserPageToolbarItem<Item: View>: ViewModifier {
     #endif
 }
 
+/// A set of tabs, each holding one page. Every page is mounted once and stays
+/// mounted (state, playback, web views and scroll positions are kept); the
+/// container normally shows exactly one of them, the selected tab's, and the
+/// others are present but invisible. The overview is the exception: the same
+/// pages are all shown at once, each scaled into its card. No page is ever
+/// rendered a second time.
 public struct BrowserTabContainer<Content: View>: View {
     public let items: [BrowserTabItem]
     public let selection: Binding<UUID>
@@ -161,13 +168,6 @@ public struct BrowserTabContainer<Content: View>: View {
     private let content: (BrowserTabItem) -> Content
     private let overviewPresented: Binding<Bool>?
     @State private var showingOverview = false
-    /// Whether the overview is on screen. It follows `isShowingOverview`, but
-    /// only once the selected page has been captured, so the capture shows
-    /// the page rather than the overview replacing it.
-    @State private var overviewShown = false
-    @State private var snapshotter = BrowserTabSnapshotter()
-    @State private var snapshots: [UUID: BrowserTabSnapshot] = [:]
-    @Namespace private var overviewTransition
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
                 onMove: ((UUID, Int) -> Void)? = nil,
@@ -209,92 +209,74 @@ public struct BrowserTabContainer<Content: View>: View {
     }
 
     public var body: some View {
-        #if os(macOS)
-        ZStack {
-            mountedPages
-                .opacity(overviewShown ? 0 : 1)
-                .allowsHitTesting(!overviewShown)
-                .accessibilityHidden(overviewShown)
-            if overviewShown {
-                macOverview
-                    .transition(.opacity)
-            }
-        }
-        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: overviewShown)
-        .toolbar { overviewToolbar }
-        .onChange(of: isShowingOverview, initial: true) { _, wanted in presentOverview(wanted) }
-        .onChange(of: items.map(\.id)) { _, ids in forgetClosedTabs(ids) }
-        #else
-        mountedPages
-            .toolbar { overviewToolbar }
-            .fullScreenCover(isPresented: Binding(
-                get: { overviewShown }, set: { if !$0 { isShowingOverview = false } }
-            )) {
-                BrowserTabOverview(items: items, selection: selection, onClose: onClose, onMove: onMove,
-                                   newTabControl: newTabControl, snapshots: snapshots) {
-                    isShowingOverview = false
+        GeometryReader { geometry in
+            ZStack {
+                if isShowingOverview {
+                    BrowserTabOverview(items: items, selection: selection, onClose: onClose, onMove: onMove,
+                                       newTabControl: newTabControl, pageSize: geometry.size,
+                                       select: select, dismiss: { isShowingOverview = false })
+                        .transition(.opacity)
                 }
             }
-            .onChange(of: isShowingOverview, initial: true) { _, wanted in presentOverview(wanted) }
-            .onChange(of: items.map(\.id)) { _, ids in forgetClosedTabs(ids) }
-        #endif
-    }
-
-    /// Shows or hides the overview, capturing the selected page first so its
-    /// card shows it as it was. Cards show pictures; pages are never
-    /// rendered a second time inside them.
-    private func presentOverview(_ wanted: Bool) {
-        guard wanted else {
-            overviewShown = false
-            return
-        }
-        guard !overviewShown else { return }
-        let tab = selection.wrappedValue
-        Task {
-            if let snapshot = await snapshotter.capture(tab: tab) { snapshots[tab] = snapshot }
-            if isShowingOverview { overviewShown = true }
-        }
-    }
-
-    private func forgetClosedTabs(_ ids: [UUID]) {
-        let open = Set(ids)
-        snapshots = snapshots.filter { open.contains($0.key) }
-        snapshotter.retain(only: open)
-    }
-
-    private var mountedPages: some View {
-        ZStack {
-            ForEach(items) { item in
-                content(item)
-                    .browserTabWebViewRegistry(snapshotter, tab: item.id)
-                    // Every page gets the whole tab area, whatever its root
-                    // view's own size; a page that sizes to its content
-                    // would otherwise float in the middle of the tab.
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .opacity(selection.wrappedValue == item.id ? 1 : 0)
-                    .allowsHitTesting(selection.wrappedValue == item.id)
-                    // Embedded native surfaces such as WKWebView maintain their
-                    // own backing view. Explicitly promote the selected page so
-                    // insertion order cannot leave an inactive surface above it.
-                    .zIndex(selection.wrappedValue == item.id ? 1 : 0)
-                    .accessibilityHidden(selection.wrappedValue != item.id)
-                    .environment(\.isBrowserTabToolbarActive,
-                                 selection.wrappedValue == item.id && !isShowingOverview)
-                    // Only the selected page zooms to and from its overview card.
-                    // Hidden pages stay out of the geometry group: matched to
-                    // their cards, every hidden tab's whole page would be laid
-                    // out again at card size each time the overview opens and
-                    // closes. One source at a time: the page while it is
-                    // shown, the card while the overview is (cards exist only
-                    // then).
-                    .matchedGeometryEffect(
-                        id: selection.wrappedValue == item.id
-                            ? AnyHashable(item.id) : AnyHashable(UnmatchedPage(id: item.id)),
-                        in: overviewTransition, isSource: !overviewShown
-                    )
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            // The pages are always this same layer, in every mode, so changing
+            // mode never mounts a page again. In the overview each card reports
+            // where its page goes.
+            .overlayPreferenceValue(BrowserTabOverviewLayout.self) { layout in
+                pages(size: geometry.size, layout: isShowingOverview ? layout : .init())
             }
         }
-        .background(BrowserTabSnapshotProbe(snapshotter: snapshotter))
+        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: isShowingOverview)
+        .toolbar { overviewToolbar }
+    }
+
+    /// Every tab's page, laid out once at the size of the tab area. A page
+    /// with a card is moved and scaled into it, which costs no layout. The
+    /// selected page animates between its card and the whole area (the zoom);
+    /// the others change without animation, and while invisible drive none.
+    private func pages(size: CGSize, layout: BrowserTabOverviewLayout.Value) -> some View {
+        GeometryReader { proxy in
+            let area = CGRect(origin: .zero, size: size)
+            // In the overview, pages are cut off outside its scrolling area.
+            let visible = layout.viewport.map { proxy[$0] } ?? area
+            ZStack(alignment: .topLeading) {
+                ForEach(items) { item in
+                    let isSelected = selection.wrappedValue == item.id
+                    let card = layout.cards[item.id].map { proxy[$0] }
+                    let frame = card ?? area
+                    let scale = area.width > 0 ? frame.width / area.width : 1
+                    let isInteractive = isSelected && !isShowingOverview
+                    content(item)
+                        .frame(width: area.width, height: area.height)
+                        .clipShape(UnevenRoundedRectangle(
+                            bottomLeadingRadius: card == nil ? 0 : 14 / max(scale, 0.01),
+                            bottomTrailingRadius: card == nil ? 0 : 14 / max(scale, 0.01),
+                            style: .continuous))
+                        .scaleEffect(scale, anchor: .topLeading)
+                        .offset(x: frame.minX, y: frame.minY)
+                        .opacity(card != nil || isInteractive ? 1 : 0)
+                        .transaction { transaction in
+                            if !isSelected {
+                                transaction.animation = nil
+                                transaction.disablesAnimations = true
+                            }
+                        }
+                        .allowsHitTesting(isInteractive)
+                        .accessibilityHidden(!isInteractive)
+                        // Embedded native surfaces such as WKWebView keep their own
+                        // backing view; promote the selected page so insertion
+                        // order cannot leave an inactive surface above it.
+                        .zIndex(isSelected ? 1 : 0)
+                        .environment(\.isBrowserTabToolbarActive, isInteractive)
+                }
+            }
+            .frame(width: area.width, height: area.height, alignment: .topLeading)
+            .mask(alignment: .topLeading) {
+                Rectangle()
+                    .frame(width: visible.width, height: visible.height)
+                    .offset(x: visible.minX, y: visible.minY)
+            }
+        }
     }
 
     @ToolbarContentBuilder
@@ -330,42 +312,28 @@ public struct BrowserTabContainer<Content: View>: View {
         .modifier(BrowserNavigationControlGroupStyle())
     }
 
-    #if os(macOS)
-    private var macOverview: some View {
-        GeometryReader { geometry in
-            let columns = max(2, Int(geometry.size.width / 320))
-            let spacing: CGFloat = 24
-            let width = (geometry.size.width - 64 - CGFloat(columns - 1) * spacing) / CGFloat(columns)
-            let contentAspectRatio = max(0.1, geometry.size.width / max(1, geometry.size.height))
-            ScrollView {
-                BrowserTabOverviewGrid(items: items, columns: columns, width: width, spacing: spacing,
-                                       onMove: onMove, onClose: onClose) { item, moveBy in
-                    BrowserTabOverviewCard(item: item, width: width, aspectRatio: contentAspectRatio,
-                                           isActive: selection.wrappedValue == item.id,
-                                           onSelect: { select(item.id) },
-                                           onClose: item.isPinned ? nil : { onClose(item.id) },
-                                           onMoveBy: moveBy) {
-                        BrowserTabSnapshotView(snapshot: snapshots[item.id])
-                            .matchedGeometryEffect(id: AnyHashable(item.id), in: overviewTransition)
-                    }
-                }
-                .padding(32)
-            }
-            .background(Color.secondary.opacity(0.08))
-        }
-    }
-    #endif
-
     private func select(_ id: UUID) {
         selection.wrappedValue = id
         isShowingOverview = false
     }
 }
 
-/// A geometry-group ID no overview card uses, for pages that must not move
-/// with the overview transition.
-private struct UnmatchedPage: Hashable {
-    let id: UUID
+/// What the overview reports to the pages: where each card's page goes, and
+/// its scrolling area, outside which pages are cut off so they don't cover
+/// the overview's header.
+private struct BrowserTabOverviewLayout: PreferenceKey {
+    struct Value {
+        var cards: [UUID: Anchor<CGRect>] = [:]
+        var viewport: Anchor<CGRect>?
+    }
+
+    static var defaultValue: Value { Value() }
+
+    static func reduce(value: inout Value, nextValue: () -> Value) {
+        let next = nextValue()
+        value.cards.merge(next.cards) { $1 }
+        value.viewport = next.viewport ?? value.viewport
+    }
 }
 
 /// Uses the compact navigation control-group treatment where SwiftUI exposes
@@ -381,98 +349,94 @@ private struct BrowserNavigationControlGroupStyle: ViewModifier {
     }
 }
 
+/// The overview's chrome: a header and a scrolling grid of cards. The cards
+/// hold no page of their own; each reports where its tab's page goes.
 private struct BrowserTabOverview: View {
     let items: [BrowserTabItem]
     let selection: Binding<UUID>
     let onClose: (UUID) -> Void
     let onMove: ((UUID, Int) -> Void)?
     let newTabControl: AnyView?
-    let snapshots: [UUID: BrowserTabSnapshot]
+    /// The size of the tab area, which every page has.
+    let pageSize: CGSize
+    let select: (UUID) -> Void
     let dismiss: () -> Void
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Rectangle().fill(.ultraThickMaterial).ignoresSafeArea()
-                GeometryReader { geometry in
-                    let columns = max(2, Int(geometry.size.width / 190))
-                    let spacing: CGFloat = 16
-                    let width = (geometry.size.width - 32 - CGFloat(columns - 1) * spacing) / CGFloat(columns)
-                    let contentAspectRatio = max(0.1, geometry.size.width / max(1, geometry.size.height))
-                    ScrollView {
-                        BrowserTabOverviewGrid(items: items, columns: columns, width: width, spacing: spacing,
-                                               onMove: onMove, onClose: onClose) { item, moveBy in
-                            BrowserTabOverviewCard(item: item, width: width, aspectRatio: contentAspectRatio,
-                                                   isActive: selection.wrappedValue == item.id,
-                                                   onSelect: { selection.wrappedValue = item.id; dismiss() },
-                                                   onClose: item.isPinned ? nil : { onClose(item.id) },
-                                                   onMoveBy: moveBy) {
-                                BrowserTabSnapshotView(snapshot: snapshots[item.id])
-                            }
-                        }
-                        .padding(16)
-                    }
-                }
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Text("Tabs").font(.headline)
+                Spacer()
+                if let newTabControl { newTabControl }
+                Button("Done", action: dismiss)
             }
-            .navigationTitle("Tabs")
-            .toolbar {
-                if let newTabControl {
-                    ToolbarItem(placement: .primaryAction) {
-                        newTabControl
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+
+            GeometryReader { geometry in
+                let spacing: CGFloat = 20
+                let columns = max(2, Int((geometry.size.width - 32 + spacing) / (220 + spacing)))
+                let width = (geometry.size.width - 32 - CGFloat(columns - 1) * spacing) / CGFloat(columns)
+                let previewHeight = width * pageSize.height / max(1, pageSize.width)
+                ScrollView {
+                    BrowserTabOverviewGrid(items: items, columns: columns, width: width, spacing: spacing,
+                                           onMove: onMove, onClose: onClose) { item, moveBy in
+                        BrowserTabOverviewCard(item: item, width: width, previewHeight: previewHeight,
+                                               isActive: selection.wrappedValue == item.id,
+                                               onSelect: { select(item.id) },
+                                               onClose: item.isPinned ? nil : { onClose(item.id) },
+                                               onMoveBy: moveBy)
                     }
+                    .padding(16)
                 }
-                ToolbarItem(placement: .confirmationAction) { Button("Done", action: dismiss) }
+                // Adds the viewport to what the cards inside report.
+                .transformAnchorPreference(key: BrowserTabOverviewLayout.self, value: .bounds) { layout, viewport in
+                    layout.viewport = viewport
+                }
             }
         }
+        .background(Color.secondary.opacity(0.08))
     }
 }
 
-private struct BrowserTabOverviewCard<LivePreview: View>: View {
+private struct BrowserTabOverviewCard: View {
     let item: BrowserTabItem
     let width: CGFloat
-    let aspectRatio: CGFloat
+    let previewHeight: CGFloat
     let isActive: Bool
     let onSelect: () -> Void
     let onClose: (() -> Void)?
     /// Moves this tab by an offset in the tab order, for accessibility.
     let onMoveBy: ((Int) -> Void)?
-    @ViewBuilder let livePreview: () -> LivePreview
     @State private var closeHovered = false
 
-    init(item: BrowserTabItem, width: CGFloat, aspectRatio: CGFloat, isActive: Bool, onSelect: @escaping () -> Void,
-         onClose: (() -> Void)?, onMoveBy: ((Int) -> Void)? = nil,
-         @ViewBuilder livePreview: @escaping () -> LivePreview) {
-        self.item = item; self.width = width; self.aspectRatio = aspectRatio; self.isActive = isActive
-        self.onSelect = onSelect; self.onClose = onClose; self.onMoveBy = onMoveBy
-        self.livePreview = livePreview
-    }
+    private static var headerHeight: CGFloat { 36 }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             Button(action: onSelect) {
-                ZStack {
-                    VStack(spacing: 0) {
-                        HStack(spacing: 8) {
-                            Color.clear.frame(width: 28, height: 28)
-                            Text(item.title)
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                            Color.clear.frame(width: 28, height: 28)
-                        }
-                        .padding(.horizontal, 10)
-                        .frame(height: 36)
-
-                        livePreview()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .clipped()
+                VStack(spacing: 0) {
+                    HStack(spacing: 8) {
+                        Color.clear.frame(width: 28, height: 28)
+                        Text(item.title)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                        Color.clear.frame(width: 28, height: 28)
                     }
+                    .padding(.horizontal, 10)
+                    .frame(height: Self.headerHeight)
+
+                    // The tab's own page is laid over this area.
                     Color.clear
-                        .contentShape(Rectangle())
+                        .frame(width: width, height: previewHeight)
+                        .anchorPreference(key: BrowserTabOverviewLayout.self, value: .bounds) {
+                            .init(cards: [item.id: $0])
+                        }
                 }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .contentShape(Rectangle())
             .accessibilityLabel("Open \(item.title)")
             .accessibilityActions {
                 if let onMoveBy {
@@ -491,13 +455,12 @@ private struct BrowserTabOverviewCard<LivePreview: View>: View {
                     .padding(.leading, 10)
             }
         }
-        .frame(width: width, height: width / aspectRatio)
-        .clipped()
+        .frame(width: width, height: Self.headerHeight + previewHeight)
         .background(.background)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.primary.opacity(0.10), lineWidth: 0.5)
+                .stroke(isActive ? Color.accentColor : Color.primary.opacity(0.10), lineWidth: isActive ? 2 : 0.5)
         }
         .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
         #if os(tvOS)
@@ -522,7 +485,6 @@ private struct BrowserTabOverviewCard<LivePreview: View>: View {
         button.onHover { closeHovered = $0 }
         #endif
     }
-
 }
 
 /// The overview's card grid. Where `onMove` is given, a card can be dragged

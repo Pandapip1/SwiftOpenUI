@@ -102,86 +102,19 @@ private final class NavigationDelegate: NSObject, WKNavigationDelegate {
     }
 }
 
-/// The web views shown inside one part of the interface, so a picture of
-/// that part can include their content. Window captures show a web view's
-/// remote-rendered content blank, so whoever captures draws each registered
-/// view's own snapshot over it.
-@MainActor
-public final class WebViewSnapshotRegistry {
-    private var entries: [ObjectIdentifier: WeakWebView] = [:]
-
-    public init() {}
-
-    /// The registered web views that still exist.
-    public var webViews: [WKWebView] { entries.values.compactMap(\.view) }
-
-    func add(_ webView: WKWebView) { entries[ObjectIdentifier(webView)] = WeakWebView(view: webView) }
-    func remove(_ webView: WKWebView) { entries[ObjectIdentifier(webView)] = nil }
-
-    private struct WeakWebView { weak var view: WKWebView? }
-}
-
-private struct WebViewSnapshotRegistryKey: EnvironmentKey {
-    static let defaultValue: WebViewSnapshotRegistry? = nil
-}
-
-public extension EnvironmentValues {
-    /// Where `WebView`s below register themselves for snapshots.
-    var webViewSnapshotRegistry: WebViewSnapshotRegistry? {
-        get { self[WebViewSnapshotRegistryKey.self] }
-        set { self[WebViewSnapshotRegistryKey.self] = newValue }
-    }
-}
-
-/// Keeps a mounted web view registered with its surroundings' registry.
-@MainActor
-public final class WebViewRegistration {
-    private weak var registry: WebViewSnapshotRegistry?
-
-    func update(_ webView: WKWebView, in registry: WebViewSnapshotRegistry?) {
-        guard registry !== self.registry else { return }
-        self.registry?.remove(webView)
-        registry?.add(webView)
-        self.registry = registry
-    }
-
-    func end(_ webView: WKWebView) {
-        registry?.remove(webView)
-        registry = nil
-    }
-}
-
 #if os(macOS)
 public struct WebView: NSViewRepresentable {
     public let page: WebPage
     public init(_ page: WebPage) { self.page = page }
-    public func makeCoordinator() -> WebViewRegistration { WebViewRegistration() }
-    public func makeNSView(context: Context) -> WKWebView {
-        context.coordinator.update(page.webView, in: context.environment.webViewSnapshotRegistry)
-        return page.webView
-    }
-    public func updateNSView(_ nsView: WKWebView, context: Context) {
-        context.coordinator.update(nsView, in: context.environment.webViewSnapshotRegistry)
-    }
-    public static func dismantleNSView(_ nsView: WKWebView, coordinator: WebViewRegistration) {
-        coordinator.end(nsView)
-    }
+    public func makeNSView(context: Context) -> WKWebView { page.webView }
+    public func updateNSView(_ nsView: WKWebView, context: Context) {}
 }
 #else
 public struct WebView: UIViewRepresentable {
     public let page: WebPage
     public init(_ page: WebPage) { self.page = page }
-    public func makeCoordinator() -> WebViewRegistration { WebViewRegistration() }
-    public func makeUIView(context: Context) -> WKWebView {
-        context.coordinator.update(page.webView, in: context.environment.webViewSnapshotRegistry)
-        return page.webView
-    }
-    public func updateUIView(_ uiView: WKWebView, context: Context) {
-        context.coordinator.update(uiView, in: context.environment.webViewSnapshotRegistry)
-    }
-    public static func dismantleUIView(_ uiView: WKWebView, coordinator: WebViewRegistration) {
-        coordinator.end(uiView)
-    }
+    public func makeUIView(context: Context) -> WKWebView { page.webView }
+    public func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
 #endif
 #endif
