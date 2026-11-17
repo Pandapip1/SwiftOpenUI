@@ -950,6 +950,8 @@ private struct BrowserTabOverviewCard: View {
             .contentShape(Rectangle())
         }
         .accessibilityLabel("Open \(item.title)")
+        // For UI tests: every card, whatever its tab's title.
+        .accessibilityIdentifier("browser-tab-overview-card")
         .accessibilityActions {
             if let onMoveBy {
                 Button("Move Left") { onMoveBy(-1) }
@@ -1212,8 +1214,10 @@ private struct BrowserTabGridDropDelegate: DropDelegate {
 
 /// Lets a card be swiped off sideways to close it: with a finger on touch
 /// screens, with two fingers on a trackpad. Only a mostly horizontal swipe
-/// counts, so vertical scrolling is unaffected. A pinned card follows with
-/// resistance and springs back.
+/// counts, so vertical scrolling is unaffected. As with the system's swipe
+/// to delete, a card closes when pulled far enough or flicked fast enough,
+/// however short the flick. A pinned card follows with resistance and
+/// springs back.
 private struct BrowserTabSwipeToClose<Content: View>: View {
     let id: UUID
     let width: CGFloat
@@ -1221,72 +1225,92 @@ private struct BrowserTabSwipeToClose<Content: View>: View {
     let onClose: () -> Void
     @ViewBuilder let content: () -> Content
 
-    /// A trackpad swipe's position, or where a card is flung away to.
-    @State private var settledOffset: CGFloat = 0
+    /// The swipe's position, or where a card is flung away to.
+    @State private var offset: CGFloat = 0
     @State private var isFlungAway = false
-    #if os(iOS) || os(visionOS)
-    /// A finger's position. It springs back by itself when the touch ends or
-    /// is taken over, for instance by a drag to reorder.
-    @GestureState(resetTransaction: Transaction(animation: .spring(response: 0.3, dampingFraction: 0.8)))
-    private var touchOffset: CGFloat = 0
-    #endif
 
     var body: some View {
         content()
             .offset(x: offset)
             .modifier(BrowserTabCardOpacity(id: id, opacity: 1 - min(0.7, abs(offset) / (width * 1.4))))
             #if os(iOS) || os(visionOS)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 20)
-                    .updating($touchOffset) { value, state, _ in
-                        guard !isFlungAway, abs(value.translation.width) > abs(value.translation.height) else { return }
-                        state = resisted(value.translation.width)
-                    }
-                    .onEnded { value in
-                        guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                        settle(at: value.translation.width, projected: value.predictedEndTranslation.width)
-                    }
-            )
+            .gesture(BrowserTabTouchSwipe(onChange: follow, onEnd: settle))
             #elseif os(macOS)
-            .overlay(BrowserTabTrackpadSwipe(
-                onChange: { translation in
-                    guard !isFlungAway else { return }
-                    settledOffset = resisted(translation)
-                },
-                onEnd: { translation in settle(at: translation, projected: translation) }
-            ))
+            .overlay(BrowserTabTrackpadSwipe(onChange: follow, onEnd: { settle(at: $0, velocity: 0) }))
             #endif
     }
 
-    private var offset: CGFloat {
-        #if os(iOS) || os(visionOS)
-        isFlungAway ? settledOffset : touchOffset + settledOffset
-        #else
-        settledOffset
-        #endif
-    }
-
-    private func resisted(_ translation: CGFloat) -> CGFloat {
-        isClosable ? translation : translation / 4
-    }
-
-    private func settle(at translation: CGFloat, projected: CGFloat) {
+    private func follow(_ translation: CGFloat) {
         guard !isFlungAway else { return }
-        guard isClosable, abs(translation) > width * 0.45 || abs(projected) > width * 1.1 else {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { settledOffset = 0 }
+        offset = isClosable ? translation : translation / 4
+    }
+
+    /// Ends a swipe that has moved the card by `translation`, with the finger
+    /// moving at `velocity` (points per second) as it lifted.
+    private func settle(at translation: CGFloat, velocity: CGFloat) {
+        guard !isFlungAway else { return }
+        let isFlick = abs(velocity) > 500 && (velocity < 0) == (translation < 0)
+        let projected = translation + velocity * 0.25
+        guard isClosable, abs(translation) > width * 0.45 || isFlick || abs(projected) > width * 1.1 else {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { offset = 0 }
             return
         }
         // Carry on from where the card is, then fling it off.
         isFlungAway = true
-        settledOffset = translation
-        let direction: CGFloat = (projected == 0 ? translation : projected) < 0 ? -1 : 1
+        let direction: CGFloat = (isFlick ? velocity : translation) < 0 ? -1 : 1
         withAnimation(.easeOut(duration: 0.18)) {
-            settledOffset = direction * width * 1.6
+            offset = direction * width * 1.6
         } completion: {
             onClose()
         }
     }
 }
+
+#if os(iOS) || os(visionOS)
+/// A horizontal pan over a card. It only begins for a mostly horizontal
+/// movement, and the scroll view's own pan waits for it to fail, so a
+/// sideways swipe is never taken over by scrolling (which cancelled quick
+/// swipes in a scrollable overview) and vertical scrolling is unaffected.
+/// A drag to reorder starts with a long press, which this doesn't take.
+private struct BrowserTabTouchSwipe: UIGestureRecognizerRepresentable {
+    let onChange: (CGFloat) -> Void
+    /// The translation and the horizontal velocity at the end; a cancelled
+    /// pan ends at rest, where the card springs back.
+    let onEnd: (CGFloat, CGFloat) -> Void
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let pan = UIPanGestureRecognizer()
+        pan.delegate = context.coordinator
+        return pan
+    }
+
+    func handleUIGestureRecognizerAction(_ pan: UIPanGestureRecognizer, context: Context) {
+        let translation = pan.translation(in: pan.view).x
+        switch pan.state {
+        case .began, .changed: onChange(translation)
+        case .ended: onEnd(translation, pan.velocity(in: pan.view).x)
+        case .cancelled, .failed: onEnd(0, 0)
+        default: break
+        }
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = recognizer as? UIPanGestureRecognizer else { return false }
+            let velocity = pan.velocity(in: pan.view)
+            return abs(velocity.x) > abs(velocity.y)
+        }
+
+        func gestureRecognizer(_ recognizer: UIGestureRecognizer,
+                               shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+            other is UIPanGestureRecognizer && other.view is UIScrollView
+        }
+    }
+}
+#endif
 
 #if os(macOS)
 /// Reports two-finger horizontal trackpad swipes over a card. Vertical
