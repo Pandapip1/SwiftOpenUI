@@ -662,15 +662,22 @@ private struct BrowserTabCommands: Commands {
             }
             command(.reopenClosedTab, target)
         }
-        CommandGroup(before: .windowList) {
-            command(.previousTab, target)
-            command(.nextTab, target)
-            Divider()
-            ForEach(1...9, id: \.self) { number in
-                command(.selectTab(number), target)
-            }
-            Divider()
+        #if os(macOS)
+        CommandGroup(before: .windowList) { tabSelection }
+        #else
+        // iPadOS has no window-list group; the same commands get their own menu.
+        CommandMenu("Tabs") { tabSelection }
+        #endif
+    }
+
+    @ViewBuilder private var tabSelection: some View {
+        command(.previousTab, target)
+        command(.nextTab, target)
+        Divider()
+        ForEach(1...9, id: \.self) { number in
+            command(.selectTab(number), target)
         }
+        Divider()
     }
 
     private func command(_ shortcut: BrowserTabShortcut, _ target: BrowserTabCommandTarget?) -> some View {
