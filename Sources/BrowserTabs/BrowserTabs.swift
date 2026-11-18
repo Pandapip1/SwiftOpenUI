@@ -944,9 +944,25 @@ private struct BrowserTabOverview: View {
     let pageSize: CGSize
     let select: (UUID) -> Void
     let dismiss: () -> Void
+    #if os(iOS)
+    /// Compact in landscape on a phone, where Safari puts its overview's
+    /// controls along the top.
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    #endif
+
+    /// Whether the overview's bar goes along the top (phones in landscape)
+    /// rather than the bottom.
+    private var barOnTop: Bool {
+        #if os(iOS)
+        verticalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         VStack(spacing: 0) {
+            if barOnTop { bar }
             GeometryReader { geometry in
                 let spacing: CGFloat = 16
                 let columns = max(2, Int((geometry.size.width + spacing) / (220 + spacing)))
@@ -972,9 +988,28 @@ private struct BrowserTabOverview: View {
             }
             .padding(.horizontal)
 
-            BrowserTabOverviewBar(tabCount: items.count, secondary: newTabControl, confirm: dismiss)
+            if !barOnTop { bar }
         }
-        .background(.regularMaterial)
+        .background { BrowserTabOverviewBackdrop().ignoresSafeArea() }
+    }
+
+    private var bar: some View {
+        BrowserTabOverviewBar(tabCount: items.count, secondary: newTabControl, confirm: dismiss, isOnTop: barOnTop)
+    }
+}
+
+/// The overview's background. Safari's is the system glass over the home
+/// screen's wallpaper, which apps can't see; this is the same glass over a
+/// soft wash of the app's accent colour, in light and dark appearances.
+private struct BrowserTabOverviewBackdrop: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color.orange.opacity(0.10), Color.accentColor.opacity(0.12), Color.indigo.opacity(0.16)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            Color.clear.modifier(BrowserTabGlass(shape: Rectangle()))
+        }
     }
 }
 
@@ -1047,17 +1082,15 @@ private struct BrowserTabOverviewBar: View {
     let secondary: AnyView?
     /// Closes the overview.
     let confirm: () -> Void
+    /// Along the top (a phone in landscape), where Safari groups the
+    /// secondary action with Done on the trailing edge.
+    var isOnTop = false
 
     var body: some View {
         BrowserTabGlassGroup {
             HStack {
                 HStack {
-                    if let secondary {
-                        secondary
-                            .menuIndicator(.hidden)
-                            .buttonBorderShape(.circle)
-                            .modifier(BrowserTabGlassButtonStyle())
-                    }
+                    if !isOnTop { secondaryControl }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -1068,17 +1101,33 @@ private struct BrowserTabOverviewBar: View {
                     .modifier(BrowserTabGlass(shape: Capsule()))
                     .accessibilityAddTraits(.isHeader)
 
-                Button(action: confirm) {
-                    Image(systemName: "checkmark")
-                        .font(.headline.weight(.semibold))
-                        .padding(6)
+                HStack {
+                    if isOnTop { secondaryControl }
+                    Button(action: confirm) {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
+                            .padding(6)
+                    }
+                    .buttonBorderShape(.circle)
+                    .modifier(BrowserTabGlassButtonStyle(isProminent: true))
+                    .accessibilityLabel("Done")
                 }
-                .buttonBorderShape(.circle)
-                .modifier(BrowserTabGlassButtonStyle(isProminent: true))
-                .accessibilityLabel("Done")
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .padding()
+        }
+    }
+
+    /// The secondary action, the same size as Done.
+    @ViewBuilder
+    private var secondaryControl: some View {
+        if let secondary {
+            secondary
+                .font(.headline.weight(.semibold))
+                .controlSize(.large)
+                .menuIndicator(.hidden)
+                .buttonBorderShape(.circle)
+                .modifier(BrowserTabGlassButtonStyle())
         }
     }
 }
