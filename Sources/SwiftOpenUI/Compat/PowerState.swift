@@ -3,7 +3,7 @@ import Synchronization
 
 /// The device's power conditions: whether the user asked to save energy
 /// (Low Power Mode, a power-saver profile) and how hot it runs.
-public struct PowerConditions: Equatable, Sendable {
+nonisolated public struct PowerConditions: Equatable, Sendable {
     public enum Thermal: Int, Comparable, Sendable {
         case nominal, fair, serious, critical
         public static func < (lhs: Thermal, rhs: Thermal) -> Bool { lhs.rawValue < rhs.rawValue }
