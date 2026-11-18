@@ -122,6 +122,80 @@ struct BrowserTabCommandTarget {
 }
 
 
+/// Where a tab strip puts each tab, as the system's window tabs do: the tabs
+/// share the width equally down to a minimum width. Beyond that the strip
+/// scrolls a tab at a time: it shows a run of whole tabs, and the tabs
+/// scrolled off each end are thin slivers stacked at that edge, never tabs
+/// cut off mid-title.
+struct BrowserTabStripLayout: Equatable {
+    static let minimumTabWidth: CGFloat = 120
+    static let sliverWidth: CGFloat = 5
+    /// Slivers drawn at each edge; any more lie under them.
+    static let maximumSlivers = 4
+    /// The width of each edge's sliver area while the strip overflows.
+    static var edgeWidth: CGFloat { CGFloat(maximumSlivers) * sliverWidth }
+
+    enum Slot: Equatable {
+        /// A whole tab.
+        case tab(x: CGFloat, width: CGFloat)
+        /// A tab scrolled off an edge.
+        case sliver(x: CGFloat)
+    }
+
+    let count: Int
+    /// The first whole tab.
+    let first: Int
+    /// How many tabs are whole.
+    let shown: Int
+    let tabWidth: CGFloat
+
+    var isOverflowing: Bool { shown < count }
+    /// The first tabs that can be shown first: from no tab scrolled off to
+    /// the last tab at the trailing end.
+    var firstRange: ClosedRange<Int> { 0...max(0, count - shown) }
+
+    /// `count` tabs in `width`, scrolled to show tab `first` first where the
+    /// tabs overflow (clamped to what can be shown).
+    init(count: Int, width: CGFloat, first: Int) {
+        self.count = count
+        let width = max(0, width)
+        if count <= max(1, Int(width / Self.minimumTabWidth)) {
+            shown = count
+            self.first = 0
+            tabWidth = count > 0 ? width / CGFloat(count) : width
+        } else {
+            let available = max(0, width - 2 * Self.edgeWidth)
+            shown = max(1, Int(available / Self.minimumTabWidth))
+            self.first = min(max(0, first), count - shown)
+            tabWidth = available / CGFloat(shown)
+        }
+    }
+
+    /// The first tab to show so that tab `index` is whole, scrolling as
+    /// little as possible.
+    func first(revealing index: Int) -> Int {
+        guard index >= 0, index < count else { return first }
+        if index < first { return index }
+        if index >= first + shown { return index - shown + 1 }
+        return first
+    }
+
+    func slot(of index: Int) -> Slot {
+        guard isOverflowing else { return .tab(x: CGFloat(index) * tabWidth, width: tabWidth) }
+        let edge = Self.edgeWidth, end = first + shown
+        if index < first {
+            // Nearest the whole tabs first; the rest stack under the last.
+            let depth = min(first - index, Self.maximumSlivers)
+            return .sliver(x: edge - CGFloat(depth) * Self.sliverWidth)
+        }
+        if index >= end {
+            let depth = min(index - end, Self.maximumSlivers - 1)
+            return .sliver(x: edge + CGFloat(shown) * tabWidth + CGFloat(depth) * Self.sliverWidth)
+        }
+        return .tab(x: edge + CGFloat(index - first) * tabWidth, width: tabWidth)
+    }
+}
+
 #if !BACKEND_GTK
 public struct BrowserHistoryControls: View {
     private let canGoBack: () -> Bool
@@ -500,13 +574,18 @@ public struct BrowserTabContainer<Content: View>: View {
                     let isSelected = selection.wrappedValue == item.id
                     let card = layout.cards[item.id].map { proxy[$0] }
                     let frame = card ?? area
-                    let scale = area.width > 0 ? frame.width / area.width : 1
+                    // A card's page is laid out at the tab's real size and scaled to fill
+                    // the card, cropped from the top leading corner.
+                    let scale = card.map { card in
+                        max(card.width / max(area.width, 1), card.height / max(area.height, 1))
+                    } ?? 1
                     let isInteractive = isSelected && !isShowingOverview
                     if mountsEveryPage || isSelected {
                     content(item)
                         .frame(width: area.width, height: area.height)
                         .clipShape(BrowserTabPageClip(
-                            cornerRadius: card.map { _ in BrowserTabOverviewCard.cornerRadius / max(scale, 0.01) }))
+                            cornerRadius: card.map { _ in BrowserTabOverviewCard.cornerRadius / max(scale, 0.01) },
+                            size: card.map { CGSize(width: $0.width / max(scale, 0.01), height: $0.height / max(scale, 0.01)) }))
                         .scaleEffect(scale, anchor: .topLeading)
                         .offset(x: frame.minX, y: frame.minY)
                         // A card's page fades with its card as it is swiped off or dragged.
@@ -534,7 +613,7 @@ public struct BrowserTabContainer<Content: View>: View {
                 ForEach(items.filter { !$0.isPinned }) { item in
                     if let card = layout.cards[item.id].map({ proxy[$0] }) {
                         BrowserTabCardCloseButton(title: item.title) { onClose(item.id) }
-                            .position(x: card.maxX - 22, y: card.minY + 22)
+                            .position(x: card.maxX - 18, y: card.minY + 18)
                             .opacity(layout.opacities[item.id, default: 1])
                             .zIndex(2)
                     }
@@ -566,7 +645,13 @@ public struct BrowserTabContainer<Content: View>: View {
         // instead (`barControls`), never in a toolbar as well.
         if !isShowingOverview {
             ToolbarItem(placement: .primaryAction) {
+                #if os(macOS)
+                // The window's tab strip (BrowserTabBar) has the new-tab control
+                // at its end, as the system's window tabs do.
+                overviewButton
+                #else
                 tabManagementControl
+                #endif
             }
         }
         // The window's own items stay in its toolbar in every mode.
@@ -590,10 +675,14 @@ public struct BrowserTabContainer<Content: View>: View {
             if let newTabControl {
                 newTabControl
             }
-            Button { isShowingOverview.toggle() } label: { Image(systemName: "square.on.square") }
-                .accessibilityLabel(isShowingOverview ? "Close Tab Overview" : "Tab Overview")
+            overviewButton
         }
         .modifier(BrowserNavigationControlGroupStyle())
+    }
+
+    private var overviewButton: some View {
+        Button { isShowingOverview.toggle() } label: { Image(systemName: "square.on.square") }
+            .accessibilityLabel(isShowingOverview ? "Close Tab Overview" : "Tab Overview")
     }
 
     private func select(_ id: UUID) {
@@ -747,11 +836,22 @@ private struct BrowserTabControlsPlacement: ViewModifier {
         #if os(iOS)
         VStack(spacing: 0) {
             content
-            if let controls { controls }
+            if let controls {
+                // A floating bar of glass, as Safari's.
+                controls
+                    .modifier(BrowserTabGlass(shape: Capsule()))
+                    .padding(.horizontal)
+                    .padding(.vertical, 4)
+            }
         }
         #elseif os(tvOS)
         VStack(spacing: 0) {
-            if let controls { controls }
+            if let controls {
+                controls
+                    .modifier(BrowserTabGlass(shape: Capsule()))
+                    .padding(.horizontal)
+                    .padding(.vertical, 4)
+            }
             content
         }
         #else
@@ -801,10 +901,20 @@ private struct BrowserTabPageClip: Shape {
     var cornerRadius: CGFloat?
     /// The area to keep, in the shape's own coordinates; `nil` for all of it.
     var bounds: CGRect?
+    /// In a card, the part of the page the card shows, from its top leading
+    /// corner; `nil` for all of it.
+    var size: CGSize?
+
+    init(cornerRadius: CGFloat?, bounds: CGRect? = nil, size: CGSize? = nil) {
+        self.cornerRadius = cornerRadius
+        self.bounds = bounds
+        self.size = size
+    }
 
     func path(in rect: CGRect) -> Path {
         if let cornerRadius {
-            return RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).path(in: rect)
+            let shown = size.map { CGRect(origin: rect.origin, size: $0) } ?? rect
+            return RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).path(in: shown)
         }
         return Path(bounds ?? rect.insetBy(dx: -100_000, dy: -100_000))
     }
@@ -858,15 +968,32 @@ private struct BrowserTabOverview: View {
     let pageSize: CGSize
     let select: (UUID) -> Void
     let dismiss: () -> Void
+    #if os(iOS)
+    /// Compact in landscape on a phone, where Safari puts its overview's
+    /// controls along the top.
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    #endif
+
+    /// Whether the overview's bar goes along the top (phones in landscape)
+    /// rather than the bottom.
+    private var barOnTop: Bool {
+        #if os(iOS)
+        verticalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         VStack(spacing: 0) {
+            if barOnTop { bar }
             GeometryReader { geometry in
                 let spacing: CGFloat = 16
                 let columns = max(2, Int((geometry.size.width + spacing) / (220 + spacing)))
                 let width = (geometry.size.width - CGFloat(columns - 1) * spacing) / CGFloat(columns)
-                // Cards have the tab area's shape, so the page fits exactly.
-                let previewHeight = width * pageSize.height / max(1, pageSize.width)
+                // Cards are 2:3 in portrait and 3:2 in landscape, whatever the
+                // window's exact shape; each page fills its card.
+                let previewHeight = pageSize.height >= pageSize.width ? width * 3 / 2 : width * 2 / 3
                 ScrollView {
                     BrowserTabOverviewGrid(items: items, columns: columns, width: width, spacing: spacing,
                                            onMove: onMove, onClose: onClose) { item, moveBy in
@@ -885,9 +1012,87 @@ private struct BrowserTabOverview: View {
             }
             .padding(.horizontal)
 
-            BrowserTabOverviewBar(tabCount: items.count, secondary: newTabControl, confirm: dismiss)
+            if !barOnTop { bar }
         }
-        .background(.regularMaterial)
+        .background { BrowserTabOverviewBackdrop().ignoresSafeArea() }
+    }
+
+    private var bar: some View {
+        BrowserTabOverviewBar(tabCount: items.count, secondary: newTabControl, confirm: dismiss, isOnTop: barOnTop)
+    }
+}
+
+/// The overview's background. Safari's is the system glass over the home
+/// screen's wallpaper, which apps can't see; this is the same glass over a
+/// soft wash of the app's accent colour, in light and dark appearances.
+private struct BrowserTabOverviewBackdrop: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color.orange.opacity(0.10), Color.accentColor.opacity(0.12), Color.indigo.opacity(0.16)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            Color.clear.modifier(BrowserTabGlass(shape: Rectangle()))
+        }
+    }
+}
+
+/// The tab system's controls in the system's Liquid Glass where it has it
+/// (iOS, macOS and tvOS 26), and a material before that and on visionOS,
+/// whose own glass the window already provides. One look for every bar and
+/// control the tab system draws, never a custom background.
+private struct BrowserTabGlass<S: Shape>: ViewModifier {
+    let shape: S
+    var isInteractive = false
+
+    func body(content: Content) -> some View {
+        #if os(visionOS)
+        content.background(.thinMaterial, in: shape)
+        #else
+        if #available(iOS 26.0, macOS 26.0, tvOS 26.0, *) {
+            content.glassEffect(isInteractive ? .regular.interactive() : .regular, in: shape)
+        } else {
+            content.background(.thinMaterial, in: shape)
+        }
+        #endif
+    }
+}
+
+/// A tab-system button in glass: `isProminent` for the confirming action
+/// (the overview's Done), tinted as the system tints it.
+private struct BrowserTabGlassButtonStyle: ViewModifier {
+    var isProminent = false
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if os(visionOS)
+        if isProminent { content.buttonStyle(.borderedProminent) } else { content.buttonStyle(.bordered) }
+        #else
+        if #available(iOS 26.0, macOS 26.0, tvOS 26.0, *) {
+            if isProminent { content.buttonStyle(.glassProminent) } else { content.buttonStyle(.glass) }
+        } else if isProminent {
+            content.buttonStyle(.borderedProminent)
+        } else {
+            content.buttonStyle(.bordered)
+        }
+        #endif
+    }
+}
+
+/// Lets neighbouring glass controls blend as the system's do.
+private struct BrowserTabGlassGroup<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        #if os(visionOS)
+        content()
+        #else
+        if #available(iOS 26.0, macOS 26.0, tvOS 26.0, *) {
+            GlassEffectContainer { content() }
+        } else {
+            content()
+        }
+        #endif
     }
 }
 
@@ -901,32 +1106,53 @@ private struct BrowserTabOverviewBar: View {
     let secondary: AnyView?
     /// Closes the overview.
     let confirm: () -> Void
+    /// Along the top (a phone in landscape), where Safari groups the
+    /// secondary action with Done on the trailing edge.
+    var isOnTop = false
 
     var body: some View {
-        HStack {
+        BrowserTabGlassGroup {
             HStack {
-                if let secondary { secondary }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+                HStack {
+                    if !isOnTop { secondaryControl }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(tabCount == 1 ? "1 Tab" : "\(tabCount) Tabs")
-                .font(.headline)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .background(.thinMaterial, in: Capsule())
-                .accessibilityAddTraits(.isHeader)
+                Text(tabCount == 1 ? "1 Tab" : "\(tabCount) Tabs")
+                    .font(.headline)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .modifier(BrowserTabGlass(shape: Capsule()))
+                    .accessibilityAddTraits(.isHeader)
 
-            Button(action: confirm) {
-                Image(systemName: "checkmark")
-                    .font(.headline.weight(.semibold))
-                    .padding(6)
+                HStack {
+                    if isOnTop { secondaryControl }
+                    Button(action: confirm) {
+                        Image(systemName: "checkmark")
+                            .font(.headline.weight(.semibold))
+                            .padding(6)
+                    }
+                    .buttonBorderShape(.circle)
+                    .modifier(BrowserTabGlassButtonStyle(isProminent: true))
+                    .accessibilityLabel("Done")
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.circle)
-            .accessibilityLabel("Done")
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding()
         }
-        .padding()
+    }
+
+    /// The secondary action, the same size as Done.
+    @ViewBuilder
+    private var secondaryControl: some View {
+        if let secondary {
+            secondary
+                .font(.headline.weight(.semibold))
+                .controlSize(.large)
+                .menuIndicator(.hidden)
+                .buttonBorderShape(.circle)
+                .modifier(BrowserTabGlassButtonStyle())
+        }
     }
 }
 
@@ -968,7 +1194,7 @@ private struct BrowserTabOverviewCard: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
-                .font(.subheadline.weight(.medium))
+                .font(.footnote.weight(.medium))
                 .frame(width: width)
             }
             .contentShape(Rectangle())
@@ -1018,10 +1244,12 @@ private struct BrowserTabCardCloseButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "xmark")
-                .font(.caption.weight(.bold))
-                .frame(width: 28, height: 28)
-                .background(.ultraThinMaterial, in: Circle())
-                .contentShape(Circle())
+                .font(.caption2.weight(.bold))
+                .frame(width: 24, height: 24)
+                .modifier(BrowserTabGlass(shape: Circle(), isInteractive: true))
+                // A small mark, as Safari draws it, with a finger-sized target.
+                .padding(10)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Close \(title)")
@@ -1436,6 +1664,14 @@ private struct BrowserTabTrackpadSwipe: NSViewRepresentable {
 }
 #endif
 
+/// The window's tab strip (on macOS, in the title bar): the tabs share its
+/// width as the system's window tabs do (``BrowserTabStripLayout``), and
+/// past their minimum width it scrolls a tab at a time, with the tabs
+/// scrolled off shown as slivers at each edge. The selected tab is always
+/// whole: the strip scrolls to it whenever it changes, a tab opens, or the
+/// strip is resized. Trackpads and mouse wheels scroll it; a tab dragged to
+/// either edge scrolls it too; the new-tab control stays at the trailing
+/// end, outside the tabs.
 public struct BrowserTabBar: View {
     public let items: [BrowserTabItem]
     public let selection: Binding<UUID>
@@ -1443,10 +1679,15 @@ public struct BrowserTabBar: View {
     /// Moves a tab to an index among all tabs, dragged along the bar. `nil`
     /// leaves the tabs in place.
     public let onMove: ((UUID, Int) -> Void)?
+    private let newTabControl: AnyView?
     @State private var hoveredID: UUID?
     @State private var hoveredCloseID: UUID?
-
     @State private var drag = BrowserTabDragState()
+    /// The first whole tab while the tabs overflow.
+    @State private var first = 0
+    @State private var width: CGFloat = 0
+    /// Scrolls along while a dragged tab is held over an edge.
+    @State private var edgeScroll: Task<Void, Never>?
 
     public init(items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
                 onMove: ((UUID, Int) -> Void)? = nil) {
@@ -1454,29 +1695,136 @@ public struct BrowserTabBar: View {
         self.selection = selection
         self.onClose = onClose
         self.onMove = onMove
+        self.newTabControl = nil
+    }
+
+    public init<NewTabControl: View>(
+        items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
+        onMove: ((UUID, Int) -> Void)? = nil, @ViewBuilder newTabControl: () -> NewTabControl
+    ) {
+        self.items = items
+        self.selection = selection
+        self.onClose = onClose
+        self.onMove = onMove
+        self.newTabControl = AnyView(newTabControl())
+    }
+
+    private var layout: BrowserTabStripLayout {
+        BrowserTabStripLayout(count: items.count, width: width, first: first)
     }
 
     public var body: some View {
-        GeometryReader { geometry in
-            let width = max(100, (geometry.size.width - 12) / CGFloat(max(1, items.count)))
-            ScrollView(.horizontal, showsIndicators: false) {
-                let shown = drag.ordered(items)
-                HStack(spacing: 0) {
-                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, item in
-                        tab(item, previous: index > 0 ? shown[index - 1] : nil)
-                            .frame(width: width)
-                            .opacity(drag.draggingID == item.id ? 0.45 : 1)
-                            .modifier(BrowserTabReorderable(id: item.id, items: items, drag: drag, onMove: onMove))
-                    }
-                }
-                .modifier(BrowserTabReorderingArea(items: items, drag: drag, onMove: onMove))
-                .padding(.horizontal, 2).padding(.vertical, 2)
-                .background(Capsule().fill(Color.primary.opacity(0.05))
-                    .overlay(Capsule().stroke(Color.primary.opacity(0.1), lineWidth: 0.5)))
-                .padding(.horizontal, 4).padding(.vertical, 3)
-                .frame(minWidth: geometry.size.width)
+        HStack(spacing: 4) {
+            GeometryReader { geometry in
+                tabs(height: geometry.size.height)
+                    .onChange(of: geometry.size.width, initial: true) { width = geometry.size.width }
+            }
+            .padding(.horizontal, 2).padding(.vertical, 2)
+            .modifier(BrowserTabGlass(shape: Capsule()))
+            if let newTabControl {
+                newTabControl.modifier(BrowserTabStripControlStyle())
             }
         }
+        .padding(.horizontal, 4).padding(.vertical, 3)
+        // The selected tab is always whole.
+        .onChange(of: BrowserTabStripReveal(selection: selection.wrappedValue, ids: items.map(\.id), width: width),
+                  initial: true) { reveal() }
+        .animation(.easeOut(duration: 0.2), value: first)
+    }
+
+    private func tabs(height: CGFloat) -> some View {
+        let shown = drag.ordered(items)
+        let layout = BrowserTabStripLayout(count: shown.count, width: width, first: first)
+        return ZStack(alignment: .topLeading) {
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, item in
+                switch layout.slot(of: index) {
+                case .tab(let x, let tabWidth):
+                    tab(item, previous: index > layout.first ? shown[index - 1] : nil)
+                        .frame(width: tabWidth, height: height)
+                        .opacity(drag.draggingID == item.id ? 0.45 : 1)
+                        .modifier(BrowserTabReorderable(id: item.id, items: items, drag: drag, onMove: onMove))
+                        .offset(x: x)
+                case .sliver(let x):
+                    sliver(item, isLeading: index < layout.first)
+                        .frame(width: BrowserTabStripLayout.sliverWidth, height: height)
+                        .offset(x: x)
+                }
+            }
+            if layout.isOverflowing {
+                edge(step: -1, height: height)
+                edge(step: 1, height: height)
+                    .offset(x: width - BrowserTabStripLayout.edgeWidth)
+            }
+        }
+        .frame(width: width, height: height, alignment: .topLeading)
+        .clipped()
+        .modifier(BrowserTabReorderingArea(items: items, drag: drag, onMove: onMove))
+        #if os(macOS)
+        .overlay(BrowserTabStripScroll { scroll(by: $0) })
+        #endif
+    }
+
+    /// A tab scrolled off an edge: a thin line that shows the tab when
+    /// clicked.
+    private func sliver(_ item: BrowserTabItem, isLeading: Bool) -> some View {
+        Button { selection.wrappedValue = item.id } label: {
+            Rectangle()
+                .fill(Color.secondary.opacity(0.45))
+                .frame(width: 1)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: isLeading ? .leading : .trailing)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(item.title)
+        #if !os(tvOS)
+        .help(item.title)
+        #endif
+    }
+
+    /// An edge's sliver area, which scrolls the strip while a dragged tab is
+    /// held over it.
+    @ViewBuilder
+    private func edge(step: Int, height: CGFloat) -> some View {
+        #if os(tvOS)
+        EmptyView()
+        #else
+        Color.clear
+            .frame(width: BrowserTabStripLayout.edgeWidth, height: height)
+            .allowsHitTesting(drag.draggingID != nil)
+            .onDrop(of: [.text], delegate: BrowserTabEdgeDropDelegate(
+                enter: { startEdgeScroll(step) },
+                exit: stopEdgeScroll,
+                drop: { stopEdgeScroll(); if let onMove { drag.finish(items: items, onMove: onMove) } }
+            ))
+        #endif
+    }
+
+    private func startEdgeScroll(_ step: Int) {
+        edgeScroll?.cancel()
+        edgeScroll = Task {
+            while !Task.isCancelled {
+                scroll(by: step)
+                try? await Task.sleep(for: .milliseconds(350))
+            }
+        }
+    }
+
+    private func stopEdgeScroll() {
+        edgeScroll?.cancel()
+        edgeScroll = nil
+    }
+
+    /// Scrolls the strip by `step` tabs.
+    private func scroll(by step: Int) {
+        let range = layout.firstRange
+        first = min(max(layout.first + step, range.lowerBound), range.upperBound)
+    }
+
+    private func reveal() {
+        guard let index = items.firstIndex(where: { $0.id == selection.wrappedValue }) else { return }
+        let target = layout.first(revealing: index)
+        if target != first { first = target }
     }
 
     private func tab(_ item: BrowserTabItem, previous: BrowserTabItem?) -> some View {
@@ -1491,6 +1839,7 @@ public struct BrowserTabBar: View {
                 ZStack {
                     Text(item.title)
                         .lineLimit(1)
+                        .truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.horizontal, 30)
                     HStack(spacing: 0) {
@@ -1534,6 +1883,7 @@ public struct BrowserTabBar: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Close \(item.title)")
 
         #if os(tvOS)
         button
@@ -1542,6 +1892,87 @@ public struct BrowserTabBar: View {
         #endif
     }
 }
+
+/// The new-tab control at the strip's end: a borderless icon, whether it
+/// is a button or a menu.
+private struct BrowserTabStripControlStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(tvOS)
+        content
+        #else
+        content
+            .menuIndicator(.hidden)
+            .buttonStyle(.borderless)
+            .fixedSize()
+            .padding(.horizontal, 4)
+        #endif
+    }
+}
+
+/// What the strip scrolls to the selected tab on.
+private struct BrowserTabStripReveal: Equatable {
+    let selection: UUID
+    let ids: [UUID]
+    let width: CGFloat
+}
+
+#if !os(tvOS)
+/// Reports a dragged tab entering, leaving or dropped on a strip edge.
+private struct BrowserTabEdgeDropDelegate: DropDelegate {
+    let enter: () -> Void
+    let exit: () -> Void
+    let drop: () -> Void
+
+    func dropEntered(info: DropInfo) { enter() }
+    func dropExited(info: DropInfo) { exit() }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+    func performDrop(info: DropInfo) -> Bool {
+        drop()
+        return true
+    }
+}
+#endif
+
+#if os(macOS)
+/// Turns horizontal scrolling over the strip (a trackpad's two fingers, or a
+/// mouse wheel, which scrolls vertically) into scrolling a tab at a time.
+/// Everything that is not a scroll passes through.
+private struct BrowserTabStripScroll: NSViewRepresentable {
+    let scroll: (Int) -> Void
+
+    func makeNSView(context: Context) -> ScrollView {
+        let view = ScrollView()
+        view.scroll = scroll
+        return view
+    }
+
+    func updateNSView(_ view: ScrollView, context: Context) { view.scroll = scroll }
+
+    final class ScrollView: NSView {
+        var scroll: (Int) -> Void = { _ in }
+        private var pending: CGFloat = 0
+        /// The distance one tab's step takes.
+        private let step: CGFloat = 40
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            NSApp.currentEvent?.type == .scrollWheel ? super.hitTest(point) : nil
+        }
+
+        override func scrollWheel(with event: NSEvent) {
+            if event.phase.contains(.began) { pending = 0 }
+            // A mouse wheel scrolls vertically; along the strip that means sideways.
+            let delta = abs(event.scrollingDeltaX) >= abs(event.scrollingDeltaY)
+                ? event.scrollingDeltaX : event.scrollingDeltaY
+            pending += event.hasPreciseScrollingDeltas ? delta : delta * step
+            // Content follows the fingers: moving them left shows tabs further right.
+            while abs(pending) >= step {
+                scroll(pending < 0 ? 1 : -1)
+                pending -= pending < 0 ? -step : step
+            }
+        }
+    }
+}
+#endif
 
 private struct BrowserTabActiveStyle: ViewModifier {
     let isActive: Bool
@@ -1693,6 +2124,14 @@ public struct BrowserTabBar: View {
         self.selection = selection
         self.onClose = onClose
         self.onMove = onMove
+    }
+
+    /// GTK windows show the container's own new-tab control.
+    public init<NewTabControl: View>(
+        items: [BrowserTabItem], selection: Binding<UUID>, onClose: @escaping (UUID) -> Void,
+        onMove: ((UUID, Int) -> Void)? = nil, @ViewBuilder newTabControl: () -> NewTabControl
+    ) {
+        self.init(items: items, selection: selection, onClose: onClose, onMove: onMove)
     }
 
     public var body: Never { fatalError("BrowserTabBar is a platform-rendered primitive view") }

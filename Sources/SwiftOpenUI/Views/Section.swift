@@ -32,6 +32,19 @@ public struct Section<Content: View>: View {
         self.headerView = nil
     }
 
+    /// SwiftUI's trailing header-and-footer form:
+    /// `Section { rows } header: { view } footer: { view }`.
+    public init<H: View, F: View>(
+        @ViewBuilder content: () -> Content,
+        @ViewBuilder header: () -> H,
+        @ViewBuilder footer: () -> F
+    ) {
+        self.header = nil
+        self.footer = Self.text(of: footer())
+        self.content = content()
+        self.headerView = AnyView(header())
+    }
+
     public init(header: String? = nil, footer: String? = nil, @ViewBuilder content: () -> Content) {
         self.header = header
         self.footer = footer
