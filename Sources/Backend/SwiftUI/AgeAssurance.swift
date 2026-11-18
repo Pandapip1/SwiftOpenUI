@@ -43,7 +43,7 @@ public enum AgeAssurance {
         guard #available(iOS 26.0, macOS 26.0, visionOS 26.0, *) else { return .unavailable }
         do {
             #if os(macOS)
-            guard let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first else {
+            guard let app = NSApp, let window = app.keyWindow ?? app.mainWindow ?? app.windows.first else {
                 return .unavailable
             }
             let response = try await AgeRangeService.shared.requestAgeRange(

@@ -38,6 +38,11 @@ public enum SystemParentalControls {
     public struct ParentResponse: Sendable, Equatable {
         public let requestID: UUID
         public let approved: Bool
+
+        public init(requestID: UUID, approved: Bool) {
+            self.requestID = requestID
+            self.approved = approved
+        }
     }
 
     /// Apple: Declared Age Range. A shared range whose
@@ -50,7 +55,7 @@ public enum SystemParentalControls {
         guard #available(iOS 26.0, macOS 26.0, visionOS 26.0, *) else { return .unavailable }
         do {
             #if os(macOS)
-            guard let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first else { return .unavailable }
+            guard let app = NSApp, let window = app.keyWindow ?? app.mainWindow ?? app.windows.first else { return .unavailable }
             let response = try await AgeRangeService.shared.requestAgeRange(ageGates: 13, 16, 18, in: window)
             #else
             guard let presenter = topViewController() else { return .unavailable }
@@ -86,7 +91,7 @@ public enum SystemParentalControls {
         )
         do {
             #if os(macOS)
-            guard let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first else { return .unavailable }
+            guard let app = NSApp, let window = app.keyWindow ?? app.mainWindow ?? app.windows.first else { return .unavailable }
             try await AskCenter.shared.ask(question, in: window)
             #else
             guard let presenter = topViewController() else { return .unavailable }

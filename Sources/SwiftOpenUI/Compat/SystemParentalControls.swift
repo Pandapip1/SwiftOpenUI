@@ -29,6 +29,11 @@ public enum SystemParentalControls {
     public struct ParentResponse: Sendable, Equatable {
         public let requestID: UUID
         public let approved: Bool
+
+        public init(requestID: UUID, approved: Bool) {
+            self.requestID = requestID
+            self.approved = approved
+        }
     }
 
     /// Linux: GNOME malcontent's app filter for the current user, read from
