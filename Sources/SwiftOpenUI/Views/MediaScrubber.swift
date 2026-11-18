@@ -8,6 +8,8 @@
 /// `ScrubberLayout`, shared with every backend; the SwiftUI backend has the
 /// same API.
 public struct MediaScrubber: View {
+    /// What the bar controls, read by assistive technology ("Playback position").
+    private let label: String
     private let content: ScrubberContent
     private let value: Double
     private let onScrub: (Double) -> Void
@@ -16,11 +18,14 @@ public struct MediaScrubber: View {
     @State private var dragTime: Double?
     @State private var frozenEnd: Double?
     @State private var hoverTime: Double?
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
-    public init(content: ScrubberContent, value: Double,
+    /// `label` is required: a seek bar without a name is unusable with assistive technology.
+    public init(_ label: String, content: ScrubberContent, value: Double,
                 onScrub: @escaping (Double) -> Void = { _ in },
                 onScrubEnded: @escaping (Double) -> Void,
                 onJumpToLive: (() -> Void)? = nil) {
+        self.label = label
         self.content = content
         self.value = value
         self.onScrub = onScrub
@@ -41,6 +46,10 @@ public struct MediaScrubber: View {
             }
             .frame(height: height)
             labels
+            if differentiateWithoutColor, !content.lanes.isEmpty {
+                // What the lane heights mean, in words.
+                Text(ScrubberLayout(content: content, width: 1).legendText).font(.caption2)
+            }
         }
     }
 
@@ -60,9 +69,12 @@ public struct MediaScrubber: View {
                     .offset(x: flags[i].range.lowerBound, y: barTop + ScrubberLayout.flagY)
             }
             ForEach(0..<laneRects.count) { i in
+                // Stages differ by height as well as colour.
+                let laneHeight = ScrubberLayout.laneHeight * laneRects[i].stage.heightFraction
                 Rectangle().fill(Self.color(stage: laneRects[i].stage))
-                    .frame(width: laneRects[i].range.upperBound - laneRects[i].range.lowerBound, height: ScrubberLayout.laneHeight)
-                    .offset(x: laneRects[i].range.lowerBound, y: barTop + layout.laneY(laneRects[i].index))
+                    .frame(width: laneRects[i].range.upperBound - laneRects[i].range.lowerBound, height: laneHeight)
+                    .offset(x: laneRects[i].range.lowerBound,
+                            y: barTop + layout.laneY(laneRects[i].index) + ScrubberLayout.laneHeight - laneHeight)
             }
             ForEach(0..<pieces.count) { i in
                 let piece = pieces[i]
@@ -110,8 +122,23 @@ public struct MediaScrubber: View {
             case .ended: hoverTime = nil
             }
         }
-        .accessibilityLabel("Playback position")
+        .accessibilityLabel(label)
         .accessibilityValue(layout.accessibilityValue(value))
+        .accessibilityActions {
+            // One context menu (how this renderer offers named actions).
+            Button("Back \(Int(layout.accessibilityStep)) seconds") { onScrubEnded(max(0, value - layout.accessibilityStep)) }
+            Button("Forward \(Int(layout.accessibilityStep)) seconds") { onScrubEnded(min(layout.end, value + layout.accessibilityStep)) }
+            if let start = layout.previousChapterStart(before: value) {
+                Button("Previous chapter") { onScrubEnded(start) }
+            }
+            if let start = layout.nextChapterStart(after: value) {
+                Button("Next chapter") { onScrubEnded(start) }
+            }
+            // Only while a flagged segment plays: "Skip Sponsor".
+            if let flag = layout.flag(at: value) {
+                Button("Skip \(flag.title)") { onScrubEnded(min(layout.end, flag.range.end)) }
+            }
+        }
     }
 
     private var labels: some View {

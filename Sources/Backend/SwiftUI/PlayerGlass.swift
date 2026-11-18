@@ -11,8 +11,13 @@ import SwiftUI
 ///   foreground. tvOS keeps its focus effects: controls are not made
 ///   interactive glass there, the group sits on glass instead.
 /// - Apple platforms before 26: a material behind each group.
+/// - Reduce Transparency or Increase Contrast: an opaque background with a
+///   border instead of glass or material (`glassBackground(in:interactive:)`),
+///   so the video behind never lowers the controls' contrast.
 /// - Other renderers: the renderer's native look (a dark scrim behind the group).
 public struct PlayerControlGroup<Content: View>: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     private let spacing: CGFloat
     private let content: Content
 
@@ -21,19 +26,22 @@ public struct PlayerControlGroup<Content: View>: View {
         self.content = content()
     }
 
+    private var opaque: Bool { reduceTransparency || contrast == .increased }
+
     public var body: some View {
-        if #available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *) {
+        if opaque {
+            // Each control carries its own opaque background (playerControlGlass).
+            content
+        } else if #available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *) {
             #if os(tvOS)
             content.padding(.horizontal, 12).padding(.vertical, 9)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
+                .glassBackground(in: RoundedRectangle(cornerRadius: 16))
             #else
             GlassEffectContainer(spacing: spacing) { content }
             #endif
         } else {
             content.padding(.horizontal, 12).padding(.vertical, 9)
-                .foregroundStyle(Color.white)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-                .environment(\.colorScheme, .dark)
+                .glassBackground(in: RoundedRectangle(cornerRadius: 12))
         }
     }
 }
@@ -56,17 +64,25 @@ public extension View {
 }
 
 private struct PlayerControlGlassModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     let interactive: Bool
 
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *) {
+        if reduceTransparency || contrast == .increased {
+            // Opaque with a border (glassBackground's accessible form), on every OS version.
+            content
+                .padding(.horizontal, interactive ? 10 : 12)
+                .padding(.vertical, 8)
+                .glassBackground(in: Capsule(), interactive: interactive)
+        } else if #available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *) {
             #if os(tvOS)
             content
             #else
             content
                 .padding(.horizontal, interactive ? 10 : 12)
                 .padding(.vertical, 8)
-                .glassEffect(interactive ? .regular.interactive() : .regular, in: Capsule())
+                .glassBackground(in: Capsule(), interactive: interactive)
             #endif
         } else {
             content

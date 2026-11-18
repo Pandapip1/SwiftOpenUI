@@ -10,6 +10,8 @@ import SwiftUI
 /// `ScrubberLayout`, shared with every backend. Same API as the portable
 /// implementation.
 public struct MediaScrubber: View {
+    /// What the bar controls, read by assistive technology ("Playback position").
+    private let label: String
     private let content: ScrubberContent
     private let value: Double
     private let onScrub: (Double) -> Void
@@ -19,11 +21,14 @@ public struct MediaScrubber: View {
     @State private var frozenEnd: Double?
     @State private var hoverTime: Double?
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Namespace private var rotorNamespace
 
-    public init(content: ScrubberContent, value: Double,
+    /// `label` is required: a seek bar without a name is unusable with assistive technology.
+    public init(_ label: String, content: ScrubberContent, value: Double,
                 onScrub: @escaping (Double) -> Void = { _ in },
                 onScrubEnded: @escaping (Double) -> Void,
                 onJumpToLive: (() -> Void)? = nil) {
+        self.label = label
         self.content = content
         self.value = value
         self.onScrub = onScrub
@@ -99,7 +104,7 @@ public struct MediaScrubber: View {
                     hover: { hoverTime = $0 }
                 ))
                 .accessibilityElement()
-                .accessibilityLabel("Playback position")
+                .accessibilityLabel(label)
                 .accessibilityValue(layout.accessibilityValue(value))
                 .accessibilityAdjustableAction { direction in
                     let step = layout.accessibilityStep
@@ -115,19 +120,75 @@ public struct MediaScrubber: View {
                 .accessibilityAction(named: "Previous chapter") {
                     if let start = layout.previousChapterStart(before: value) { onScrubEnded(start) }
                 }
-                .accessibilityAction(named: layout.flag(at: value).map { "Skip \($0.title)" } ?? "Skip flagged segment") {
-                    if let flag = layout.flag(at: value) { onScrubEnded(min(layout.end, flag.range.end)) }
+                .accessibilityActions {
+                    // Only while a flagged segment plays: "Skip Sponsor".
+                    if let flag = layout.flag(at: value) {
+                        Button("Skip \(flag.title)") { onScrubEnded(min(layout.end, flag.range.end)) }
+                    }
                 }
+                .overlay(alignment: .topLeading) { landmarks(layout) }
             }
             .frame(height: barTop + ScrubberLayout.capsuleHeight + laneSpace)
             labels
             if differentiateWithoutColor, !content.lanes.isEmpty {
                 // What the lane heights mean, in words.
-                Text(ScrubberLayout(content: content, width: 1).legendStages
-                    .map { "\($0.name): \(Int($0.heightFraction * 100))% height" }.joined(separator: " · "))
-                    .font(.caption2)
+                Text(ScrubberLayout(content: content, width: 1).legendText).font(.caption2)
             }
         }
+        .accessibilityRotor("Chapters") {
+            let layout = ScrubberLayout(content: content, width: 1)
+            ForEach(content.chapters.indices, id: \.self) { index in
+                AccessibilityRotorEntry(layout.chapterAccessibilityLabel(index), id: "chapter-\(index)", in: rotorNamespace)
+            }
+        }
+        .accessibilityRotor("Flagged segments") {
+            let layout = ScrubberLayout(content: content, width: 1)
+            ForEach(content.flags.indices, id: \.self) { index in
+                AccessibilityRotorEntry(layout.flagAccessibilityLabel(index), id: "flag-\(index)", in: rotorNamespace)
+            }
+        }
+    }
+
+    /// Chapters and flagged segments as their own elements over the bar, so
+    /// the Chapters and Flagged segments rotors reach them. Activating a
+    /// chapter seeks to it, and swiping up or down on one steps chapter by
+    /// chapter; activating a flagged segment (a sponsor) skips it.
+    private func landmarks(_ layout: ScrubberLayout) -> some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(Array(content.chapters.enumerated()), id: \.offset) { index, chapter in
+                let x0 = layout.x(for: chapter.range.start)
+                Color.clear
+                    .frame(width: max(layout.x(for: chapter.range.end) - x0, 1), height: ScrubberLayout.capsuleHeight)
+                    .offset(x: x0, y: barTop)
+                    .accessibilityElement()
+                    .accessibilityLabel(layout.chapterAccessibilityLabel(index))
+                    .accessibilityHint("Plays from this chapter")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { onScrubEnded(chapter.range.start) }
+                    .accessibilityAdjustableAction { direction in
+                        switch direction {
+                        case .increment: if let start = layout.nextChapterStart(after: value) { onScrubEnded(start) }
+                        case .decrement: if let start = layout.previousChapterStart(before: value) { onScrubEnded(start) }
+                        @unknown default: break
+                        }
+                    }
+                    .accessibilityRotorEntry(id: "chapter-\(index)", in: rotorNamespace)
+            }
+            ForEach(Array(content.flags.enumerated()), id: \.offset) { index, flag in
+                let x0 = layout.x(for: flag.range.start)
+                Color.clear
+                    .frame(width: max(layout.x(for: flag.range.end) - x0, 1), height: ScrubberLayout.flagHeight)
+                    .offset(x: x0, y: barTop + ScrubberLayout.flagY)
+                    .accessibilityElement()
+                    .accessibilityLabel(layout.flagAccessibilityLabel(index))
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { onScrubEnded(min(layout.end, flag.range.end)) }
+                    .accessibilityAction(named: "Skip \(flag.title)") { onScrubEnded(min(layout.end, flag.range.end)) }
+                    .accessibilityAction(named: "Play \(flag.title)") { onScrubEnded(flag.range.start) }
+                    .accessibilityRotorEntry(id: "flag-\(index)", in: rotorNamespace)
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     private var barTop: Double { ScrubberLayout.flagHeight + 2 }

@@ -250,6 +250,24 @@ public struct ScrubberLayout: Sendable {
         content.flags.first { $0.range.start <= time && time < $0.range.end }
     }
 
+    /// What assistive technology reads for chapter `index` (its rotor entry and element).
+    public func chapterAccessibilityLabel(_ index: Int) -> String {
+        let chapter = content.chapters[index]
+        let title = chapter.title.isEmpty ? "Chapter \(index + 1)" : chapter.title
+        return "\(title), \(Self.spokenTime(chapter.range.start)) to \(Self.spokenTime(chapter.range.end))"
+    }
+
+    /// What assistive technology reads for flagged segment `index`.
+    public func flagAccessibilityLabel(_ index: Int) -> String {
+        let flag = content.flags[index]
+        return "\(flag.title), \(Self.spokenTime(flag.range.start)) to \(Self.spokenTime(flag.range.end))"
+    }
+
+    /// The legend for the lanes' stages, in words (stages differ by height as well as colour).
+    public var legendText: String {
+        legendStages.map { "\($0.name): \(Int($0.heightFraction * 100))% height" }.joined(separator: " · ")
+    }
+
     /// Lane stages that appear on the bar, for the legend.
     public var legendStages: [ScrubberStage] {
         Array(Set(content.lanes.flatMap { $0.segments.map(\.stage) })).sorted()
@@ -261,7 +279,7 @@ public struct ScrubberLayout: Sendable {
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 
-    static func spokenTime(_ seconds: Double) -> String {
+    public static func spokenTime(_ seconds: Double) -> String {
         let total = max(0, Int(seconds.rounded(.down)))
         let h = total / 3600, m = (total % 3600) / 60, s = total % 60
         var parts: [String] = []
