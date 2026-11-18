@@ -16,6 +16,26 @@ public enum ScrubberStage: Int, Sendable, Hashable, Comparable, CaseIterable {
     case ready
 
     public static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
+
+    /// How tall a lane piece of this stage is drawn, as a share of the lane:
+    /// stages differ without colour (Differentiate Without Color).
+    public var heightFraction: Double {
+        switch self {
+        case .inFlight: 0.35
+        case .downloaded: 0.7
+        case .processed, .ready: 1
+        }
+    }
+
+    /// Its name in the legend and for assistive technology.
+    public var name: String {
+        switch self {
+        case .inFlight: "downloading"
+        case .downloaded: "downloaded"
+        case .processed: "processed"
+        case .ready: "ready"
+        }
+    }
 }
 
 public struct ScrubberRange: Sendable, Hashable {
@@ -210,8 +230,30 @@ public struct ScrubberLayout: Sendable {
         return parts.joined(separator: ". ")
     }
 
-    /// The step for one adjustable increment.
-    public var accessibilityStep: Double { min(30, max(5, end / 100)) }
+    /// The step for one adjustable increment (swipe up or down, arrow keys).
+    public var accessibilityStep: Double { 10 }
+
+    /// The start of the chapter after the one at `time`, if any.
+    public func nextChapterStart(after time: Double) -> Double? {
+        content.chapters.map(\.range.start).filter { $0 > time + 0.5 }.min()
+    }
+
+    /// The start of the chapter at `time`, or of the one before when `time`
+    /// is within 3 s of its start (as media players' "previous" does).
+    public func previousChapterStart(before time: Double) -> Double? {
+        let starts = content.chapters.map(\.range.start).filter { $0 < time - 3 }
+        return starts.max()
+    }
+
+    /// The flagged segment (a sponsor, an intro) playing at `time`.
+    public func flag(at time: Double) -> ScrubberFlag? {
+        content.flags.first { $0.range.start <= time && time < $0.range.end }
+    }
+
+    /// Lane stages that appear on the bar, for the legend.
+    public var legendStages: [ScrubberStage] {
+        Array(Set(content.lanes.flatMap { $0.segments.map(\.stage) })).sorted()
+    }
 
     public static func timeText(_ seconds: Double) -> String {
         let total = max(0, Int(seconds.rounded(.down)))

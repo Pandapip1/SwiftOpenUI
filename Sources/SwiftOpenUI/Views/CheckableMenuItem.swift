@@ -44,6 +44,7 @@ public struct CheckableMenuItem: View {
                 Spacer(minLength: 0)
             }
         }
+        .accessibilityValue(state == .checked ? "Selected" : state == .pending ? "Switching…" : "")
         .disabled(state == .pending)
     }
 }

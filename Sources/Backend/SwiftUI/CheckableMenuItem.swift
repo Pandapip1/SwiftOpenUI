@@ -36,6 +36,9 @@ public struct CheckableMenuItem: View {
             }
         }
         .disabled(state == .pending)
+        // Assistive technology hears which item is chosen and which is switching.
+        .accessibilityAddTraits(state == .checked ? .isSelected : [])
+        .accessibilityValue(state == .pending ? "Switching…" : "")
     }
 
     @ViewBuilder private var icon: some View {

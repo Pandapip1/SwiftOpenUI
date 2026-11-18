@@ -18,6 +18,7 @@ public struct MediaScrubber: View {
     @State private var dragTime: Double?
     @State private var frozenEnd: Double?
     @State private var hoverTime: Double?
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     public init(content: ScrubberContent, value: Double,
                 onScrub: @escaping (Double) -> Void = { _ in },
@@ -44,9 +45,12 @@ public struct MediaScrubber: View {
                     }
                     ForEach(Array(content.lanes.enumerated()), id: \.offset) { index, lane in
                         ForEach(Array(layout.laneRects(lane).enumerated()), id: \.offset) { _, item in
+                            // Stages differ by height as well as colour.
+                            let height = ScrubberLayout.laneHeight * item.stage.heightFraction
                             Rectangle().fill(Self.color(stage: item.stage))
-                                .frame(width: item.range.upperBound - item.range.lowerBound, height: ScrubberLayout.laneHeight)
-                                .offset(x: item.range.lowerBound, y: barTop + layout.laneY(index))
+                                .frame(width: item.range.upperBound - item.range.lowerBound, height: height)
+                                .offset(x: item.range.lowerBound,
+                                        y: barTop + layout.laneY(index) + ScrubberLayout.laneHeight - height)
                         }
                     }
                     // The capsule, one piece per chapter.
@@ -105,9 +109,24 @@ public struct MediaScrubber: View {
                     @unknown default: break
                     }
                 }
+                .accessibilityAction(named: "Next chapter") {
+                    if let start = layout.nextChapterStart(after: value) { onScrubEnded(start) }
+                }
+                .accessibilityAction(named: "Previous chapter") {
+                    if let start = layout.previousChapterStart(before: value) { onScrubEnded(start) }
+                }
+                .accessibilityAction(named: layout.flag(at: value).map { "Skip \($0.title)" } ?? "Skip flagged segment") {
+                    if let flag = layout.flag(at: value) { onScrubEnded(min(layout.end, flag.range.end)) }
+                }
             }
             .frame(height: barTop + ScrubberLayout.capsuleHeight + laneSpace)
             labels
+            if differentiateWithoutColor, !content.lanes.isEmpty {
+                // What the lane heights mean, in words.
+                Text(ScrubberLayout(content: content, width: 1).legendStages
+                    .map { "\($0.name): \(Int($0.heightFraction * 100))% height" }.joined(separator: " · "))
+                    .font(.caption2)
+            }
         }
     }
 
