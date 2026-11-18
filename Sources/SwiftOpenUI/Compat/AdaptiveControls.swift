@@ -124,9 +124,22 @@ public struct AdaptiveActionMenu<Value>: View {
     }
 }
 
+/// A dialog's standard keyboard shortcut: Return for the default action,
+/// Escape for cancel.
+public enum DialogShortcut: Sendable, Equatable {
+    case defaultAction
+    case cancelAction
+}
+
 // MARK: - Lists, navigation and text entry
 
 extension View {
+    /// Binds a dialog's standard shortcut where the platform has keyboard
+    /// shortcuts (every desktop backend does).
+    public func keyboardShortcutWhereAvailable(_ shortcut: DialogShortcut) -> some View {
+        keyboardShortcut(shortcut == .defaultAction ? .defaultAction : .cancelAction)
+    }
+
     /// Hides the separator below this list row, where lists draw them.
     public func hiddenListRowSeparator() -> some View {
         listRowSeparator(.hidden)
