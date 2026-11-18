@@ -156,9 +156,32 @@ private struct NativeActionMenuButton<Value>: UIViewRepresentable {
 }
 #endif
 
+/// A dialog's standard keyboard shortcut: Return for the default action,
+/// Escape for cancel.
+public enum DialogShortcut: Sendable, Equatable {
+    case defaultAction
+    case cancelAction
+}
+
 // MARK: - Lists, navigation and text entry
 
 public extension View {
+    /// Binds a dialog's standard shortcut (Return for the default action,
+    /// Escape for cancel) where the platform has keyboard shortcuts; tvOS has
+    /// none (its remote's Menu button already cancels), so there it does
+    /// nothing.
+    @ViewBuilder
+    func keyboardShortcutWhereAvailable(_ shortcut: DialogShortcut) -> some View {
+        #if os(tvOS)
+        self
+        #else
+        switch shortcut {
+        case .defaultAction: keyboardShortcut(.defaultAction)
+        case .cancelAction: keyboardShortcut(.cancelAction)
+        }
+        #endif
+    }
+
     /// Hides the separator below this list row, where lists draw them
     /// (tvOS lists have none).
     @ViewBuilder
