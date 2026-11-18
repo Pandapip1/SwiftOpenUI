@@ -1100,6 +1100,7 @@ private func gtkRenderScene<S: Scene>(_ scene: S, app: OpaquePointer) {
 
 /// Connects the core `SystemServices` hooks (clipboard, open URL) to GDK/GIO.
 func gtkInstallSystemServices() {
+    gtkObservePowerProfile()
     SystemServices.copyToClipboard = { text in
         guard let display = gdk_display_get_default() else { return }
         gdk_clipboard_set_text(gdk_display_get_clipboard(display), text)
@@ -1223,4 +1224,54 @@ private func gtkContrastRatio(_ lhs: Color, _ rhs: Color) -> Double {
 func gtkApplyWindowBackground(_ window: UnsafeMutablePointer<GtkWidget>) {
     guard let palette = getCurrentEnvironment().themePalette else { return }
     applyCSSToWidget(window, properties: gtkBackgroundColorCSS(palette.windowBackground))
+}
+
+// MARK: - Power profile
+
+/// Follows power-profiles-daemon on the system bus: the "power-saver"
+/// profile is Low Power Mode (`PowerState`). Both service names are tried
+/// (the daemon moved from net.hadess to org.freedesktop.UPower); without
+/// the daemon the conditions stay "not saving energy".
+func gtkObservePowerProfile() {
+    let services: [(name: String, path: String)] = [
+        ("org.freedesktop.UPower.PowerProfiles", "/org/freedesktop/UPower/PowerProfiles"),
+        ("net.hadess.PowerProfiles", "/net/hadess/PowerProfiles"),
+    ]
+    for service in services {
+        var error: UnsafeMutablePointer<GError>?
+        guard let proxy = g_dbus_proxy_new_for_bus_sync(
+            G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START, nil,
+            service.name, service.path, service.name, nil, &error
+        ) else {
+            if let error { g_error_free(error) }
+            continue
+        }
+        // A proxy exists even without the daemon; it has an owner only when running.
+        guard let owner = g_dbus_proxy_get_name_owner(proxy) else {
+            g_object_unref(gpointer(proxy))
+            continue
+        }
+        g_free(owner)
+        gtkReportPowerProfile(proxy)
+        g_signal_connect_data(
+            gpointer(proxy), "g-properties-changed",
+            unsafeBitCast(gtkPowerProfileChanged, to: GCallback.self),
+            nil, nil, GConnectFlags(rawValue: 0)
+        )
+        // The proxy lives for the process (one per application).
+        return
+    }
+}
+
+private let gtkPowerProfileChanged: @convention(c) (gpointer?, gpointer?, gpointer?, gpointer?) -> Void = { proxy, _, _, _ in
+    guard let proxy else { return }
+    gtkReportPowerProfile(proxy.assumingMemoryBound(to: GDBusProxy.self))
+}
+
+private func gtkReportPowerProfile(_ proxy: UnsafeMutablePointer<GDBusProxy>) {
+    guard let value = g_dbus_proxy_get_cached_property(proxy, "ActiveProfile") else { return }
+    defer { g_variant_unref(value) }
+    guard let raw = g_variant_get_string(value, nil) else { return }
+    let profile = String(cString: raw)
+    PowerState.report(PowerConditions(lowPower: profile == "power-saver"))
 }
