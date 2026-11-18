@@ -14,6 +14,7 @@ public enum HostAddressLookup {
     public struct Failure: LocalizedError, Sendable {
         public let host: String
         public var errorDescription: String? { "Could not find \(host)" }
+        public init(host: String) { self.host = host }
     }
 
     /// Resolves `host` for a TCP connection to `port`. Blocking; call it off
