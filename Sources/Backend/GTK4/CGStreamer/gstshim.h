@@ -767,6 +767,20 @@ static inline gchar *swift_openui_gst_player_track_label(SwiftOpenUIGStreamerPla
     return result;
 }
 
+/* The track's language code (ISO 639), from its stream tags; NULL when unknown. */
+static inline gchar *swift_openui_gst_player_track_language(SwiftOpenUIGStreamerPlayer *player,
+                                                             gint kind, gint index) {
+    swift_openui_gst_player_refresh_stream_collection(player);
+    GstStream *stream = swift_openui_gst_player_track(player, kind, index);
+    if (!stream) return NULL;
+    GstTagList *tags = gst_stream_get_tags(stream);
+    if (!tags) return NULL;
+    gchar *language = NULL;
+    gst_tag_list_get_string(tags, GST_TAG_LANGUAGE_CODE, &language);
+    gst_tag_list_unref(tags);
+    return language;
+}
+
 static inline void swift_openui_gst_player_apply_pending_track_selection(
     SwiftOpenUIGStreamerPlayer *player) {
     if (!player || !player->stream_collection) return;

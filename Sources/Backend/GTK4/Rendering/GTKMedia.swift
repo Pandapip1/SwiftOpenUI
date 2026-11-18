@@ -271,7 +271,12 @@ final class GTKVideoDriver: _AVPlayerDriver {
                 let rawLabel = swift_openui_gst_player_track_label(gst, kind, Int32(index))
                 let label = rawLabel.map { String(cString: $0) } ?? "\(baseName) \(index + 1)"
                 if let rawLabel { g_free(rawLabel) }
-                return AVMediaSelectionOption(mediaType: mediaType, displayName: label, locale: nil,
+                // Subtitle and audio renditions carry their language (HLS LANGUAGE), so menus and
+                // "subtitles in my language" can match it.
+                let rawLanguage = swift_openui_gst_player_track_language(gst, kind, Int32(index))
+                let locale = rawLanguage.map { Locale(identifier: String(cString: $0)) }
+                if let rawLanguage { g_free(rawLanguage) }
+                return AVMediaSelectionOption(mediaType: mediaType, displayName: label, locale: locale,
                                               index: index, characteristic: characteristic)
             }
             groups[characteristic] = AVMediaSelectionGroup(

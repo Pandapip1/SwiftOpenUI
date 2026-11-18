@@ -35,3 +35,13 @@ public extension View {
             .background(Color.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
     }
 }
+
+public extension View {
+    /// Controls a player hides after a while (`hidden`): out of sight and not
+    /// in the way of pointer input, but still reachable by name and by focus
+    /// (renderers keep transparent widgets in the accessibility tree). Same
+    /// API as the SwiftUI backend.
+    func autoHiddenControls(_ hidden: Bool) -> some View {
+        opacity(hidden ? 0 : 1).allowsHitTesting(!hidden)
+    }
+}

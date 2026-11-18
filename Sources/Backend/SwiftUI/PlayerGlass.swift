@@ -90,3 +90,16 @@ private struct PlayerControlGlassModifier: ViewModifier {
     }
 }
 #endif
+
+#if canImport(SwiftUI)
+public extension View {
+    /// Controls a player hides after a while (`hidden`): out of sight and not
+    /// in the way of touches, but still reachable by name (Voice Control's
+    /// "Tap Play") and by assistive focus. SwiftUI drops fully transparent
+    /// views from the accessibility tree, so hidden controls keep a trace of
+    /// opacity instead of none. One API on every backend.
+    func autoHiddenControls(_ hidden: Bool) -> some View {
+        opacity(hidden ? 0.001 : 1).allowsHitTesting(!hidden)
+    }
+}
+#endif
