@@ -10,6 +10,12 @@ public enum VerticalAlignment {
     case top
     case center
     case bottom
+
+    /// Text baselines. These backends lay rows out by their edges, so the
+    /// first baseline is the top and the last the bottom (equal for one line
+    /// of same-size text, the usual case).
+    public static var firstTextBaseline: VerticalAlignment { .top }
+    public static var lastTextBaseline: VerticalAlignment { .bottom }
 }
 
 /// Two-dimensional alignment for ZStack and frame alignment.
