@@ -40,93 +40,8 @@ public struct MediaScrubber: View {
         VStack(spacing: 4) {
             GeometryReader { geometry in
                 let layout = ScrubberLayout(content: content, width: geometry.size.width, frozenEnd: frozenEnd)
-                let shown = dragTime ?? value
-                ZStack(alignment: .topLeading) {
-                    // Behind the capsule: flags above, lanes below.
-                    ForEach(Array(layout.flagRects.enumerated()), id: \.offset) { _, item in
-                        Rectangle().fill(Self.color(category: item.flag.category))
-                            .frame(width: item.range.upperBound - item.range.lowerBound, height: ScrubberLayout.flagHeight)
-                            .offset(x: item.range.lowerBound, y: barTop + ScrubberLayout.flagY)
-                    }
-                    ForEach(Array(content.lanes.enumerated()), id: \.offset) { index, lane in
-                        ForEach(Array(layout.laneRects(lane).enumerated()), id: \.offset) { _, item in
-                            // Stages differ by height as well as colour.
-                            let height = ScrubberLayout.laneHeight * item.stage.heightFraction
-                            Rectangle().fill(Self.color(stage: item.stage))
-                                .frame(width: item.range.upperBound - item.range.lowerBound, height: height)
-                                .offset(x: item.range.lowerBound,
-                                        y: barTop + layout.laneY(index) + ScrubberLayout.laneHeight - height)
-                        }
-                    }
-                    // The capsule, one piece per chapter.
-                    ForEach(Array(layout.capsuleSegments.enumerated()), id: \.offset) { _, piece in
-                        let played = min(max(layout.x(for: shown) - piece.lowerBound, 0), piece.upperBound - piece.lowerBound)
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.white.opacity(0.3))
-                            Rectangle().fill(Color.white).frame(width: played)
-                        }
-                        .frame(width: piece.upperBound - piece.lowerBound, height: ScrubberLayout.capsuleHeight)
-                        .clipShape(Capsule())
-                        .offset(x: piece.lowerBound, y: barTop)
-                    }
-                    ForEach(Array(layout.discontinuityXs.enumerated()), id: \.offset) { _, x in
-                        Rectangle().fill(Color.yellow).frame(width: 2, height: ScrubberLayout.capsuleHeight + 4)
-                            .offset(x: x - 1, y: barTop - 2)
-                    }
-                    Circle().fill(Color.white)
-                        .frame(width: dragTime == nil ? 12 : 16, height: dragTime == nil ? 12 : 16)
-                        .offset(x: layout.x(for: shown) - (dragTime == nil ? 6 : 8),
-                                y: barTop + ScrubberLayout.capsuleHeight / 2 - (dragTime == nil ? 6 : 8))
-                    if let preview = dragTime ?? hoverTime {
-                        Text(layout.preview(at: preview))
-                            .font(.caption2.monospacedDigit())
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 4))
-                            .fixedSize()
-                            .offset(x: min(max(layout.x(for: preview) - 30, 0), max(geometry.size.width - 90, 0)), y: -18)
-                    }
-                }
-                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-                .contentShape(Rectangle())
-                .modifier(ScrubInteraction(
-                    layout: layout, value: value,
-                    changed: { time in
-                        // A live edge that advances mid-scrub must not move the thumb.
-                        if frozenEnd == nil { frozenEnd = content.end }
-                        dragTime = time
-                        onScrub(time)
-                    },
-                    ended: { time in
-                        dragTime = nil
-                        frozenEnd = nil
-                        onScrubEnded(time)
-                    },
-                    hover: { hoverTime = $0 }
-                ))
-                .accessibilityElement()
-                .accessibilityLabel(label)
-                .accessibilityValue(layout.accessibilityValue(value))
-                .accessibilityAdjustableAction { direction in
-                    let step = layout.accessibilityStep
-                    switch direction {
-                    case .increment: onScrubEnded(min(layout.end, value + step))
-                    case .decrement: onScrubEnded(max(0, value - step))
-                    @unknown default: break
-                    }
-                }
-                .accessibilityAction(named: "Next chapter") {
-                    if let start = layout.nextChapterStart(after: value) { onScrubEnded(start) }
-                }
-                .accessibilityAction(named: "Previous chapter") {
-                    if let start = layout.previousChapterStart(before: value) { onScrubEnded(start) }
-                }
-                .accessibilityActions {
-                    // Only while a flagged segment plays: "Skip Sponsor".
-                    if let flag = layout.flag(at: value) {
-                        Button("Skip \(flag.title)") { onScrubEnded(min(layout.end, flag.range.end)) }
-                    }
-                }
-                .overlay(alignment: .topLeading) { landmarks(layout) }
+                accessible(interactive(drawing(layout, size: geometry.size), layout: layout), layout: layout)
+                    .overlay(alignment: .topLeading) { landmarks(layout) }
             }
             .frame(height: barTop + ScrubberLayout.capsuleHeight + laneSpace)
             labels
@@ -138,13 +53,13 @@ public struct MediaScrubber: View {
         .accessibilityRotor("Chapters") {
             let layout = ScrubberLayout(content: content, width: 1)
             ForEach(content.chapters.indices, id: \.self) { index in
-                AccessibilityRotorEntry(layout.chapterAccessibilityLabel(index), id: "chapter-\(index)", in: rotorNamespace)
+                AccessibilityRotorEntry(Text(layout.chapterAccessibilityLabel(index)), id: "chapter-\(index)", in: rotorNamespace)
             }
         }
         .accessibilityRotor("Flagged segments") {
             let layout = ScrubberLayout(content: content, width: 1)
             ForEach(content.flags.indices, id: \.self) { index in
-                AccessibilityRotorEntry(layout.flagAccessibilityLabel(index), id: "flag-\(index)", in: rotorNamespace)
+                AccessibilityRotorEntry(Text(layout.flagAccessibilityLabel(index)), id: "flag-\(index)", in: rotorNamespace)
             }
         }
     }
@@ -189,6 +104,106 @@ public struct MediaScrubber: View {
             }
         }
         .allowsHitTesting(false)
+    }
+
+    /// The bar's drawing: flags, lanes, the capsule's pieces, ticks, the thumb and the preview.
+    private func drawing(_ layout: ScrubberLayout, size: CGSize) -> some View {
+        let shown = dragTime ?? value
+        return ZStack(alignment: .topLeading) {
+            // Behind the capsule: flags above, lanes below.
+            ForEach(Array(layout.flagRects.enumerated()), id: \.offset) { _, item in
+                Rectangle().fill(Self.color(category: item.flag.category))
+                    .frame(width: item.range.upperBound - item.range.lowerBound, height: ScrubberLayout.flagHeight)
+                    .offset(x: item.range.lowerBound, y: barTop + ScrubberLayout.flagY)
+            }
+            ForEach(Array(content.lanes.enumerated()), id: \.offset) { index, lane in
+                ForEach(Array(layout.laneRects(lane).enumerated()), id: \.offset) { _, item in
+                    // Stages differ by height as well as colour.
+                    let height = ScrubberLayout.laneHeight * item.stage.heightFraction
+                    Rectangle().fill(Self.color(stage: item.stage))
+                        .frame(width: item.range.upperBound - item.range.lowerBound, height: height)
+                        .offset(x: item.range.lowerBound,
+                                y: barTop + layout.laneY(index) + ScrubberLayout.laneHeight - height)
+                }
+            }
+            // The capsule, one piece per chapter.
+            ForEach(Array(layout.capsuleSegments.enumerated()), id: \.offset) { _, piece in
+                let played = min(max(layout.x(for: shown) - piece.lowerBound, 0), piece.upperBound - piece.lowerBound)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.3))
+                    Rectangle().fill(Color.white).frame(width: played)
+                }
+                .frame(width: piece.upperBound - piece.lowerBound, height: ScrubberLayout.capsuleHeight)
+                .clipShape(Capsule())
+                .offset(x: piece.lowerBound, y: barTop)
+            }
+            ForEach(Array(layout.discontinuityXs.enumerated()), id: \.offset) { _, x in
+                Rectangle().fill(Color.yellow).frame(width: 2, height: ScrubberLayout.capsuleHeight + 4)
+                    .offset(x: x - 1, y: barTop - 2)
+            }
+            Circle().fill(Color.white)
+                .frame(width: dragTime == nil ? 12 : 16, height: dragTime == nil ? 12 : 16)
+                .offset(x: layout.x(for: shown) - (dragTime == nil ? 6 : 8),
+                        y: barTop + ScrubberLayout.capsuleHeight / 2 - (dragTime == nil ? 6 : 8))
+            if let preview = dragTime ?? hoverTime {
+                Text(layout.preview(at: preview))
+                    .font(.caption2.monospacedDigit())
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 4))
+                    .fixedSize()
+                    .offset(x: min(max(layout.x(for: preview) - 30, 0), max(size.width - 90, 0)), y: -18)
+            }
+        }
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .contentShape(Rectangle())
+    }
+
+    /// Pointer, touch and remote input.
+    private func interactive(_ view: some View, layout: ScrubberLayout) -> some View {
+        view
+        .modifier(ScrubInteraction(
+            layout: layout, value: value,
+            changed: { time in
+                // A live edge that advances mid-scrub must not move the thumb.
+                if frozenEnd == nil { frozenEnd = content.end }
+                dragTime = time
+                onScrub(time)
+            },
+            ended: { time in
+                dragTime = nil
+                frozenEnd = nil
+                onScrubEnded(time)
+            },
+            hover: { hoverTime = $0 }
+        ))
+    }
+
+    /// The bar as one adjustable element: label, time-based value, 10 s steps, chapter and skip actions.
+    private func accessible(_ view: some View, layout: ScrubberLayout) -> some View {
+        view
+        .accessibilityElement()
+        .accessibilityLabel(label)
+        .accessibilityValue(layout.accessibilityValue(value))
+        .accessibilityAdjustableAction { direction in
+            let step = layout.accessibilityStep
+            switch direction {
+            case .increment: onScrubEnded(min(layout.end, value + step))
+            case .decrement: onScrubEnded(max(0, value - step))
+            @unknown default: break
+            }
+        }
+        .accessibilityAction(named: "Next chapter") {
+            if let start = layout.nextChapterStart(after: value) { onScrubEnded(start) }
+        }
+        .accessibilityAction(named: "Previous chapter") {
+            if let start = layout.previousChapterStart(before: value) { onScrubEnded(start) }
+        }
+        .accessibilityActions {
+            // Only while a flagged segment plays: "Skip Sponsor".
+            if let flag = layout.flag(at: value) {
+                Button("Skip \(flag.title)") { onScrubEnded(min(layout.end, flag.range.end)) }
+            }
+        }
     }
 
     private var barTop: Double { ScrubberLayout.flagHeight + 2 }
