@@ -26,6 +26,35 @@ public enum ApplicationStorage {
     }
 }
 
+/// A directory for large data an application keeps until it removes it
+/// itself (a media cache that is expensive to download again): inside the
+/// application's durable data directory, which the system does not purge
+/// when storage runs low (Caches it may), and excluded from backups where
+/// the system backs data up. tvOS has no durable local storage for
+/// applications (`ApplicationStorage.durableDataLocation` is Caches there),
+/// so there the system may still purge it.
+///
+/// Stores that must not be purged take this type, not a URL, so they cannot
+/// be handed the Caches directory by accident.
+public struct KeptDirectory: Sendable, Hashable {
+    public let url: URL
+
+    /// `name` inside `dataDirectory`, the application's durable data directory
+    /// (or an isolated root standing in for it). Created if missing; if that
+    /// fails, writing into it reports why.
+    public init(named name: String, inDataDirectory dataDirectory: URL) {
+        let url = dataDirectory.appendingPathComponent(name, isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        #if canImport(Darwin)
+        var excluded = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? excluded.setResourceValues(values)
+        #endif
+        self.url = url
+    }
+}
+
 public enum FileProtection {
     /// Writes `data` atomically, readable only while the device is unlocked
     /// where the system protects files that way (iOS and iPadOS: complete
