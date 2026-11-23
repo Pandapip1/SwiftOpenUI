@@ -4,6 +4,9 @@ import AVFoundation
 #if canImport(MediaPlayer)
 import MediaPlayer
 #endif
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// The system's side of media playback, one API on every backend: audio
 /// session events (interruptions, lost output, media-services resets), the
@@ -126,6 +129,28 @@ public enum SystemMediaSession {
         sessionActive = false
         sessionQueue.async {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
+        #endif
+    }
+
+    // MARK: display
+
+    #if os(macOS)
+    private static var displayActivity: NSObjectProtocol?
+    #endif
+
+    /// Keeps the display awake while video plays: the idle timer on iOS, a
+    /// display-sleep activity on macOS (tvOS and visionOS manage it themselves).
+    public static func keepDisplayAwake(_ awake: Bool) {
+        #if os(iOS)
+        UIApplication.shared.isIdleTimerDisabled = awake
+        #elseif os(macOS)
+        if awake, displayActivity == nil {
+            displayActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiated, .idleDisplaySleepDisabled], reason: "Video is playing")
+        } else if !awake, let activity = displayActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            displayActivity = nil
         }
         #endif
     }

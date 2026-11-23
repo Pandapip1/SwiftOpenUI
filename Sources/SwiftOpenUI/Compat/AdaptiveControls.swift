@@ -324,3 +324,20 @@ public enum FocusDiagnostics {
     @MainActor
     public static func focusedItemDescription() -> String? { nil }
 }
+
+/// A titled section the viewer expands and collapses (collapsed at first).
+/// Same API as the SwiftUI backend; here a disclosure group.
+public struct CollapsibleSection<Content: View>: View {
+    private let title: String
+    private let content: Content
+    @State private var expanded = false
+
+    public init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    public var body: some View {
+        DisclosureGroup(title, isExpanded: $expanded) { content }
+    }
+}

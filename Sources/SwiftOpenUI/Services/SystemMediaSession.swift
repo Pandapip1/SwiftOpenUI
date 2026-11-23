@@ -38,6 +38,9 @@ public enum SystemMediaSession {
     public static func activateForPlayback(failed: @escaping @MainActor (String) -> Void = { _ in }) {}
     public static func deactivate() {}
 
+    /// Keeps the display awake while video plays. Nothing to do here yet.
+    public static func keepDisplayAwake(_ awake: Bool) {}
+
     private static var owner: ObjectIdentifier?
     public static func takeRemoteCommands(owner: AnyObject, _ handler: @escaping @MainActor (RemoteCommand) -> Bool) {
         self.owner = ObjectIdentifier(owner)

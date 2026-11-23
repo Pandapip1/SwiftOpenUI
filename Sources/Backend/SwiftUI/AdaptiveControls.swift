@@ -536,3 +536,33 @@ public enum FocusDiagnostics {
     }
 }
 #endif
+
+#if canImport(SwiftUI)
+/// A titled section the viewer expands and collapses (collapsed at first).
+/// A disclosure group where the platform has one; on tvOS, which has none, a
+/// button that shows or hides the content. Same API on every backend.
+public struct CollapsibleSection<Content: View>: View {
+    private let title: String
+    private let content: Content
+    @State private var expanded = false
+
+    public init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    public var body: some View {
+        #if os(tvOS)
+        VStack(alignment: .leading, spacing: 6) {
+            Button { expanded.toggle() } label: {
+                Label(title, systemImage: expanded ? "chevron.down" : "chevron.right")
+            }
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            if expanded { content }
+        }
+        #else
+        DisclosureGroup(title, isExpanded: $expanded) { content }
+        #endif
+    }
+}
+#endif
