@@ -542,7 +542,11 @@ final class GTKVideoDriver: _AVPlayerDriver {
         if let message = swift_openui_gst_player_take_error(gst) {
             let description = String(cString: message)
             g_free(message)
-            player?._swiftOpenUIOnFailure?(description)
+            if swift_openui_gst_player_error_is_unplayable(gst) != 0, let unplayable = player?._swiftOpenUIOnUnplayable {
+                unplayable(description)
+            } else {
+                player?._swiftOpenUIOnFailure?(description)
+            }
         } else if swift_openui_gst_player_has_ended(gst) != 0 {
             // Preserve the final paintable, including any coalesced last frame.
             presentFrame()

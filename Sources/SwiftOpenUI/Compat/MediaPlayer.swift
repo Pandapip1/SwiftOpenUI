@@ -269,6 +269,9 @@ public final class AVPlayer: @unchecked Sendable {
     @_spi(SwiftOpenUIBackend) public var _swiftOpenUIDriver: _AVPlayerDriver?
     @_spi(SwiftOpenUIBackend) public var _swiftOpenUIOnEnded: (@Sendable () -> Void)?
     @_spi(SwiftOpenUIBackend) public var _swiftOpenUIOnFailure: (@Sendable (String) -> Void)?
+    /// A failure retrying cannot fix: no decoder or demuxer for the media's
+    /// format on this system. Without a handler it goes to `_swiftOpenUIOnFailure`.
+    @_spi(SwiftOpenUIBackend) public var _swiftOpenUIOnUnplayable: (@Sendable (String) -> Void)?
     private var pendingTime: CMTime?
     private var pendingRate: Float = 0
     public var defaultRate: Float = 1

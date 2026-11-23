@@ -29,6 +29,9 @@ typedef struct {
     SwiftOpenUIGStreamerFrameCallback event_callback;
     gpointer event_callback_data;
     gchar *error_message;
+    // The error says the media cannot be decoded here (no decoder or
+    // demuxer for its format): retrying cannot help.
+    gboolean error_unplayable;
     gboolean ended;
     gboolean failed;
     gboolean audio_sink_available;
@@ -386,6 +389,10 @@ static inline gchar *swift_openui_gst_player_take_error(SwiftOpenUIGStreamerPlay
     return message;
 }
 
+static inline gboolean swift_openui_gst_player_error_is_unplayable(SwiftOpenUIGStreamerPlayer *player) {
+    return player && player->error_unplayable;
+}
+
 static inline gboolean swift_openui_gst_player_has_ended(SwiftOpenUIGStreamerPlayer *player) {
     return player && player->ended;
 }
@@ -408,6 +415,7 @@ static inline void swift_openui_gst_player_set_uris(SwiftOpenUIGStreamerPlayer *
     if (!player || !video_uri) return;
     if (player->bus_source) { g_source_remove(player->bus_source); player->bus_source = 0; }
     g_clear_pointer(&player->error_message, g_free);
+    player->error_unplayable = FALSE;
     player->ended = FALSE;
     player->failed = FALSE;
     player->is_live = FALSE;
@@ -688,6 +696,10 @@ static inline gboolean swift_openui_gst_player_bus_message(GstBus *bus, GstMessa
         gst_message_parse_error(message, &error, NULL);
         g_free(player->error_message);
         player->error_message = g_strdup(error ? error->message : "Media playback failed");
+        player->error_unplayable = error && (
+            (error->domain == GST_CORE_ERROR && error->code == GST_CORE_ERROR_MISSING_PLUGIN)
+            || (error->domain == GST_STREAM_ERROR && (error->code == GST_STREAM_ERROR_CODEC_NOT_FOUND
+                || error->code == GST_STREAM_ERROR_TYPE_NOT_FOUND || error->code == GST_STREAM_ERROR_WRONG_TYPE)));
         if (error) g_error_free(error);
         player->failed = TRUE;
     } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_EOS) {
