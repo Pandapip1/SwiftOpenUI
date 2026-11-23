@@ -135,10 +135,17 @@ private struct GlassBackgroundModifier<S: Shape>: ViewModifier {
             content
                 .background(.background, in: shape)
                 .overlay(shape.stroke(Color.primary.opacity(contrast == .increased ? 0.6 : 0.15), lineWidth: 1))
-        } else if #available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *) {
-            content.glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
         } else {
-            content.background(.regularMaterial, in: shape)
+            #if os(visionOS)
+            // visionOS has no glassEffect: the window is glass already.
+            content.background(.thinMaterial, in: shape)
+            #else
+            if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) {
+                content.glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+            } else {
+                content.background(.regularMaterial, in: shape)
+            }
+            #endif
         }
     }
 }
@@ -170,7 +177,7 @@ public struct StatusColors {
     }
 
     /// sRGB components, 0–1. Kept as numbers so the contrast test can check them.
-    public static func components(_ kind: StatusKind, dark: Bool, increased: Bool) -> (Double, Double, Double) {
+    public nonisolated static func components(_ kind: StatusKind, dark: Bool, increased: Bool) -> (Double, Double, Double) {
         switch (kind, dark, increased) {
         case (.error, false, false): (0.698, 0.133, 0.133)   // #B22222
         case (.error, false, true): (0.545, 0.071, 0.071)    // #8B1212

@@ -32,16 +32,24 @@ public struct PlayerControlGroup<Content: View>: View {
         if opaque {
             // Each control carries its own opaque background (playerControlGlass).
             content
-        } else if #available(macOS 26.0, iOS 26.0, tvOS 26.0, visionOS 26.0, *) {
-            #if os(tvOS)
+        } else {
+            #if os(visionOS)
+            // visionOS windows are glass already; each group gets a material.
             content.padding(.horizontal, 12).padding(.vertical, 9)
                 .glassBackground(in: RoundedRectangle(cornerRadius: 16))
             #else
-            GlassEffectContainer(spacing: spacing) { content }
+            if #available(macOS 26.0, iOS 26.0, tvOS 26.0, *) {
+                #if os(tvOS)
+                content.padding(.horizontal, 12).padding(.vertical, 9)
+                    .glassBackground(in: RoundedRectangle(cornerRadius: 16))
+                #else
+                GlassEffectContainer(spacing: spacing) { content }
+                #endif
+            } else {
+                content.padding(.horizontal, 12).padding(.vertical, 9)
+                    .glassBackground(in: RoundedRectangle(cornerRadius: 12))
+            }
             #endif
-        } else {
-            content.padding(.horizontal, 12).padding(.vertical, 9)
-                .glassBackground(in: RoundedRectangle(cornerRadius: 12))
         }
     }
 }

@@ -177,7 +177,7 @@ public struct StatusColors {
     }
 
     /// sRGB components, 0–1. Kept as numbers so the contrast test can check them.
-    public static func components(_ kind: StatusKind, dark: Bool, increased: Bool) -> (Double, Double, Double) {
+    public nonisolated static func components(_ kind: StatusKind, dark: Bool, increased: Bool) -> (Double, Double, Double) {
         switch (kind, dark, increased) {
         case (.error, false, false): (0.698, 0.133, 0.133)   // #B22222
         case (.error, false, true): (0.545, 0.071, 0.071)    // #8B1212

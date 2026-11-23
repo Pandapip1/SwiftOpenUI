@@ -23,12 +23,13 @@ nonisolated public enum DebugMediaClip {
         return format
     }
 
-    /// One second of a 440 Hz tone at low volume.
-    private static func appendTone(to input: AVAssetWriterInput, format: CMAudioFormatDescription, second: Int) async throws {
+    /// A 440 Hz tone at low volume: `count` samples from sample `start`.
+    private static func appendTone(to input: AVAssetWriterInput, format: CMAudioFormatDescription,
+                                   start: Int, count: Int) async throws {
             while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(5)) }
-            var samples = [Int16](repeating: 0, count: rate)
+            var samples = [Int16](repeating: 0, count: count)
             for index in samples.indices {
-                samples[index] = Int16(800 * sin(2 * Double.pi * 440 * Double(index) / Double(rate)))
+                samples[index] = Int16(800 * sin(2 * Double.pi * 440 * Double(start + index) / Double(rate)))
             }
             var block: CMBlockBuffer?
             let bytes = samples.count * 2
@@ -42,8 +43,8 @@ nonisolated public enum DebugMediaClip {
             }
             var buffer: CMSampleBuffer?
             CMAudioSampleBufferCreateReadyWithPacketDescriptions(
-                allocator: nil, dataBuffer: block, formatDescription: format, sampleCount: rate,
-                presentationTimeStamp: CMTime(value: CMTimeValue(second * rate), timescale: CMTimeScale(rate)),
+                allocator: nil, dataBuffer: block, formatDescription: format, sampleCount: count,
+                presentationTimeStamp: CMTime(value: CMTimeValue(start), timescale: CMTimeScale(rate)),
                 packetDescriptions: nil, sampleBufferOut: &buffer)
             if let buffer { input.append(buffer) }
     }
@@ -52,9 +53,12 @@ nonisolated public enum DebugMediaClip {
     /// cycle through all levels.
     @concurrent
     public static func make(shade: Int? = nil) async throws -> URL {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("debug-clip-with-audio-\(shade.map(String.init) ?? "cycle").mp4")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("debug-clip-v2-\(shade.map(String.init) ?? "cycle").mp4")
         if FileManager.default.fileExists(atPath: url.path) { return url }
-        let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        // Written under another name and moved into place when complete: an app
+        // stopped mid-write (UI tests terminate it) leaves no broken clip behind.
+        let partial = url.deletingPathExtension().appendingPathExtension("partial-\(UUID().uuidString).mp4")
+        let writer = try AVAssetWriter(outputURL: partial, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 320, AVVideoHeightKey: 180,
         ])
@@ -73,7 +77,10 @@ nonisolated public enum DebugMediaClip {
         let fps: Int32 = 10
         let tone = try toneFormat()
         for frame in 0..<(120 * Int(fps)) {
-            if frame % Int(fps) == 0 { try await appendTone(to: audio, format: tone, second: frame / Int(fps)) }
+            // Audio and video advance together, a frame's worth at a time: the
+            // writer interleaves them and waits for whichever is behind.
+            let perFrame = rate / Int(fps)
+            try await appendTone(to: audio, format: tone, start: frame * perFrame, count: perFrame)
             while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(5)) }
             guard let pool = adaptor.pixelBufferPool else { break }
             var buffer: CVPixelBuffer?
@@ -89,7 +96,12 @@ nonisolated public enum DebugMediaClip {
         input.markAsFinished()
         audio.markAsFinished()
         await writer.finishWriting()
-        guard writer.status == .completed else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
+        guard writer.status == .completed else {
+            try? FileManager.default.removeItem(at: partial)
+            throw writer.error ?? CocoaError(.fileWriteUnknown)
+        }
+        // Another launch may have finished the same clip meanwhile: either copy is complete.
+        if (try? FileManager.default.moveItem(at: partial, to: url)) == nil { try? FileManager.default.removeItem(at: partial) }
         return url
     }
 }
