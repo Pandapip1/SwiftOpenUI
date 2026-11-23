@@ -35,7 +35,15 @@ public final class WebPage {
     /// A navigation the page is about to perform.
     public struct NavigationAction {
         public let request: URLRequest
-        @_spi(SwiftOpenUIBackend) public init(request: URLRequest) { self.request = request }
+        /// Whether the navigation replaces the page itself rather than a
+        /// frame inside it. New-window requests count as main-frame. Where a
+        /// backend cannot tell (WebKitGTK names only target frames), it
+        /// reports true, so navigation confinement errs towards confining.
+        public let isMainFrame: Bool
+        @_spi(SwiftOpenUIBackend) public init(request: URLRequest, isMainFrame: Bool = true) {
+            self.request = request
+            self.isMainFrame = isMainFrame
+        }
     }
 
     public enum NavigationActionPolicy: Sendable {
