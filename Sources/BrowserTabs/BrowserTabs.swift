@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 #if BACKEND_GTK
 @_spi(SwiftOpenUIBackend) import BackendGTK4
 import CGTK
+import CGTKBridge
 import CAdwaita
 #endif
 
@@ -2005,6 +2006,83 @@ private struct BrowserTabActiveStyle: ViewModifier {
 #else
 public enum BrowserTabToolbarPlacement: Sendable {
     case leading, principal, trailing
+}
+
+public extension View {
+    /// The page's search field, above the page (GTK windows have no shared
+    /// toolbar for it). Return calls `onSubmit`.
+    func browserPageSearchField(text: Binding<String>, prompt: String,
+                                onSubmit: @escaping () -> Void) -> some View {
+        VStack(spacing: 0) {
+            TextField(prompt, text: text)
+                .onSubmit(onSubmit)
+                .padding(8)
+            self
+        }
+    }
+
+    /// Runs `action` for `id` once the page is first on screen, instead of in
+    /// every background tab (tabs stay mounted). Same behaviour as the
+    /// SwiftUI backend: hiding the page doesn't cancel the work.
+    func browserTaskOnceVisible<ID: Equatable & Sendable>(
+        id: ID, _ action: @escaping @MainActor () async -> Void
+    ) -> some View {
+        modifier(BrowserOnceVisibleTask(id: id, action: action))
+    }
+
+    /// Runs `action` whenever the page comes on screen and cancels it when the
+    /// page goes off screen.
+    func browserTaskWhileVisible(_ action: @escaping @MainActor () async -> Void) -> some View {
+        modifier(BrowserWhileVisibleTask(action: action))
+    }
+}
+
+private struct BrowserOnceVisibleTask<ID: Equatable & Sendable>: ViewModifier {
+    @Environment(\.isBrowserTabVisible) private var isVisible
+    let id: ID
+    let action: @MainActor () async -> Void
+    @State private var started: BrowserStartedTask<ID>?
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { startIfNeeded() }
+            .onChange(of: BrowserVisibleTaskKey(id: id, isVisible: isVisible)) { _, _ in startIfNeeded() }
+            .onDisappear {
+                started?.task.cancel()
+                started = nil
+            }
+    }
+
+    private func startIfNeeded() {
+        guard isVisible, started?.id != id else { return }
+        started?.task.cancel()
+        let action = action
+        started = BrowserStartedTask(id: id, task: Task { await action() })
+    }
+}
+
+private struct BrowserStartedTask<ID: Equatable & Sendable> {
+    let id: ID
+    let task: Task<Void, Never>
+}
+
+private struct BrowserVisibleTaskKey<ID: Equatable & Sendable>: Equatable, Sendable {
+    let id: ID
+    let isVisible: Bool
+}
+
+private struct BrowserWhileVisibleTask: ViewModifier {
+    @Environment(\.isBrowserTabVisible) private var isVisible
+    let action: @MainActor () async -> Void
+
+    func body(content: Content) -> some View {
+        let visible = isVisible
+        let action = action
+        return content.task(id: visible) {
+            guard visible else { return }
+            await action()
+        }
+    }
 }
 
 public extension View {

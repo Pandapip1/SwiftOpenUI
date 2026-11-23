@@ -283,7 +283,7 @@ targets += [
     ),
     .target(
         name: "BrowserTabs",
-        dependencies: ["SwiftOpenUI", "BackendGTK4", "CGTK", "CAdwaita"],
+        dependencies: ["SwiftOpenUI", "BackendGTK4", "CGTK", "CGTKBridge", "CAdwaita"],
         path: "Sources/BrowserTabs",
         swiftSettings: gtkSwiftSettings
     ),

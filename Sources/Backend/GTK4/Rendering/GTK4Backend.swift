@@ -1240,7 +1240,10 @@ func gtkObservePowerProfile() {
     for service in services {
         var error: UnsafeMutablePointer<GError>?
         guard let proxy = g_dbus_proxy_new_for_bus_sync(
-            G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START, nil,
+            // G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START (1 << 2): GLib declares the
+            // flags as a flag enum, which Swift imports as an option set, so the
+            // C constant is not visible by name.
+            G_BUS_TYPE_SYSTEM, GDBusProxyFlags(rawValue: 1 << 2), nil,
             service.name, service.path, service.name, nil, &error
         ) else {
             if let error { g_error_free(error) }

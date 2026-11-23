@@ -565,4 +565,17 @@ public struct CollapsibleSection<Content: View>: View {
         #endif
     }
 }
+
+extension View {
+    /// Presents `content` attached to this view: a popover where the platform
+    /// has one; on tvOS, which has none, a sheet. Same API on every backend.
+    public func attachedPanel<PanelContent: View>(isPresented: Binding<Bool>,
+                                                  @ViewBuilder content: @escaping () -> PanelContent) -> some View {
+        #if os(tvOS)
+        sheet(isPresented: isPresented, content: content)
+        #else
+        popover(isPresented: isPresented, content: content)
+        #endif
+    }
+}
 #endif

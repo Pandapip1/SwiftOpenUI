@@ -26,6 +26,11 @@ public struct State<Value>: AnyStateStorageProvider {
         storage = StateStorage(wrappedValue)
     }
 
+    /// SwiftUI's spelling for an initial value set in a view's initializer.
+    public init(initialValue value: Value) {
+        self.init(wrappedValue: value)
+    }
+
     public var wrappedValue: Value {
         get { storage.value }
         nonmutating set { storage.setValue(newValue) }

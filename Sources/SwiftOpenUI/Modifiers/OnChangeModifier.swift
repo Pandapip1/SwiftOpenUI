@@ -47,6 +47,14 @@ extension View {
     ) -> OnChangeTwoArgView<Self, V> {
         OnChangeTwoArgView(content: self, value: value, action: action)
     }
+
+    /// Runs `action` when `value` changes, without the old and new values.
+    public func onChange<V: Equatable>(
+        of value: V,
+        _ action: @escaping () -> Void
+    ) -> OnChangeTwoArgView<Self, V> {
+        OnChangeTwoArgView(content: self, value: value, action: { _, _ in action() })
+    }
 }
 
 // MARK: - onChange value tracking

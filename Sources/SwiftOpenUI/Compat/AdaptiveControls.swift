@@ -341,3 +341,14 @@ public struct CollapsibleSection<Content: View>: View {
         DisclosureGroup(title, isExpanded: $expanded) { content }
     }
 }
+
+// MARK: - Attached panels
+
+extension View {
+    /// Presents `content` attached to this view (a popover on these backends;
+    /// the SwiftUI backend uses a sheet where the platform has no popover).
+    public func attachedPanel<PanelContent: View>(isPresented: Binding<Bool>,
+                                                  @ViewBuilder content: @escaping () -> PanelContent) -> some View {
+        popover(isPresented: isPresented, content: content)
+    }
+}

@@ -22,3 +22,34 @@ public struct Label: View {
 
     public var body: Never { fatalError("Label is a primitive view") }
 }
+
+/// How a label shows its title and icon.
+public enum LabelStyleKind: Sendable, Equatable {
+    case automatic, titleAndIcon, iconOnly, titleOnly
+}
+
+extension Label {
+    /// Shows only the icon (the title stays as its accessibility label) or
+    /// only the title; `automatic` and `titleAndIcon` show both.
+    @ViewBuilder
+    public func labelStyle(_ style: LabelStyleKind) -> some View {
+        switch style {
+        case .iconOnly:
+            if let systemImage {
+                Image(systemName: systemImage).accessibilityLabel(title)
+            } else {
+                self
+            }
+        case .titleOnly:
+            Text(title)
+        case .automatic, .titleAndIcon:
+            self
+        }
+    }
+}
+
+extension View where Self: Equatable {
+    /// SwiftUI skips redrawing an equatable view whose value did not change;
+    /// these backends compare in their own diffing, so this is the view itself.
+    public func equatable() -> Self { self }
+}
