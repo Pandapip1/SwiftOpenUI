@@ -61,22 +61,34 @@ public struct PresentationMenu<Label: View, Content: View>: View {
     }
 }
 
-private struct RemoteFocusNamespaceKey: EnvironmentKey {
-    static let defaultValue: Namespace.ID? = nil
+#if os(tvOS)
+private struct RemoteDefaultFocusKey: EnvironmentKey {
+    static var defaultValue: FocusState<Bool>.Binding? { nil }
 }
 
 extension EnvironmentValues {
-    fileprivate var remoteFocusNamespace: Namespace.ID? {
-        get { self[RemoteFocusNamespaceKey.self] }
-        set { self[RemoteFocusNamespaceKey.self] = newValue }
+    /// The enclosing `remoteFocusScope`'s default focus.
+    fileprivate var remoteDefaultFocus: FocusState<Bool>.Binding? {
+        get { self[RemoteDefaultFocusKey.self] }
+        set { self[RemoteDefaultFocusKey.self] = newValue }
     }
 }
+#endif
 
 private struct RemoteFocusScope: ViewModifier {
-    @Namespace private var namespace
+    let focusesDefault: Bool
+    #if os(tvOS)
+    @FocusState private var defaultFocused: Bool
+    #endif
+
     func body(content: Content) -> some View {
         #if os(tvOS)
-        content.focusScope(namespace).environment(\.remoteFocusNamespace, namespace)
+        content
+            .environment(\.remoteDefaultFocus, $defaultFocused)
+            // Focus entering the scope, even by the user, lands on the default
+            // while `focusesDefault` holds; otherwise only when it first appears.
+            .defaultFocus($defaultFocused, true, priority: focusesDefault ? .userInitiated : .automatic)
+            .onChange(of: focusesDefault) { _, focuses in if focuses { defaultFocused = true } }
         #else
         content
         #endif
@@ -84,11 +96,13 @@ private struct RemoteFocusScope: ViewModifier {
 }
 
 private struct RemotePrefersDefaultFocus: ViewModifier {
-    @Environment(\.remoteFocusNamespace) private var namespace
+    #if os(tvOS)
+    @Environment(\.remoteDefaultFocus) private var defaultFocus
+    #endif
     let prefers: Bool
     @ViewBuilder func body(content: Content) -> some View {
         #if os(tvOS)
-        if let namespace { content.prefersDefaultFocus(prefers, in: namespace) } else { content }
+        if prefers, let defaultFocus { content.focused(defaultFocus) } else { content }
         #else
         content
         #endif
@@ -133,8 +147,12 @@ public extension View {
     func remoteNonFocusable() -> some View { modifier(RemoteNonFocusable()) }
     /// Runs `action` on a remote direction press (tvOS).
     func onRemoteMove(perform action: @escaping () -> Void) -> some View { modifier(RemoteMove(action: action)) }
-    /// A focus scope for `remotePrefersDefaultFocus` (tvOS).
-    func remoteFocusScope() -> some View { modifier(RemoteFocusScope()) }
+    /// A focus scope for `remotePrefersDefaultFocus` (tvOS). When
+    /// `focusingDefault` is true as it appears, or becomes true, focus moves
+    /// to the scope's default.
+    func remoteFocusScope(focusingDefault: Bool = false) -> some View {
+        modifier(RemoteFocusScope(focusesDefault: focusingDefault))
+    }
     /// Makes this view the default focus within its `remoteFocusScope` (tvOS).
     func remotePrefersDefaultFocus(_ prefers: Bool) -> some View { modifier(RemotePrefersDefaultFocus(prefers: prefers)) }
 }

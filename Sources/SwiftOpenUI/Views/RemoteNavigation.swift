@@ -41,8 +41,10 @@ extension View {
     public func remoteNonFocusable() -> Self { self }
     /// Runs `action` on a remote direction press (tvOS).
     public func onRemoteMove(perform action: @escaping () -> Void) -> Self { self }
-    /// A focus scope for `remotePrefersDefaultFocus` (tvOS).
-    public func remoteFocusScope() -> Self { self }
+    /// A focus scope for `remotePrefersDefaultFocus` (tvOS). When
+    /// `focusingDefault` is true as it appears, or becomes true, focus moves
+    /// to the scope's default.
+    public func remoteFocusScope(focusingDefault: Bool = false) -> Self { self }
     /// Makes this view the default focus within its `remoteFocusScope` (tvOS).
     public func remotePrefersDefaultFocus(_ prefers: Bool) -> Self { self }
 }
