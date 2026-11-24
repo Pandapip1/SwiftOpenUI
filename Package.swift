@@ -41,18 +41,20 @@ var targets: [Target] = [
     ),
     // Operating-system services with no UI: where application data lives, file
     // protection, privacy identities and permissions, system performance
-    // reports. One API; each operating system's behaviour lives here.
+    // reports, helper processes. One API; each operating system's behaviour lives here.
     .target(
         name: "PlatformSupport",
         dependencies: {
             #if os(Linux)
-            return ["MetricKit"]
+            return ["MetricKit", "CHelperProcessSandbox"]
             #else
-            return []
+            return ["CHelperProcessSandbox"]
             #endif
         }(),
         path: "Sources/PlatformSupport"
     ),
+    // Confines a helper process (Linux seccomp; a no-op elsewhere), for PlatformSupport's HelperProcess.
+    .target(name: "CHelperProcessSandbox", path: "Sources/CHelperProcessSandbox"),
     // Portable declarative UI model consumed by non-SwiftUI renderers.
     // UI-free geometry, text and accessibility for MediaScrubber, shared by
     // every renderer so the seek bar behaves identically everywhere.
