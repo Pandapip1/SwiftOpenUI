@@ -30,7 +30,6 @@ public struct PresentationMenu<Label: View, Content: View>: View {
     private let onPresentationChange: @MainActor (Bool) -> Void
     private let label: () -> Label
     private let content: () -> Content
-    @State private var isPresented = false
 
     public init(onPresentationChange: @escaping @MainActor (Bool) -> Void = { _ in },
                 @ViewBuilder content: @escaping () -> Content,
@@ -43,6 +42,28 @@ public struct PresentationMenu<Label: View, Content: View>: View {
     @ViewBuilder
     public var body: some View {
         #if os(iOS)
+        PopoverMenu(onPresentationChange: onPresentationChange, label: label, content: content)
+        #else
+        Menu(content: content, label: label)
+        #endif
+    }
+}
+
+#if os(iOS)
+/// The iOS popover list, in a type internal to this module. SwiftUI's
+/// `popover(isPresented:…)` is emitted into its caller, so SwiftUI exports no
+/// symbol for its opaque result type: each calling module carries a hidden
+/// copy. A public body that calls it directly is copied into client modules
+/// by cross-module optimisation (Release), and the copy referenced a
+/// descriptor no module exported: the app failed to link. An internal type's
+/// body stays here, with this module's copy.
+private struct PopoverMenu<Label: View, Content: View>: View {
+    let onPresentationChange: @MainActor (Bool) -> Void
+    let label: () -> Label
+    let content: () -> Content
+    @State private var isPresented = false
+
+    var body: some View {
         Button { isPresented = true } label: { label() }
             .popover(isPresented: $isPresented) {
                 ScrollView {
@@ -55,11 +76,9 @@ public struct PresentationMenu<Label: View, Content: View>: View {
             }
             .onChange(of: isPresented) { _, presented in onPresentationChange(presented) }
             .onDisappear { if isPresented { onPresentationChange(false) } }
-        #else
-        Menu(content: content, label: label)
-        #endif
     }
 }
+#endif
 
 #if os(tvOS)
 private struct RemoteDefaultFocusKey: EnvironmentKey {

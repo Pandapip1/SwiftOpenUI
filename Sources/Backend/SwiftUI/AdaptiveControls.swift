@@ -571,10 +571,23 @@ extension View {
     /// has one; on tvOS, which has none, a sheet. Same API on every backend.
     public func attachedPanel<PanelContent: View>(isPresented: Binding<Bool>,
                                                   @ViewBuilder content: @escaping () -> PanelContent) -> some View {
+        modifier(AttachedPanel(isPresented: isPresented, panel: content))
+    }
+}
+
+/// Internal to this module, as `PopoverMenu` is: SwiftUI's popover is emitted
+/// into its caller, and a public body calling it, copied into a client by
+/// cross-module optimisation, referenced an opaque type descriptor that no
+/// module exports (Release link failure).
+private struct AttachedPanel<PanelContent: View>: ViewModifier {
+    let isPresented: Binding<Bool>
+    let panel: () -> PanelContent
+
+    func body(content: Content) -> some View {
         #if os(tvOS)
-        sheet(isPresented: isPresented, content: content)
+        content.sheet(isPresented: isPresented, content: panel)
         #else
-        popover(isPresented: isPresented, content: content)
+        content.popover(isPresented: isPresented, content: panel)
         #endif
     }
 }
