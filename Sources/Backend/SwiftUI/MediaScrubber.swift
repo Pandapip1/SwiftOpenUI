@@ -1,5 +1,8 @@
 #if canImport(SwiftUI)
 import SwiftUI
+#if os(tvOS)
+import UIKit
+#endif
 @_exported import MediaScrubberLayout
 
 /// The media seek bar: a thick capsule (played and unplayed) split into
@@ -40,7 +43,7 @@ public struct MediaScrubber: View {
         VStack(spacing: 4) {
             GeometryReader { geometry in
                 let layout = ScrubberLayout(content: content, width: geometry.size.width, frozenEnd: frozenEnd)
-                accessible(interactive(drawing(layout, size: geometry.size), layout: layout), layout: layout)
+                bar(layout, size: geometry.size)
                     .overlay(alignment: .topLeading) { landmarks(layout) }
             }
             .frame(height: barTop + ScrubberLayout.capsuleHeight + laneSpace)
@@ -158,7 +161,32 @@ public struct MediaScrubber: View {
         .contentShape(Rectangle())
     }
 
-    /// Pointer, touch and remote input.
+    #if os(tvOS)
+    /// The remote: one focusable control over the drawing. Select starts
+    /// adjusting, left and right then seek, Select keeps the position and
+    /// Back restores it; otherwise the arrows move focus as everywhere else.
+    private func bar(_ layout: ScrubberLayout, size: CGSize) -> some View {
+        drawing(layout, size: size)
+            .accessibilityHidden(true)
+            .overlay {
+                RemoteSeekControl(
+                    label: label, value: value, end: layout.end, step: layout.accessibilityStep,
+                    describe: { layout.accessibilityValue($0) },
+                    nextChapter: { layout.nextChapterStart(after: $0) },
+                    previousChapter: { layout.previousChapterStart(before: $0) },
+                    skip: { time in
+                        layout.flag(at: time).map { (name: "Skip \($0.title)", to: min(layout.end, $0.range.end)) }
+                    },
+                    onChange: onScrubEnded
+                )
+            }
+    }
+    #else
+    private func bar(_ layout: ScrubberLayout, size: CGSize) -> some View {
+        accessible(interactive(drawing(layout, size: size), layout: layout), layout: layout)
+    }
+
+    /// Pointer and touch input.
     private func interactive(_ view: some View, layout: ScrubberLayout) -> some View {
         view
         .modifier(ScrubInteraction(
@@ -205,6 +233,7 @@ public struct MediaScrubber: View {
             }
         }
     }
+    #endif
 
     private var barTop: Double { ScrubberLayout.flagHeight + 2 }
     private var laneSpace: Double {
@@ -251,9 +280,8 @@ public struct MediaScrubber: View {
 }
 #endif
 
-#if canImport(SwiftUI)
-/// Pointer and touch: press or drag anywhere, hover for a preview. tvOS: the
-/// focused bar steps with the remote's left and right presses.
+#if canImport(SwiftUI) && !os(tvOS)
+/// Pointer and touch: press or drag anywhere, hover for a preview.
 private struct ScrubInteraction: ViewModifier {
     let layout: ScrubberLayout
     let value: Double
@@ -262,17 +290,6 @@ private struct ScrubInteraction: ViewModifier {
     let hover: (Double?) -> Void
 
     func body(content: Content) -> some View {
-        #if os(tvOS)
-        content
-            .focusable()
-            .onMoveCommand { direction in
-                switch direction {
-                case .left: ended(max(0, value - layout.accessibilityStep))
-                case .right: ended(min(layout.end, value + layout.accessibilityStep))
-                default: break
-                }
-            }
-        #else
         content
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { changed(layout.time(atX: $0.location.x)) }
@@ -283,7 +300,138 @@ private struct ScrubInteraction: ViewModifier {
                 case .ended: hover(nil)
                 }
             }
-        #endif
+    }
+}
+#endif
+
+#if canImport(SwiftUI) && os(tvOS)
+
+/// The seek bar's remote control (tvOS), drawn over the bar and carrying
+/// its accessibility. Select enters adjustment mode, left and right seek
+/// while adjusting, Select again keeps the position and releases focus
+/// movement, and Back restores where adjustment started.
+@MainActor
+private struct RemoteSeekControl: UIViewRepresentable {
+    let label: String
+    let value: Double
+    let end: Double
+    let step: Double
+    let describe: (Double) -> String
+    let nextChapter: (Double) -> Double?
+    let previousChapter: (Double) -> Double?
+    let skip: (Double) -> (name: String, to: Double)?
+    let onChange: (Double) -> Void
+
+    func makeUIView(context: Context) -> RemoteSeekControlView { RemoteSeekControlView() }
+
+    func updateUIView(_ control: RemoteSeekControlView, context: Context) { control.update(self) }
+}
+
+@MainActor
+private final class RemoteSeekControlView: UIControl {
+    private var model: RemoteSeekControl?
+    private var value: Double = 0
+    private var adjustmentStartValue: Double?
+    private var isCancellingWithMenu = false
+    private var isAdjusting = false { didSet { refresh() } }
+
+    override var canBecomeFocused: Bool { true }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isAccessibilityElement = true
+        accessibilityIdentifier = "playback-seek-control"
+        accessibilityTraits = [.adjustable]
+        layer.cornerRadius = 8
+        refresh()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+
+    func update(_ model: RemoteSeekControl) {
+        self.model = model
+        value = model.value
+        accessibilityLabel = model.label
+        var actions: [UIAccessibilityCustomAction] = [
+            UIAccessibilityCustomAction(name: "Next chapter") { [weak self] _ in
+                guard let self, let start = self.model?.nextChapter(self.value) else { return false }
+                self.adjust(to: start)
+                return true
+            },
+            UIAccessibilityCustomAction(name: "Previous chapter") { [weak self] _ in
+                guard let self, let start = self.model?.previousChapter(self.value) else { return false }
+                self.adjust(to: start)
+                return true
+            },
+        ]
+        if let skip = model.skip(value) {
+            actions.append(UIAccessibilityCustomAction(name: skip.name) { [weak self] _ in
+                self?.adjust(to: skip.to)
+                return true
+            })
+        }
+        accessibilityCustomActions = actions
+        refresh()
+    }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if isAdjusting, presses.contains(where: { $0.type == .menu }) {
+            if let adjustmentStartValue { adjust(to: adjustmentStartValue) }
+            adjustmentStartValue = nil
+            isAdjusting = false
+            isCancellingWithMenu = true
+            return
+        }
+        guard isAdjusting, let type = presses.first?.type else {
+            super.pressesBegan(presses, with: event)
+            return
+        }
+        switch type {
+        case .leftArrow: adjust(by: -(model?.step ?? 10))
+        case .rightArrow: adjust(by: model?.step ?? 10)
+        default: super.pressesBegan(presses, with: event)
+        }
+    }
+
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if isCancellingWithMenu, presses.contains(where: { $0.type == .menu }) {
+            isCancellingWithMenu = false
+            return
+        }
+        if presses.contains(where: { $0.type == .select }) {
+            adjustmentStartValue = isAdjusting ? nil : value
+            isAdjusting.toggle()
+            return
+        }
+        super.pressesEnded(presses, with: event)
+    }
+
+    override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
+        super.didUpdateFocus(in: context, with: coordinator)
+        if !isFocused { isAdjusting = false }
+        coordinator.addCoordinatedAnimations { self.refresh() }
+    }
+
+    override func accessibilityIncrement() { adjust(by: model?.step ?? 10) }
+    override func accessibilityDecrement() { adjust(by: -(model?.step ?? 10)) }
+
+    private func adjust(by delta: Double) { adjust(to: value + delta) }
+
+    private func adjust(to proposed: Double) {
+        let target = min(max(proposed, 0), model?.end ?? proposed)
+        value = target
+        model?.onChange(target)
+        refresh()
+    }
+
+    private func refresh() {
+        backgroundColor = isFocused ? UIColor.white.withAlphaComponent(0.18) : .clear
+        layer.borderWidth = isAdjusting ? 3 : 0
+        layer.borderColor = tintColor.cgColor
+        transform = isFocused ? CGAffineTransform(scaleX: 1.03, y: 1.03) : .identity
+        let position = model?.describe(value) ?? ""
+        accessibilityValue = isAdjusting ? "\(position), adjusting" : position
     }
 }
 #endif

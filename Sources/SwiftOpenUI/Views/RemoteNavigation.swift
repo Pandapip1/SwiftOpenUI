@@ -3,24 +3,6 @@
 // other portable renderers) render the plain control and ignore the focus
 // modifiers; the SwiftUI backend implements them where the platform needs them.
 
-/// A seek slider: the native slider, or on tvOS a focusable control that
-/// Select puts into adjustment mode and the remote's arrows move.
-public struct ScrubSlider: View {
-    private let value: Double
-    private let range: ClosedRange<Double>
-    private let onChange: (Double) -> Void
-
-    public init(value: Double, range: ClosedRange<Double>, onChange: @escaping (Double) -> Void) {
-        self.value = value
-        self.range = range
-        self.onChange = onChange
-    }
-
-    public var body: some View {
-        Slider(value: Binding(get: { value }, set: { onChange($0) }), in: range)
-    }
-}
-
 /// An invisible, focusable area that brings hidden controls back when the
 /// remote is used (tvOS). Nothing elsewhere: pointers and touch reveal them.
 public struct RemoteRevealTarget: View {
