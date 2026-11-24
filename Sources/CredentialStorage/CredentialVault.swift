@@ -178,6 +178,22 @@ public struct SystemKeychainBackend: KeychainItemBackend {
     }
 }
 
+/// When a stored secret can be read.
+///
+/// Apple platforms: a keychain accessibility class, always "this device
+/// only" (never backed up, never synced). Linux: the Secret Service has no
+/// per-item classes; its collection is unlocked with the login session
+/// (gnome-keyring, KWallet) and stays unlocked until the session ends or the
+/// user locks it, so both cases read the same there: available whenever the
+/// user's session has unlocked the keyring, screen lock or not.
+public enum CredentialAccessibility: Sendable, Equatable {
+    /// Only while the device is unlocked (sign-ins and tokens).
+    case whenUnlocked
+    /// From the first unlock after boot on, also while the device is locked
+    /// again: for keys that work done while locked needs (at-rest keys).
+    case afterFirstUnlock
+}
+
 /// The platform credential adapter. Apple uses the Data Protection Keychain
 /// unless the application explicitly selects `.legacyLoginKeychain` (macOS
 /// only); Linux uses SwiftOpenUI's Security-compatible Secret Service layer.
@@ -186,11 +202,15 @@ public struct PlatformCredentialVault: CredentialDataVault {
     /// Applied only in `.dataProtection` mode.
     public let accessGroup: String?
     public let mode: CredentialStorageMode
+    /// Applied only in `.dataProtection` mode.
+    public let accessibility: CredentialAccessibility
     private let backend: any KeychainItemBackend
 
     public init(service: String, accessGroup: String? = nil, mode: CredentialStorageMode = .dataProtection,
+                accessibility: CredentialAccessibility = .whenUnlocked,
                 backend: any KeychainItemBackend = SystemKeychainBackend()) {
         self.service = service
+        self.accessibility = accessibility
         self.accessGroup = accessGroup
         self.mode = mode
         self.backend = backend
@@ -375,7 +395,8 @@ public struct PlatformCredentialVault: CredentialDataVault {
         // Accessibility classes belong to the Data Protection Keychain; the
         // macOS file-based keychain does not use them.
         if mode == .dataProtection {
-            addition[kSecAttrAccessible] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            addition[kSecAttrAccessible] = accessibility == .afterFirstUnlock
+                ? kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly : kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         }
         return addition
     }
