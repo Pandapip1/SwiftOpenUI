@@ -207,7 +207,7 @@ targets += [
 // GTK4 backend. Linux selects it by default; macOS can opt in for backend development.
 if gtkBackendEnabled {
 var gtkBackendDependencies: [Target.Dependency] = [
-    "SwiftOpenUICore", "CGTK", "CAdwaita", "CGTKBridge", "CGTKWidgets", "CGStreamer", "CFontconfig", "CPangoFT2", "SwiftOpenUISymbols",
+    "SwiftOpenUICore", "CGTK", "CAdwaita", "CGTKBridge", "CGTKWidgets", "CGStreamer", "CFontconfig", "CPangoFT2", "SwiftOpenUISymbols", "PlatformSupport",
 ]
 var gtkBackendExclude: [String] = []
 if gtkWebKitEnabled { gtkBackendDependencies += ["WebKit", "CWebKitGTK"] }

@@ -5,6 +5,7 @@ import CGTKBridge
 @_spi(SwiftOpenUIBackend) import SwiftOpenUICore
 import SwiftOpenUISymbols
 import Foundation
+import PlatformSupport
 #if canImport(AppKit)
 import AppKit
 import CoreText
@@ -1108,6 +1109,7 @@ func gtkInstallSystemServices() {
     SystemServices.openURL = { url in
         g_app_info_launch_default_for_uri(url.absoluteString, nil, nil)
     }
+    LocalNotifications.install(GTKNotificationCenter())
 }
 
 // MARK: - Color scheme
